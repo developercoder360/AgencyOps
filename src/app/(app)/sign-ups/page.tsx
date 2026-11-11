@@ -96,7 +96,7 @@ export default function SignUpsPage() {
         header: "Lead Status",
         cell: ({ row }) =>
           row.original.convertedToLead ? (
-            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300">
+            <Badge className="border-(--tone-emerald-border) bg-(--tone-emerald-bg) text-(--tone-emerald-fg)">
               Converted
             </Badge>
           ) : (

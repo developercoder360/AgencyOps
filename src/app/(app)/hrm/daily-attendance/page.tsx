@@ -302,7 +302,7 @@ export default function DailyAttendancePage() {
                   <ol className="relative ml-2 space-y-4 border-l border-border pl-5">
                     {selected.logs.map((log) => (
                       <li key={log.id} className="relative space-y-1">
-                        <span className="absolute -left-[25px] top-1 size-2.5 rounded-full border-2 border-background bg-primary" />
+                        <span className="absolute -left-[25px] top-1 size-2.5 rounded-full border-2 border-background bg-primary [[data-theme=studio]_&]:ring-4 [[data-theme=studio]_&]:ring-primary/15" />
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-sm font-medium">
                             {log.action}

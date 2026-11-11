@@ -137,7 +137,7 @@ export default function ChatsPage() {
         description="Real-time internal project channels with read receipts and deliverable attachments."
       />
 
-      <div className="grid min-h-[480px] grid-cols-1 overflow-hidden rounded-xl border border-border bg-card lg:h-[calc(100vh-220px)] lg:grid-cols-12">
+      <div className="grid min-h-[480px] grid-cols-1 overflow-hidden rounded-(--radius-surface) border border-border bg-card lg:h-[calc(100vh-220px)] lg:grid-cols-12">
         {/* Left Pane: Conversation List */}
         <div
           className={cn(
@@ -173,8 +173,8 @@ export default function ChatsPage() {
                     type="button"
                     onClick={() => selectThread(thread.id)}
                     className={cn(
-                      "flex w-full min-w-0 flex-col gap-1 p-3.5 text-left transition-colors hover:bg-muted/50",
-                      isSelected && "bg-primary/5"
+                      "flex w-full min-w-0 flex-col gap-1 p-3.5 text-left transition-colors duration-150 hover:bg-muted/50",
+                      isSelected && "bg-(--chat-thread-active)"
                     )}
                   >
                     <div className="flex w-full min-w-0 items-start justify-between gap-2">
@@ -295,8 +295,8 @@ export default function ChatsPage() {
                               className={cn(
                                 "rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
                                 isSelf
-                                  ? "bg-primary text-primary-foreground"
-                                  : "border border-border bg-muted/50 text-foreground"
+                                  ? "bg-(--chat-bubble-out-bg) text-(--chat-bubble-out-fg)"
+                                  : "border border-(--chat-bubble-in-border) bg-(--chat-bubble-in-bg) text-foreground"
                               )}
                             >
                               <p>{msg.content}</p>
@@ -305,7 +305,7 @@ export default function ChatsPage() {
                                   className={cn(
                                     "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
                                     isSelf
-                                      ? "bg-white/15 text-white"
+                                      ? "bg-(--chat-bubble-out-chip-bg) text-(--chat-bubble-out-chip-fg)"
                                       : "border border-border bg-background text-foreground"
                                   )}
                                 >

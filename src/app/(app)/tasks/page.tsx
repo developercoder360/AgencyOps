@@ -33,6 +33,7 @@ import {
   PageHeader,
   StatusBadge,
 } from "@/components/shared"
+import { getAvatarToneClass } from "@/lib/theme"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -399,7 +400,7 @@ export default function TasksPage() {
               <AvatarGroup people={people} max={2} />
               {row.original.redFlaggedUserIds.length > 0 ? (
                 <Flag
-                  className="size-3.5 text-rose-600 dark:text-rose-400"
+                  className="size-3.5 text-(--tone-rose-text)"
                   aria-label="Has QA red flag"
                 />
               ) : null}
@@ -421,7 +422,7 @@ export default function TasksPage() {
               className={cn(
                 "text-xs tabular-nums",
                 overdue
-                  ? "font-semibold text-rose-600 dark:text-rose-400"
+                  ? "font-semibold text-(--tone-rose-text)"
                   : "text-muted-foreground"
               )}
             >
@@ -523,7 +524,7 @@ export default function TasksPage() {
               return (
                 <div
                   key={colStatus}
-                  className="flex flex-col rounded-xl border border-border bg-muted/40 p-2.5"
+                  className="flex flex-col rounded-(--radius-surface) border border-border bg-(--kanban-col-bg) p-2.5"
                 >
                   <div className="mb-2.5 flex items-center justify-between gap-2 px-1">
                     <StatusBadge status={colStatus} />
@@ -550,7 +551,7 @@ export default function TasksPage() {
                             key={task.id}
                             type="button"
                             onClick={() => setSelectedTask(task)}
-                            className="w-full space-y-2.5 rounded-lg border border-border bg-card p-3 text-left shadow-2xs transition-all hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="w-full space-y-2.5 rounded-(--radius-control) border border-border bg-card p-3 text-left shadow-(--shadow-kanban-card) transition-[border-color,box-shadow] duration-150 hover:border-primary/40 hover:shadow-(--shadow-kanban-card-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [[data-theme=studio]_&]:rounded-xl [[data-theme=studio]_&]:p-3.5"
                           >
                             <div className="flex items-center justify-between gap-1.5">
                               <span className="font-mono text-[11px] font-semibold text-primary">
@@ -569,7 +570,7 @@ export default function TasksPage() {
                             </div>
 
                             {task.redFlaggedUserIds.length > 0 ? (
-                              <div className="inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
+                              <div className="inline-flex items-center gap-1 rounded-(--radius-badge) border border-(--tone-rose-border) bg-(--tone-rose-bg) px-1.5 py-0.5 text-[10px] font-medium text-(--tone-rose-fg)">
                                 <Flag className="size-3" />
                                 Red-Flagged
                               </div>
@@ -586,7 +587,7 @@ export default function TasksPage() {
                                   className={cn(
                                     "inline-flex items-center gap-0.5 tabular-nums",
                                     overdue &&
-                                      "font-semibold text-rose-600 dark:text-rose-400"
+                                      "font-semibold text-(--tone-rose-text)"
                                   )}
                                 >
                                   <Clock className="size-3 shrink-0" />
@@ -645,7 +646,7 @@ export default function TasksPage() {
                 {/* On Hold Banner */}
                 {selectedTask.status === "On Hold" &&
                 selectedTask.onHoldReason ? (
-                  <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200">
+                  <div className="flex items-start gap-2.5 rounded-lg border border-(--tone-amber-border) bg-(--tone-amber-bg) p-3 text-xs text-(--tone-amber-fg)">
                     <PauseCircle className="mt-0.5 size-4 shrink-0" />
                     <div>
                       <div className="font-semibold">Task On Hold</div>
@@ -723,12 +724,15 @@ export default function TasksPage() {
                           className={cn(
                             "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs",
                             flagged
-                              ? "border-rose-300 bg-rose-50/70 dark:border-rose-500/40 dark:bg-rose-500/15"
+                              ? "border-(--tone-rose-border) bg-(--tone-rose-bg) text-(--tone-rose-fg)"
                               : "border-border"
                           )}
                         >
                           <span
-                            className={`flex size-6 items-center justify-center rounded-full text-[10px] font-bold text-white ${u.avatarColor}`}
+                            className={cn(
+                              "flex size-6 items-center justify-center rounded-full text-[10px] font-bold",
+                              getAvatarToneClass(u.avatarColor)
+                            )}
                           >
                             {u.avatarInitials}
                           </span>
@@ -823,16 +827,16 @@ export default function TasksPage() {
                           className={cn(
                             "rounded-lg border p-3 text-xs",
                             qa.outcome === "Pass"
-                              ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-500/30 dark:bg-emerald-500/10"
-                              : "border-rose-200 bg-rose-50/50 dark:border-rose-500/30 dark:bg-rose-500/10"
+                              ? "border-(--tone-emerald-border) bg-(--tone-emerald-bg)"
+                              : "border-(--tone-rose-border) bg-(--tone-rose-bg)"
                           )}
                         >
                           <div className="flex items-center justify-between font-medium">
                             <span className="flex items-center gap-1.5">
                               {qa.outcome === "Pass" ? (
-                                <CheckCircle2 className="size-3.5 text-emerald-600" />
+                                <CheckCircle2 className="size-3.5 text-(--tone-emerald-text)" />
                               ) : (
-                                <AlertTriangle className="size-3.5 text-rose-600" />
+                                <AlertTriangle className="size-3.5 text-(--tone-rose-text)" />
                               )}
                               QA {qa.outcome} by {qa.reviewerName}
                             </span>
@@ -909,7 +913,7 @@ export default function TasksPage() {
                   }}
                   className="gap-1.5"
                 >
-                  <PauseCircle className="size-4 text-amber-600" />
+                  <PauseCircle className="size-4 text-(--tone-amber-text)" />
                   Put On Hold
                 </Button>
                 <div className="flex gap-2">
@@ -927,7 +931,7 @@ export default function TasksPage() {
                     type="button"
                     size="sm"
                     onClick={() => handleQaPass(selectedTask)}
-                    className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                    className="gap-1.5 bg-(--tone-emerald-solid) text-(--tone-emerald-solid-fg) hover:bg-(--tone-emerald-solid-hover)"
                   >
                     <ShieldCheck className="size-4" />
                     QA Pass
@@ -944,7 +948,7 @@ export default function TasksPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <PauseCircle className="size-4 text-amber-600" />
+              <PauseCircle className="size-4 text-(--tone-amber-text)" />
               Place Task On Hold
             </DialogTitle>
             <DialogDescription>

@@ -109,7 +109,7 @@ export default function GeneralSettingsPage() {
                   className="size-20 rounded-xl border border-border object-cover"
                 />
               ) : (
-                <div className="flex size-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1F63C8] to-[#0B3266] text-2xl font-bold text-white shadow-sm">
+                <div className="flex size-20 items-center justify-center rounded-2xl [background:var(--brand-mark-bg)] text-2xl font-bold text-(--brand-mark-fg) shadow-(--brand-mark-shadow)">
                   AO
                 </div>
               )}

@@ -263,8 +263,8 @@ export default function BrandsPage() {
                 />
               ) : (
                 <div
-                  className="flex size-16 shrink-0 items-center justify-center rounded-xl text-lg font-bold text-white"
-                  style={{ backgroundColor: watchColor || "#2563EB" }}
+                  className="flex size-16 shrink-0 items-center justify-center rounded-(--radius-surface) text-lg font-bold text-white"
+                  style={{ backgroundColor: watchColor || "var(--brand-fallback-bg)" }}
                 >
                   {(watchName || "BR")
                     .split(/\s+/)

@@ -114,12 +114,12 @@ export default function SecuritySettingsPage() {
             <div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-muted/20 p-5 sm:flex-row">
               {/* Crisp deterministic SVG QR placeholder */}
               <div
-                className="flex size-36 shrink-0 items-center justify-center rounded-xl border border-border bg-white p-2 shadow-2xs"
+                className="flex size-36 shrink-0 items-center justify-center rounded-(--radius-surface) border border-border bg-(--qr-bg) p-2"
                 aria-label="2FA QR Code Placeholder"
               >
                 <svg
                   viewBox="0 0 100 100"
-                  className="size-full text-slate-900"
+                  className="size-full text-(--qr-fg)"
                   role="img"
                   aria-label="Authenticator QR pattern"
                 >
@@ -198,7 +198,7 @@ export default function SecuritySettingsPage() {
             </form>
 
             {enabled2FA ? (
-              <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+              <div className="flex items-center justify-between rounded-lg border border-(--tone-emerald-border) bg-(--tone-emerald-bg) p-3 text-xs text-(--tone-emerald-fg)">
                 <span className="flex items-center gap-1.5 font-medium">
                   <CheckCircle2 className="size-4" />
                   Hardware / TOTP 2FA is currently active

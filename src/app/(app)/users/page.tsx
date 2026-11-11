@@ -19,6 +19,7 @@ import {
   type FacetedFilterConfig,
 } from "@/components/data-table"
 import { PageHeader, StatusBadge } from "@/components/shared"
+import { getAvatarToneClass } from "@/lib/theme"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -208,7 +209,7 @@ export default function UsersPage() {
           <div className="flex items-center gap-2.5">
             <Avatar className="size-8">
               <AvatarFallback
-                className={`text-xs font-bold text-white ${row.original.avatarColor}`}
+                className={`text-xs font-bold ${getAvatarToneClass(row.original.avatarColor)}`}
               >
                 {row.original.avatarInitials}
               </AvatarFallback>
@@ -254,7 +255,7 @@ export default function UsersPage() {
         header: "QA Flags",
         cell: ({ row }) =>
           row.original.redFlagCount > 0 ? (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-(--tone-rose-text)">
               <Flag className="size-3.5" />
               {row.original.redFlagCount}
             </span>

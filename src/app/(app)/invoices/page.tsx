@@ -357,7 +357,7 @@ export default function InvoicesPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Discount</span>
-                    <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+                    <span className="tabular-nums text-(--tone-emerald-text)">
                       -
                       {formatCurrency(
                         selectedInvoice.discountAmount,

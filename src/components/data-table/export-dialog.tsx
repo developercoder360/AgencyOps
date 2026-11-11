@@ -163,7 +163,7 @@ function ExportDialogBody({
                   : "border-border hover:bg-muted/50"
               }`}
             >
-              <FileSpreadsheet className="size-4 text-emerald-600 dark:text-emerald-400" />
+              <FileSpreadsheet className="size-4 text-(--tone-emerald-text)" />
               <div>
                 <div className="font-medium">Excel (.XLSX)</div>
                 <div className="text-[11px] text-muted-foreground">
@@ -181,7 +181,7 @@ function ExportDialogBody({
                   : "border-border hover:bg-muted/50"
               }`}
             >
-              <FileText className="size-4 text-blue-600 dark:text-blue-400" />
+              <FileText className="size-4 text-(--chart-blue-text)" />
               <div>
                 <div className="font-medium">CSV (.CSV)</div>
                 <div className="text-[11px] text-muted-foreground">
@@ -240,7 +240,7 @@ function ExportDialogBody({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs font-medium">
                 {status === "completed" ? (
-                  <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+                  <CheckCircle2 className="size-4 text-(--tone-emerald-text)" />
                 ) : (
                   <Loader2 className="size-4 animate-spin text-primary" />
                 )}

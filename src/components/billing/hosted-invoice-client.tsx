@@ -92,7 +92,7 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
         {/* Top brand bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#1F63C8] to-[#0B3266] text-sm font-bold text-white">
+            <div className="flex size-10 items-center justify-center rounded-(--radius-surface) [background:var(--brand-mark-bg)] text-sm font-bold text-(--brand-mark-fg)">
               AO
             </div>
             <div>
@@ -192,7 +192,7 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
                 {invoice.discountAmount > 0 ? (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Discount</span>
-                    <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+                    <span className="tabular-nums text-(--tone-emerald-text)">
                       -{formatCurrency(invoice.discountAmount, invoice.currency)}
                     </span>
                   </div>
@@ -222,8 +222,8 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
             </CardHeader>
             <CardContent>
               {paymentOutcome === "success" ? (
-                <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-6 text-center dark:border-emerald-500/30 dark:bg-emerald-500/10">
-                  <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-emerald-600 text-white">
+                <div className="space-y-4 rounded-(--radius-surface) border border-(--tone-emerald-border) bg-(--tone-emerald-bg) p-6 text-center">
+                  <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-(--tone-emerald-solid) text-(--tone-emerald-solid-fg)">
                     <CheckCircle2 className="size-6" />
                   </div>
                   <div className="space-y-1">
@@ -266,7 +266,7 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
 
                   <TabsContent value="card" className="mt-4 space-y-4">
                     {paymentOutcome === "failed" ? (
-                      <div className="flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-200">
+                      <div className="flex items-start gap-3 rounded-lg border border-(--tone-rose-border) bg-(--tone-rose-bg) p-3.5 text-sm text-(--tone-rose-fg)">
                         <AlertCircle className="mt-0.5 size-4 shrink-0" />
                         <div>
                           <div className="font-semibold">
@@ -384,7 +384,7 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
                     </div>
 
                     {proofSubmitted ? (
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200">
+                      <div className="rounded-lg border border-(--tone-emerald-border) bg-(--tone-emerald-bg) p-4 text-sm text-(--tone-emerald-fg)">
                         <div className="font-semibold">
                           Transfer proof submitted: {uploadedProofName}
                         </div>

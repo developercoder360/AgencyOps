@@ -99,14 +99,14 @@ export default function HrmDashboardPage() {
         key: r.id,
         color:
           r.status === "present"
-            ? "bg-emerald-500"
+            ? "bg-(--tone-emerald-dot)"
             : r.status === "late"
-              ? "bg-amber-500"
+              ? "bg-(--tone-amber-dot)"
               : r.status === "halfday"
-                ? "bg-cyan-500"
+                ? "bg-(--tone-cyan-dot)"
                 : r.status === "leave"
-                  ? "bg-indigo-500"
-                  : "bg-rose-500",
+                  ? "bg-(--tone-indigo-dot)"
+                  : "bg-(--tone-rose-dot)",
         tooltip: `${r.userName}: ${r.status}`,
       })),
     [todayRecords]
@@ -216,23 +216,23 @@ export default function HrmDashboardPage() {
             </div>
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
-                <span className="size-2.5 rounded-xs bg-emerald-500" />
+                <span className="size-2.5 rounded-xs bg-(--tone-emerald-dot)" />
                 Present
               </span>
               <span className="flex items-center gap-1">
-                <span className="size-2.5 rounded-xs bg-amber-500" />
+                <span className="size-2.5 rounded-xs bg-(--tone-amber-dot)" />
                 Late
               </span>
               <span className="flex items-center gap-1">
-                <span className="size-2.5 rounded-xs bg-cyan-500" />
+                <span className="size-2.5 rounded-xs bg-(--tone-cyan-dot)" />
                 Half Day
               </span>
               <span className="flex items-center gap-1">
-                <span className="size-2.5 rounded-xs bg-indigo-500" />
+                <span className="size-2.5 rounded-xs bg-(--tone-indigo-dot)" />
                 Leave
               </span>
               <span className="flex items-center gap-1">
-                <span className="size-2.5 rounded-xs bg-rose-500" />
+                <span className="size-2.5 rounded-xs bg-(--tone-rose-dot)" />
                 Absent
               </span>
             </div>
@@ -318,7 +318,7 @@ export default function HrmDashboardPage() {
                               type="button"
                               size="xs"
                               onClick={() => handleApprove(req)}
-                              className="gap-1 bg-emerald-600 text-white hover:bg-emerald-700"
+                              className="gap-1 bg-(--tone-emerald-solid) text-(--tone-emerald-solid-fg) hover:bg-(--tone-emerald-solid-hover)"
                             >
                               <Check className="size-3" />
                               Approve

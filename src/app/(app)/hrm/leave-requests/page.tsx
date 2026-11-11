@@ -198,7 +198,7 @@ export default function LeaveRequestsPage() {
                 onClick={() => approveRequest(row.original)}
                 aria-label="Approve leave"
               >
-                <Check className="size-3.5 text-emerald-600" />
+                <Check className="size-3.5 text-(--tone-emerald-text)" />
               </Button>
               <Button
                 type="button"
@@ -210,7 +210,7 @@ export default function LeaveRequestsPage() {
                 }}
                 aria-label="Reject leave"
               >
-                <X className="size-3.5 text-rose-600" />
+                <X className="size-3.5 text-(--tone-rose-text)" />
               </Button>
             </div>
           ) : null,

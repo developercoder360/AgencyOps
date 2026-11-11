@@ -56,10 +56,10 @@ export default function TwoFactorAuthenticationPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-10">
       <div className="w-full max-w-md space-y-6">
         <div className="flex flex-col items-center text-center">
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1F63C8] to-[#0B3266] text-base font-bold text-white shadow-md">
+          <div className="flex size-12 items-center justify-center rounded-2xl [background:var(--brand-mark-bg)] text-base font-bold text-(--brand-mark-fg) shadow-(--brand-mark-shadow)">
             <ShieldCheck className="size-6" />
           </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-foreground">
+          <h1 className="font-display mt-3 text-2xl font-bold tracking-tight text-foreground [[data-theme=studio]_&]:text-[1.75rem]">
             Two-Factor Verification
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">

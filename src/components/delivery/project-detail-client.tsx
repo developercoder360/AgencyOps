@@ -389,7 +389,7 @@ export function ProjectDetailClient({
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         {file.clientVisible ? (
                           <>
-                            <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <Eye className="size-3.5 text-(--tone-emerald-text)" />
                             Client Visible
                           </>
                         ) : (
@@ -444,7 +444,7 @@ export function ProjectDetailClient({
                 {comments.map((c) => (
                   <div
                     key={c.id}
-                    className="rounded-lg border border-border bg-muted/20 p-3.5"
+                    className="rounded-(--radius-control) border border-border bg-muted/20 p-3.5"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">

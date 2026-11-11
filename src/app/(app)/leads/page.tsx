@@ -545,7 +545,7 @@ export default function LeadsPage() {
                   <ol className="relative ml-2 space-y-4 border-l border-border pl-5">
                     {selectedLead.assignmentHistory.map((evt) => (
                       <li key={evt.id} className="relative space-y-1">
-                        <span className="absolute -left-[25px] top-1 size-2.5 rounded-full border-2 border-background bg-primary" />
+                        <span className="absolute -left-[25px] top-1 size-2.5 rounded-full border-2 border-background bg-primary [[data-theme=studio]_&]:ring-4 [[data-theme=studio]_&]:ring-primary/15" />
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="text-sm font-medium text-foreground">
                             {evt.fromStaffName

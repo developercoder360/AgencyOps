@@ -264,7 +264,7 @@ export default function ProjectsPage() {
               className={cn(
                 "inline-flex items-center gap-1 text-xs tabular-nums",
                 overdue
-                  ? "font-semibold text-rose-600 dark:text-rose-400"
+                  ? "font-semibold text-(--tone-rose-text)"
                   : "text-muted-foreground"
               )}
             >
@@ -392,7 +392,7 @@ export default function ProjectsPage() {
               return (
                 <Card
                   key={project.id}
-                  className="flex flex-col justify-between transition-shadow hover:shadow-md"
+                  className="flex flex-col justify-between transition-[box-shadow,border-color] duration-150 hover:shadow-(--shadow-card-hover) [[data-theme=studio]_&]:hover:ring-primary/35"
                 >
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between gap-2">
@@ -431,7 +431,7 @@ export default function ProjectsPage() {
                         className={cn(
                           "inline-flex items-center gap-1 tabular-nums",
                           overdue
-                            ? "font-semibold text-rose-600 dark:text-rose-400"
+                            ? "font-semibold text-(--tone-rose-text)"
                             : "text-muted-foreground"
                         )}
                       >
@@ -511,7 +511,7 @@ export default function ProjectsPage() {
                       className={cn(
                         "tabular-nums",
                         isDeadlineOverdue(selectedProject) &&
-                          "font-semibold text-rose-600 dark:text-rose-400"
+                          "font-semibold text-(--tone-rose-text)"
                       )}
                     >
                       {selectedProject.deadline}

@@ -213,7 +213,7 @@ export default function MarketingSpendingsPage() {
           <DataTableColumnHeader column={column} title="Attributed Rev." />
         ),
         cell: ({ row }) => (
-          <span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+          <span className="font-semibold tabular-nums text-(--tone-emerald-text)">
             {formatCurrency(row.original.revenueAttributedUsd)}
           </span>
         ),

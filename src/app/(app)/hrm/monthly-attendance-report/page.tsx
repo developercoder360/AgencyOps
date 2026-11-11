@@ -44,37 +44,37 @@ const CHIP_META: Record<
     code: "P",
     label: "Present",
     classes:
-      "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300",
+      "border border-(--tone-emerald-border) bg-(--tone-emerald-bg) text-(--tone-emerald-fg)",
   },
   late: {
     code: "L",
     label: "Late",
     classes:
-      "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300",
+      "border border-(--tone-amber-border) bg-(--tone-amber-bg) text-(--tone-amber-fg)",
   },
   halfday: {
     code: "HD",
     label: "Half Day",
     classes:
-      "bg-cyan-100 text-cyan-800 dark:bg-cyan-500/20 dark:text-cyan-300",
+      "border border-(--tone-cyan-border) bg-(--tone-cyan-bg) text-(--tone-cyan-fg)",
   },
   absent: {
     code: "A",
     label: "Absent",
     classes:
-      "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300",
+      "border border-(--tone-rose-border) bg-(--tone-rose-bg) text-(--tone-rose-fg)",
   },
   leave: {
     code: "LV",
     label: "Leave",
     classes:
-      "bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-300",
+      "border border-(--tone-indigo-border) bg-(--tone-indigo-bg) text-(--tone-indigo-fg)",
   },
   holiday: {
     code: "H",
     label: "Holiday",
     classes:
-      "bg-violet-100 text-violet-800 dark:bg-violet-500/20 dark:text-violet-300",
+      "border border-(--tone-violet-border) bg-(--tone-violet-bg) text-(--tone-violet-fg)",
   },
   weekend: {
     code: "W",
@@ -234,15 +234,15 @@ export default function MonthlyAttendanceReportPage() {
                       )
                     })}
                     <td className="border-l border-border px-3 py-2 text-center font-mono text-xs whitespace-nowrap">
-                      <span className="text-emerald-600 dark:text-emerald-400">
+                      <span className="text-(--tone-emerald-text)">
                         {row.summary.present}
                       </span>
                       {" / "}
-                      <span className="text-amber-600 dark:text-amber-400">
+                      <span className="text-(--tone-amber-text)">
                         {row.summary.late}
                       </span>
                       {" / "}
-                      <span className="text-rose-600 dark:text-rose-400">
+                      <span className="text-(--tone-rose-text)">
                         {row.summary.absent}
                       </span>
                     </td>

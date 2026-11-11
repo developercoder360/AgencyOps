@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { ArrowLeft, Mail, MapPin, Phone } from "lucide-react"
 import { KpiCard, PageHeader, StatusBadge } from "@/components/shared"
+import { getAvatarToneClass } from "@/lib/theme"
 import { ProgressBar } from "@/components/tremor"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -88,7 +89,7 @@ export function User360Client({ user }: { user: StaffUser }) {
           <div className="flex items-center gap-4">
             <Avatar className="size-14">
               <AvatarFallback
-                className={`text-base font-bold text-white ${user.avatarColor}`}
+                className={`text-base font-bold ${getAvatarToneClass(user.avatarColor)}`}
               >
                 {user.avatarInitials}
               </AvatarFallback>
@@ -132,7 +133,7 @@ export function User360Client({ user }: { user: StaffUser }) {
             </div>
             <div>
               <div className="text-xs text-muted-foreground">QA Flags</div>
-              <div className="text-lg font-bold tabular-nums text-rose-600 dark:text-rose-400">
+              <div className="font-display text-lg font-bold tabular-nums text-(--tone-rose-text)">
                 {user.redFlagCount}
               </div>
             </div>

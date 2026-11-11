@@ -220,7 +220,7 @@ export default function ExportLogsPage() {
                 </div>
 
                 {selected.errorMessage ? (
-                  <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-200">
+                  <div className="flex items-start gap-2 rounded-lg border border-(--tone-rose-border) bg-(--tone-rose-bg) p-3 text-xs text-(--tone-rose-fg)">
                     <AlertCircle className="mt-0.5 size-4 shrink-0" />
                     <span>{selected.errorMessage}</span>
                   </div>

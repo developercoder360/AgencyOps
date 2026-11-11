@@ -359,10 +359,10 @@ export function DashboardClient() {
 
       {/* Dismissible celebration banner */}
       {!celebrationDismissed ? (
-        <Card className="border-amber-200 bg-gradient-to-r from-amber-50/90 via-background to-blue-50/70 py-3 dark:border-amber-500/30 dark:from-amber-950/30 dark:via-card dark:to-blue-950/30">
+        <Card className="border-(--celebration-border) [background:var(--celebration-bg)] py-3">
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-(--radius-control) bg-(--celebration-icon-bg) text-(--celebration-icon-fg)">
                 <PartyPopper className="size-5" />
               </div>
               <div className="space-y-0.5">
