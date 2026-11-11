@@ -30,11 +30,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const hasAccess = !requiredModule || canAccessModule(role, requiredModule)
 
   return (
-    <div className="flex min-h-screen w-full bg-muted/30">
+    <div className="flex min-h-screen w-full bg-(--shell-bg)">
       {/* Desktop collapsible sidebar */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 border-r border-border/40 transition-all duration-200 lg:block",
+          "sticky top-0 hidden h-screen shrink-0 border-r border-(--sidebar-shell-border) transition-[width] duration-150 lg:block",
           collapsed ? "w-[68px]" : "w-64"
         )}
       >
@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <SheetContent
           side="left"
           showCloseButton={false}
-          className="w-64 border-r-0 p-0"
+          className="w-64 border-r border-(--sidebar-shell-border) p-0"
         >
           <SheetTitle className="sr-only">Navigation menu</SheetTitle>
           <SidebarContent onNavigate={() => setMobileOpen(false)} />
@@ -59,7 +59,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main content area */}
       <div className="flex min-w-0 flex-1 flex-col">
         <AppTopbar onOpenMobileSidebar={() => setMobileOpen(true)} />
-        <main className="flex-1 min-w-0 px-3 py-5 sm:px-6">
+        <main className="flex-1 min-w-0 px-3 py-5 sm:px-6 [[data-theme=studio]_&]:lg:px-8 [[data-theme=studio]_&]:lg:py-6">
           <div className="mx-auto w-full max-w-[1440px]">
             <AppBreadcrumbs />
             {hasAccess ? (
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ) : (
               <Card className="mx-auto mt-8 max-w-lg text-center">
                 <CardHeader className="justify-items-center text-center">
-                  <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400">
+                  <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-(--tone-rose-bg) text-(--tone-rose-fg) border border-(--tone-rose-border)">
                     <ShieldAlert className="size-6" />
                   </div>
                   <CardTitle className="text-xl">No access</CardTitle>

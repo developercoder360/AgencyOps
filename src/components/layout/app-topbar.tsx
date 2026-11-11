@@ -18,6 +18,7 @@ import {
   Menu,
   MessageSquare,
   Moon,
+  Palette,
   Settings,
   ShieldCheck,
   Sun,
@@ -25,6 +26,7 @@ import {
 } from "lucide-react"
 import { useAppState } from "@/components/providers/app-state-provider"
 import { DEMO_ROLES, ROLE_PERSONA_SUMMARY } from "@/lib/permissions"
+import { UI_THEMES, isValidUiTheme, type UiTheme } from "@/lib/theme"
 import type { Role } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -128,6 +130,8 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
   const {
     role,
     setRole,
+    uiTheme,
+    setUiTheme,
     timezone,
     setTimezone,
     notifications,
@@ -158,6 +162,13 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
     toast.success(`Switched demo view to ${typed}`)
   }
 
+  function handleUiThemeChange(nextTheme: string) {
+    if (!isValidUiTheme(nextTheme)) return
+    setUiTheme(nextTheme as UiTheme)
+    const meta = UI_THEMES.find((t) => t.id === nextTheme)
+    toast.success(`Switched theme to ${meta?.label ?? nextTheme}`)
+  }
+
   function copyBankField(label: string, value: string) {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(value).catch(() => {})
@@ -173,7 +184,7 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/95 px-3 backdrop-blur-sm sm:gap-3 sm:px-6">
+      <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-(--topbar-border) bg-(--topbar-bg) px-3 shadow-none backdrop-blur-md sm:gap-3 sm:px-6">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             type="button"
@@ -190,10 +201,10 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
             href="/dashboard"
             className="flex min-w-0 items-center gap-2 lg:hidden"
           >
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#1F63C8] to-[#0B3266] text-xs font-bold text-white">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-(--radius-control) [background:var(--brand-mark-bg)] text-xs font-bold text-(--brand-mark-fg)">
               AO
             </span>
-            <span className="hidden truncate text-sm font-semibold tracking-tight sm:inline">
+            <span className="font-display hidden truncate text-sm font-semibold tracking-tight sm:inline">
               AgencyOps
             </span>
           </Link>
@@ -251,7 +262,7 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
             <Link href="/chats">
               <MessageSquare className="size-4" />
               {unreadMessagesCount > 0 ? (
-                <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-slate-950">
+                <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-(--badge-warn-bg) text-[10px] font-bold text-(--badge-warn-fg)">
                   {unreadMessagesCount}
                 </span>
               ) : null}
@@ -269,7 +280,7 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
           >
             <Bell className="size-4" />
             {unreadNotificationsCount > 0 ? (
-              <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold text-white">
+              <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-(--badge-alert-bg) text-[10px] font-bold text-(--badge-alert-fg)">
                 {unreadNotificationsCount}
               </span>
             ) : null}
@@ -340,6 +351,38 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
                     {DEMO_ROLES.map((r) => (
                       <DropdownMenuRadioItem key={r} value={r}>
                         {r}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+
+              {/* UI Theme Switcher */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Palette className="mr-2 size-4 text-primary" />
+                  <span>
+                    Theme:{" "}
+                    {UI_THEMES.find((t) => t.id === uiTheme)?.label ?? uiTheme}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-60">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    Switch visual theme
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuRadioGroup
+                    value={uiTheme}
+                    onValueChange={handleUiThemeChange}
+                  >
+                    {UI_THEMES.map((t) => (
+                      <DropdownMenuRadioItem key={t.id} value={t.id}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{t.label}</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {t.description}
+                          </span>
+                        </div>
                       </DropdownMenuRadioItem>
                     ))}
                   </DropdownMenuRadioGroup>

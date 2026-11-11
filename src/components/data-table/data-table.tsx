@@ -508,14 +508,14 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Table container: sticky header + mobile horizontal scroll on single scroll box */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-hidden rounded-(--radius-surface) border border-border bg-card">
         <div className="relative max-h-[600px] w-full overflow-auto">
           <table className="w-full min-w-full caption-bottom text-sm">
-            <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-xs">
+            <TableHeader className="sticky top-0 z-10 bg-(--table-head-bg) backdrop-blur-xs">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id} className="hover:bg-transparent">
                   {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} className="bg-muted/95">
+                    <TableHead key={header.id} className="bg-(--table-head-bg)">
                       {header.isPlaceholder
                         ? null
                         : flexRender(
