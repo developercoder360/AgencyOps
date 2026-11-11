@@ -855,23 +855,23 @@
   --tone-slate-border: rgb(168 162 158 / 0.32);
   --tone-slate-dot: #a8a29e;
 
-  --avatar-blue-bg: rgb(52 211 153 / 0.22);
+  --avatar-blue-bg: #1b4236;
   --avatar-blue-fg: #9ef5d2;
-  --avatar-emerald-bg: rgb(52 211 153 / 0.2);
+  --avatar-emerald-bg: #1c4435;
   --avatar-emerald-fg: #9ef5d2;
-  --avatar-indigo-bg: rgb(167 139 250 / 0.22);
+  --avatar-indigo-bg: #2e2545;
   --avatar-indigo-fg: #dfd3fc;
-  --avatar-violet-bg: rgb(192 132 252 / 0.22);
+  --avatar-violet-bg: #342444;
   --avatar-violet-fg: #ebd4fd;
-  --avatar-amber-bg: rgb(251 191 36 / 0.22);
+  --avatar-amber-bg: #453115;
   --avatar-amber-fg: #fee691;
-  --avatar-rose-bg: rgb(251 113 133 / 0.22);
+  --avatar-rose-bg: #482029;
   --avatar-rose-fg: #ffd0d7;
-  --avatar-teal-bg: rgb(45 212 191 / 0.22);
+  --avatar-teal-bg: #1a403e;
   --avatar-teal-fg: #9bf3e9;
-  --avatar-sky-bg: rgb(94 234 212 / 0.2);
+  --avatar-sky-bg: #1c3d41;
   --avatar-sky-fg: #aef7ed;
-  --avatar-slate-bg: rgb(168 162 158 / 0.22);
+  --avatar-slate-bg: #35322e;
   --avatar-slate-fg: #e7e5e4;
 
   --brand-fallback-bg: #34d399;

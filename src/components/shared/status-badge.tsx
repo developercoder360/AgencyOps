@@ -23,11 +23,78 @@ interface StatusConfig {
   dotClass?: string
 }
 
+const TONE_CLASS_MAP: Record<ToneName, { classes: string; dotClass: string }> = {
+  sky: {
+    classes:
+      "bg-(--tone-sky-bg) text-(--tone-sky-fg) border-(--tone-sky-border)",
+    dotClass: "bg-(--tone-sky-dot)",
+  },
+  blue: {
+    classes:
+      "bg-(--tone-blue-bg) text-(--tone-blue-fg) border-(--tone-blue-border)",
+    dotClass: "bg-(--tone-blue-dot)",
+  },
+  indigo: {
+    classes:
+      "bg-(--tone-indigo-bg) text-(--tone-indigo-fg) border-(--tone-indigo-border)",
+    dotClass: "bg-(--tone-indigo-dot)",
+  },
+  violet: {
+    classes:
+      "bg-(--tone-violet-bg) text-(--tone-violet-fg) border-(--tone-violet-border)",
+    dotClass: "bg-(--tone-violet-dot)",
+  },
+  purple: {
+    classes:
+      "bg-(--tone-purple-bg) text-(--tone-purple-fg) border-(--tone-purple-border)",
+    dotClass: "bg-(--tone-purple-dot)",
+  },
+  amber: {
+    classes:
+      "bg-(--tone-amber-bg) text-(--tone-amber-fg) border-(--tone-amber-border)",
+    dotClass: "bg-(--tone-amber-dot)",
+  },
+  orange: {
+    classes:
+      "bg-(--tone-orange-bg) text-(--tone-orange-fg) border-(--tone-orange-border)",
+    dotClass: "bg-(--tone-orange-dot)",
+  },
+  emerald: {
+    classes:
+      "bg-(--tone-emerald-bg) text-(--tone-emerald-fg) border-(--tone-emerald-border)",
+    dotClass: "bg-(--tone-emerald-dot)",
+  },
+  teal: {
+    classes:
+      "bg-(--tone-teal-bg) text-(--tone-teal-fg) border-(--tone-teal-border)",
+    dotClass: "bg-(--tone-teal-dot)",
+  },
+  cyan: {
+    classes:
+      "bg-(--tone-cyan-bg) text-(--tone-cyan-fg) border-(--tone-cyan-border)",
+    dotClass: "bg-(--tone-cyan-dot)",
+  },
+  rose: {
+    classes:
+      "bg-(--tone-rose-bg) text-(--tone-rose-fg) border-(--tone-rose-border)",
+    dotClass: "bg-(--tone-rose-dot)",
+  },
+  red: {
+    classes:
+      "bg-(--tone-red-bg) text-(--tone-red-fg) border-(--tone-red-border)",
+    dotClass: "bg-(--tone-red-dot)",
+  },
+  slate: {
+    classes:
+      "bg-(--tone-slate-bg) text-(--tone-slate-fg) border-(--tone-slate-border)",
+    dotClass: "bg-(--tone-slate-dot)",
+  },
+}
+
 function toneConfig(label: string, tone: ToneName): StatusConfig {
   return {
     label,
-    classes: `bg-(--tone-${tone}-bg) text-(--tone-${tone}-fg) border-(--tone-${tone}-border)`,
-    dotClass: `bg-(--tone-${tone}-dot)`,
+    ...TONE_CLASS_MAP[tone],
   }
 }
 
