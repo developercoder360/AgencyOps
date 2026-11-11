@@ -12,6 +12,7 @@ import {
 } from "recharts"
 import { cn } from "cn"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useAppState } from "@/components/providers/app-state-provider"
 import {
   DEFAULT_CHART_COLORS,
   TREMOR_COLOR_MAP,
@@ -58,6 +59,8 @@ export function AreaChart({
   heightClassName = "h-72",
 }: AreaChartProps) {
   const mounted = useIsClient()
+  const { uiTheme } = useAppState()
+  const isStudio = uiTheme === "studio"
   const uid = React.useId().replace(/:/g, "")
 
   return (
@@ -93,7 +96,7 @@ export function AreaChart({
               <defs>
                 {categories.map((cat, idx) => {
                   const color = colors[idx % colors.length]
-                  const hex = TREMOR_COLOR_MAP[color].fill
+                  const fillColor = TREMOR_COLOR_MAP[color].fill
                   return (
                     <linearGradient
                       key={cat}
@@ -103,8 +106,16 @@ export function AreaChart({
                       x2="0"
                       y2="1"
                     >
-                      <stop offset="5%" stopColor={hex} stopOpacity={0.28} />
-                      <stop offset="95%" stopColor={hex} stopOpacity={0.02} />
+                      <stop
+                        offset="5%"
+                        stopColor={fillColor}
+                        stopOpacity={isStudio ? 0.16 : 0.28}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor={fillColor}
+                        stopOpacity={isStudio ? 0.01 : 0.02}
+                      />
                     </linearGradient>
                   )
                 })}
@@ -113,7 +124,7 @@ export function AreaChart({
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  className="stroke-border/60"
+                  stroke="var(--chart-grid-stroke)"
                 />
               ) : null}
               {showXAxis ? (
@@ -138,7 +149,7 @@ export function AreaChart({
                 content={({ active, payload, label }) => {
                   if (!active || !payload?.length) return null
                   return (
-                    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+                    <div className="rounded-(--radius-control) border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-(--shadow-overlay)">
                       <div className="mb-1.5 font-medium text-foreground">
                         {String(label)}
                       </div>
@@ -174,7 +185,7 @@ export function AreaChart({
                     type="monotone"
                     dataKey={cat}
                     stroke={stroke}
-                    strokeWidth={2}
+                    strokeWidth={isStudio ? 1.5 : 2}
                     fill={`url(#area-${uid}-${idx})`}
                     activeDot={{ r: 4, strokeWidth: 0 }}
                     isAnimationActive={false}

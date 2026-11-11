@@ -33,8 +33,8 @@ export function Tracker({ data, className }: TrackerProps) {
               tabIndex={0}
               aria-label={item.tooltip ?? `Segment ${idx + 1}`}
               className={cn(
-                "h-full flex-1 rounded-[3px] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                item.color ?? "bg-emerald-500"
+                "h-full flex-1 rounded-[3px] transition-opacity duration-150 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                item.color ?? "bg-(--tone-emerald-dot)"
               )}
             />
           </TooltipTrigger>

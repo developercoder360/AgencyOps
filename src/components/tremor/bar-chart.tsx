@@ -12,6 +12,7 @@ import {
 } from "recharts"
 import { cn } from "cn"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useAppState } from "@/components/providers/app-state-provider"
 import {
   DEFAULT_CHART_COLORS,
   TREMOR_COLOR_MAP,
@@ -60,6 +61,8 @@ export function BarChart({
   heightClassName = "h-72",
 }: BarChartProps) {
   const mounted = useIsClient()
+  const { uiTheme } = useAppState()
+  const isStudio = uiTheme === "studio"
 
   return (
     <div className={cn("w-full min-w-0", className)}>
@@ -95,7 +98,7 @@ export function BarChart({
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  className="stroke-border/60"
+                  stroke="var(--chart-grid-stroke)"
                 />
               ) : null}
               {showXAxis ? (
@@ -121,7 +124,7 @@ export function BarChart({
                 content={({ active, payload, label }) => {
                   if (!active || !payload?.length) return null
                   return (
-                    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+                    <div className="rounded-(--radius-control) border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-(--shadow-overlay)">
                       <div className="mb-1.5 font-medium text-foreground">
                         {String(label)}
                       </div>
@@ -150,13 +153,20 @@ export function BarChart({
               />
               {categories.map((cat, idx) => {
                 const color = colors[idx % colors.length]
+                const barRadius: [number, number, number, number] = stack
+                  ? isStudio && idx === categories.length - 1
+                    ? [6, 6, 0, 0]
+                    : [0, 0, 0, 0]
+                  : isStudio
+                    ? [6, 6, 0, 0]
+                    : [4, 4, 0, 0]
                 return (
                   <Bar
                     key={cat}
                     dataKey={cat}
                     stackId={stack ? "stack" : undefined}
                     fill={TREMOR_COLOR_MAP[color].fill}
-                    radius={stack ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+                    radius={barRadius}
                     maxBarSize={36}
                     isAnimationActive={false}
                   />

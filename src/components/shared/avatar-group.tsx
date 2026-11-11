@@ -4,6 +4,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { getAvatarToneClass } from "@/lib/theme"
 import { cn } from "cn"
 
 export interface AvatarPerson {
@@ -44,8 +45,8 @@ export function AvatarGroup({
             >
               <AvatarFallback
                 className={cn(
-                  "font-semibold text-white",
-                  person.avatarColor ?? "bg-blue-600"
+                  "font-semibold",
+                  getAvatarToneClass(person.avatarColor)
                 )}
               >
                 {person.avatarInitials}

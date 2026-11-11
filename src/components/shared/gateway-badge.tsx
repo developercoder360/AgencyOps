@@ -4,15 +4,14 @@ import type { PaymentGateway } from "@/types"
 
 const GATEWAY_STYLES: Record<PaymentGateway, string> = {
   Stripe:
-    "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30",
+    "bg-(--tone-indigo-bg) text-(--tone-indigo-fg) border-(--tone-indigo-border)",
   Square:
-    "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-500/20 dark:text-slate-200 dark:border-slate-500/40",
+    "bg-(--tone-slate-bg) text-(--tone-slate-fg) border-(--tone-slate-border)",
   "Authorize.Net":
-    "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30",
-  NMI:
-    "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30",
+    "bg-(--tone-sky-bg) text-(--tone-sky-fg) border-(--tone-sky-border)",
+  NMI: "bg-(--tone-teal-bg) text-(--tone-teal-fg) border-(--tone-teal-border)",
   "Bank Transfer":
-    "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
+    "bg-(--tone-amber-bg) text-(--tone-amber-fg) border-(--tone-amber-border)",
 }
 
 export function GatewayBadge({
@@ -26,7 +25,7 @@ export function GatewayBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-(--radius-gateway) border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
         GATEWAY_STYLES[gateway],
         className
       )}

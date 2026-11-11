@@ -72,7 +72,7 @@ export function DonutChart({
                     if (!active || !payload?.length) return null
                     const item = payload[0]
                     return (
-                      <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+                      <div className="rounded-(--radius-control) border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-(--shadow-overlay)">
                         <div className="flex items-center gap-2">
                           <span
                             className="size-2.5 rounded-full"
@@ -115,7 +115,7 @@ export function DonutChart({
             </ResponsiveContainer>
             {variant === "donut" && (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-lg font-semibold tracking-tight text-foreground tabular-nums">
+                <span className="font-display text-lg font-semibold tracking-tight text-foreground tabular-nums [[data-theme=studio]_&]:text-2xl">
                   {label ?? valueFormatter(total)}
                 </span>
                 <span className="text-[11px] text-muted-foreground">Total</span>

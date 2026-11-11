@@ -35,8 +35,8 @@ export function BadgeDelta({
   if (deltaType !== "unchanged") {
     const good = isIncreasePositive ? isPositive : isNegative
     toneClasses = good
-      ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-400/25"
-      : "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/20 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-400/25"
+      ? "bg-(--tone-emerald-bg) text-(--tone-emerald-fg) ring-1 ring-inset ring-(--tone-emerald-border)"
+      : "bg-(--tone-rose-bg) text-(--tone-rose-fg) ring-1 ring-inset ring-(--tone-rose-border)"
   }
 
   const sizeClasses =
@@ -55,7 +55,7 @@ export function BadgeDelta({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md font-medium tabular-nums whitespace-nowrap",
+        "inline-flex items-center gap-1 rounded-(--radius-delta) font-medium tabular-nums whitespace-nowrap",
         toneClasses,
         sizeClasses,
         className

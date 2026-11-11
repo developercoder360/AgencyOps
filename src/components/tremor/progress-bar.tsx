@@ -37,7 +37,8 @@ export function ProgressBar({
           className={cn(
             "h-full rounded-full",
             barBg,
-            showAnimation && "transition-all duration-500 ease-out"
+            showAnimation &&
+              "transition-all duration-500 ease-out [[data-theme=studio]_&]:duration-150"
           )}
           style={{ width: `${clamped}%` }}
         />

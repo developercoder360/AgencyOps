@@ -25,7 +25,7 @@ export function PageHeader({
     >
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="break-words text-2xl font-semibold tracking-tight text-foreground">
+          <h1 className="font-display break-words text-2xl font-semibold tracking-tight text-foreground [[data-theme=studio]_&]:text-[1.75rem] [[data-theme=studio]_&]:leading-tight">
             {title}
           </h1>
           {badge}
