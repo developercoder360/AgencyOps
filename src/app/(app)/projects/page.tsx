@@ -1,0 +1,698 @@
+"use client"
+
+import * as React from "react"
+import Link from "next/link"
+import type { ColumnDef } from "@tanstack/react-table"
+import { Controller, useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { toast } from "sonner"
+import {
+  AlertCircle,
+  CalendarDays,
+  ExternalLink,
+  LayoutGrid,
+  List,
+  Plus,
+} from "lucide-react"
+import {
+  DataTable,
+  DataTableColumnHeader,
+  type FacetedFilterConfig,
+} from "@/components/data-table"
+import {
+  AvatarGroup,
+  PageHeader,
+  StatusBadge,
+} from "@/components/shared"
+import { ProgressBar } from "@/components/tremor"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Textarea } from "@/components/ui/textarea"
+import { formatUsdEquivalent } from "@/lib/currency"
+import { MOCK_BRANDS } from "@/mocks/brands"
+import { MOCK_PROJECTS } from "@/mocks/projects"
+import { REFERENCE_DATE_ISO } from "@/mocks/seed"
+import { MOCK_USERS } from "@/mocks/users"
+import type { Project, ProjectStatus } from "@/types"
+import { cn } from "cn"
+
+const PROJECT_STATUSES: ProjectStatus[] = [
+  "Open",
+  "Progress",
+  "Re-Draw",
+  "Complete",
+  "Overdue",
+]
+
+const CATEGORIES: Project["category"][] = [
+  "Web Design",
+  "Logo & Branding",
+  "SEO",
+  "Performance Marketing",
+  "Full Stack App",
+]
+
+const projectSchema = z.object({
+  name: z.string().min(3, "Project name is required"),
+  clientName: z.string().min(2, "Client name is required"),
+  clientCompany: z.string().min(2, "Company is required"),
+  brandId: z.string().min(1),
+  category: z.enum([
+    "Web Design",
+    "Logo & Branding",
+    "SEO",
+    "Performance Marketing",
+    "Full Stack App",
+  ]),
+  priority: z.enum(["Regular", "High", "Urgent"]),
+  budget: z.number().min(500, "Minimum budget 500"),
+  currency: z.enum(["USD", "GBP", "CAD"]),
+  deadline: z.string().min(8),
+  description: z.string().optional(),
+})
+
+type ProjectFormValues = z.infer<typeof projectSchema>
+
+function isDeadlineOverdue(project: Project): boolean {
+  return (
+    project.status === "Overdue" ||
+    (project.status !== "Complete" && project.deadline < REFERENCE_DATE_ISO)
+  )
+}
+
+export default function ProjectsPage() {
+  const [projects, setProjects] = React.useState<Project[]>(MOCK_PROJECTS)
+  const [viewMode, setViewMode] = React.useState<"list" | "card">("list")
+  const [statusFilter, setStatusFilter] = React.useState<string>("all")
+  const [selectedProject, setSelectedProject] = React.useState<Project | null>(
+    null
+  )
+  const [createOpen, setCreateOpen] = React.useState(false)
+
+  const form = useForm<ProjectFormValues>({
+    resolver: zodResolver(projectSchema),
+    defaultValues: {
+      name: "",
+      clientName: "",
+      clientCompany: "",
+      brandId: MOCK_BRANDS[0].id,
+      category: "Web Design",
+      priority: "High",
+      budget: 8500,
+      currency: "USD",
+      deadline: "2026-12-05",
+      description: "",
+    },
+  })
+
+  const filteredForCards = React.useMemo(
+    () =>
+      statusFilter === "all"
+        ? projects
+        : projects.filter((p) => p.status === statusFilter),
+    [projects, statusFilter]
+  )
+
+  function onCreateProject(values: ProjectFormValues) {
+    const brand =
+      MOCK_BRANDS.find((b) => b.id === values.brandId) ?? MOCK_BRANDS[0]
+    const code = `PRJ-${350 + projects.length}`
+    const created: Project = {
+      id: `prj-new-${projects.length + 1}`,
+      code,
+      name: values.name,
+      clientName: values.clientName,
+      clientCompany: values.clientCompany,
+      brandId: brand.id,
+      brandName: brand.name,
+      category: values.category,
+      status: "Open",
+      priority: values.priority,
+      budget: values.budget,
+      currency: values.currency,
+      progress: 10,
+      startDate: REFERENCE_DATE_ISO,
+      deadline: values.deadline,
+      managerId: "usr-3",
+      memberIds: ["usr-4", "usr-7", "usr-5"],
+      description:
+        values.description ||
+        `${values.category} delivery for ${values.clientCompany}.`,
+      files: [],
+      comments: [],
+    }
+    setProjects((prev) => [created, ...prev])
+    toast.success(`Created project ${code}`)
+    form.reset()
+    setCreateOpen(false)
+  }
+
+  const columns = React.useMemo<ColumnDef<Project>[]>(
+    () => [
+      {
+        accessorKey: "code",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Code" />
+        ),
+        cell: ({ row }) => (
+          <Link
+            href={`/projects/${row.original.id}`}
+            className="font-mono text-xs font-semibold text-primary hover:underline"
+          >
+            {row.original.code}
+          </Link>
+        ),
+      },
+      {
+        accessorKey: "name",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Project & Client" />
+        ),
+        cell: ({ row }) => (
+          <div className="min-w-[220px] max-w-[300px]">
+            <Link
+              href={`/projects/${row.original.id}`}
+              title={row.original.name}
+              className="line-clamp-2 font-medium text-foreground hover:text-primary hover:underline"
+            >
+              {row.original.name}
+            </Link>
+            <div className="truncate text-xs text-muted-foreground">
+              {row.original.clientName} • {row.original.category}
+            </div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "brandName",
+        header: "Brand",
+        cell: ({ row }) => (
+          <Badge variant="outline" className="font-normal">
+            {row.original.brandName}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "members",
+        header: "Members",
+        cell: ({ row }) => {
+          const team = MOCK_USERS.filter((u) =>
+            row.original.memberIds.includes(u.id)
+          )
+          return <AvatarGroup people={team} max={3} />
+        },
+      },
+      {
+        accessorKey: "progress",
+        header: "Progress",
+        cell: ({ row }) => (
+          <div className="w-28">
+            <ProgressBar
+              value={row.original.progress}
+              label={`${row.original.progress}%`}
+              color={
+                row.original.status === "Complete"
+                  ? "emerald"
+                  : row.original.status === "Overdue"
+                    ? "rose"
+                    : "blue"
+              }
+            />
+          </div>
+        ),
+      },
+      {
+        accessorKey: "deadline",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Deadline" />
+        ),
+        cell: ({ row }) => {
+          const overdue = isDeadlineOverdue(row.original)
+          return (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-xs tabular-nums",
+                overdue
+                  ? "font-semibold text-rose-600 dark:text-rose-400"
+                  : "text-muted-foreground"
+              )}
+            >
+              {overdue ? <AlertCircle className="size-3.5" /> : null}
+              {row.original.deadline}
+            </span>
+          )
+        },
+      },
+      {
+        id: "actions",
+        header: "",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <Button asChild variant="ghost" size="xs" className="gap-1">
+            <Link href={`/projects/${row.original.id}`}>
+              Open
+              <ExternalLink className="size-3" />
+            </Link>
+          </Button>
+        ),
+      },
+    ],
+    []
+  )
+
+  const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
+    () => [
+      {
+        columnId: "status",
+        title: "Status",
+        options: PROJECT_STATUSES.map((s) => ({ label: s, value: s })),
+      },
+      {
+        columnId: "brandName",
+        title: "Brand",
+        options: MOCK_BRANDS.map((b) => ({ label: b.name, value: b.name })),
+      },
+    ],
+    []
+  )
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Projects"
+        description="Manage agency delivery timelines, team allocations, and client-facing milestones."
+        badge={<Badge variant="secondary">{projects.length} projects</Badge>}
+        actions={
+          <>
+            <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
+              <Button
+                type="button"
+                size="xs"
+                variant={viewMode === "list" ? "default" : "ghost"}
+                onClick={() => setViewMode("list")}
+                className="gap-1"
+              >
+                <List className="size-3.5" />
+                List
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant={viewMode === "card" ? "default" : "ghost"}
+                onClick={() => setViewMode("card")}
+                className="gap-1"
+              >
+                <LayoutGrid className="size-3.5" />
+                Cards
+              </Button>
+            </div>
+            <Button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="gap-1.5"
+            >
+              <Plus className="size-4" />
+              New Project
+            </Button>
+          </>
+        }
+      />
+
+      {viewMode === "list" ? (
+        <DataTable
+          columns={columns}
+          data={projects}
+          searchPlaceholder="Search projects..."
+          facetedFilters={facetedFilters}
+          dateField="deadline"
+          exportModule="Projects"
+          onRowClick={setSelectedProject}
+        />
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="xs"
+              variant={statusFilter === "all" ? "default" : "outline"}
+              onClick={() => setStatusFilter("all")}
+            >
+              All ({projects.length})
+            </Button>
+            {PROJECT_STATUSES.map((s) => (
+              <Button
+                key={s}
+                type="button"
+                size="xs"
+                variant={statusFilter === s ? "default" : "outline"}
+                onClick={() => setStatusFilter(s)}
+              >
+                {s} ({projects.filter((p) => p.status === s).length})
+              </Button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredForCards.map((project) => {
+              const team = MOCK_USERS.filter((u) =>
+                project.memberIds.includes(u.id)
+              )
+              const overdue = isDeadlineOverdue(project)
+              return (
+                <Card
+                  key={project.id}
+                  className="flex flex-col justify-between transition-shadow hover:shadow-md"
+                >
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-semibold text-primary">
+                        {project.code}
+                      </span>
+                      <StatusBadge status={project.status} />
+                    </div>
+                    <CardTitle className="mt-1 line-clamp-1 text-base">
+                      <Link
+                        href={`/projects/${project.id}`}
+                        className="hover:text-primary hover:underline"
+                      >
+                        {project.name}
+                      </Link>
+                    </CardTitle>
+                    <CardDescription>
+                      {project.brandName} • {project.category}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <ProgressBar
+                      value={project.progress}
+                      label={`${project.progress}%`}
+                      color={
+                        project.status === "Complete"
+                          ? "emerald"
+                          : overdue
+                            ? "rose"
+                            : "blue"
+                      }
+                    />
+                    <div className="flex items-center justify-between text-xs">
+                      <AvatarGroup people={team} max={3} />
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 tabular-nums",
+                          overdue
+                            ? "font-semibold text-rose-600 dark:text-rose-400"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarDays className="size-3.5" />
+                        {project.deadline}
+                      </span>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="justify-between py-2.5 text-xs">
+                    <span className="font-medium tabular-nums">
+                      {formatUsdEquivalent(project.budget, project.currency)}
+                    </span>
+                    <Button asChild variant="ghost" size="xs" className="gap-1">
+                      <Link href={`/projects/${project.id}`}>
+                        Open Workspace
+                        <ExternalLink className="size-3" />
+                      </Link>
+                    </Button>
+                  </CardFooter>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Preview Sheet */}
+      <Sheet
+        open={Boolean(selectedProject)}
+        onOpenChange={(open) => !open && setSelectedProject(null)}
+      >
+        <SheetContent side="right" className="overflow-y-auto sm:max-w-lg">
+          {selectedProject ? (
+            <>
+              <SheetHeader className="border-b border-border pb-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="font-mono">
+                    {selectedProject.code}
+                  </Badge>
+                  <StatusBadge status={selectedProject.status} />
+                  <StatusBadge status={selectedProject.priority} showDot={false} />
+                </div>
+                <SheetTitle className="mt-1">{selectedProject.name}</SheetTitle>
+                <SheetDescription>
+                  {selectedProject.clientName} ({selectedProject.clientCompany})
+                </SheetDescription>
+              </SheetHeader>
+              <div className="space-y-4 p-4 text-sm">
+                <p className="text-muted-foreground">
+                  {selectedProject.description}
+                </p>
+                <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+                  <div>
+                    <div className="text-muted-foreground">Brand</div>
+                    <div className="font-medium">
+                      {selectedProject.brandName}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Budget</div>
+                    <div className="font-semibold tabular-nums">
+                      {formatUsdEquivalent(
+                        selectedProject.budget,
+                        selectedProject.currency
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Start Date</div>
+                    <div className="tabular-nums">
+                      {selectedProject.startDate}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Deadline</div>
+                    <div
+                      className={cn(
+                        "tabular-nums",
+                        isDeadlineOverdue(selectedProject) &&
+                          "font-semibold text-rose-600 dark:text-rose-400"
+                      )}
+                    >
+                      {selectedProject.deadline}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Overall Completion
+                  </div>
+                  <ProgressBar
+                    value={selectedProject.progress}
+                    label={`${selectedProject.progress}%`}
+                    color={
+                      selectedProject.status === "Complete"
+                        ? "emerald"
+                        : "blue"
+                    }
+                  />
+                </div>
+              </div>
+              <SheetFooter className="border-t border-border">
+                <Button asChild className="w-full gap-1.5">
+                  <Link href={`/projects/${selectedProject.id}`}>
+                    Open Project Workspace
+                    <ExternalLink className="size-4" />
+                  </Link>
+                </Button>
+              </SheetFooter>
+            </>
+          ) : null}
+        </SheetContent>
+      </Sheet>
+
+      {/* Create Project Sheet */}
+      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+        <SheetContent side="right" className="overflow-y-auto sm:max-w-lg">
+          <SheetHeader className="border-b border-border pb-3">
+            <SheetTitle>Create Project</SheetTitle>
+            <SheetDescription>
+              Kick off a new client deliverable workspace.
+            </SheetDescription>
+          </SheetHeader>
+          <form
+            onSubmit={form.handleSubmit(onCreateProject)}
+            className="space-y-4 p-4"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="prj-name">Project Title</Label>
+              <Input id="prj-name" {...form.register("name")} />
+              {form.formState.errors.name ? (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.name.message}
+                </p>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="prj-client">Client Name</Label>
+                <Input id="prj-client" {...form.register("clientName")} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="prj-company">Company</Label>
+                <Input id="prj-company" {...form.register("clientCompany")} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Brand</Label>
+                <Controller
+                  control={form.control}
+                  name="brandId"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MOCK_BRANDS.map((b) => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Category</Label>
+                <Controller
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIES.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Priority</Label>
+                <Controller
+                  control={form.control}
+                  name="priority"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Regular">Regular</SelectItem>
+                        <SelectItem value="High">High</SelectItem>
+                        <SelectItem value="Urgent">Urgent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="prj-deadline">Deadline</Label>
+                <Input
+                  id="prj-deadline"
+                  type="date"
+                  {...form.register("deadline")}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Currency</Label>
+                <Controller
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="GBP">GBP</SelectItem>
+                        <SelectItem value="CAD">CAD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="prj-budget">Budget</Label>
+                <Input
+                  id="prj-budget"
+                  type="number"
+                  {...form.register("budget", { valueAsNumber: true })}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="prj-desc">Scope Description</Label>
+              <Textarea id="prj-desc" rows={3} {...form.register("description")} />
+            </div>
+            <SheetFooter className="px-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Create Project</Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+    </div>
+  )
+}
