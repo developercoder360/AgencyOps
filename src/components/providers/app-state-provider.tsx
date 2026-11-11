@@ -2,10 +2,39 @@
 
 import * as React from "react"
 import { DEMO_ROLES } from "@/lib/permissions"
+import {
+  DEFAULT_UI_THEME,
+  UI_THEME_STORAGE_KEY,
+  isValidUiTheme,
+  type UiTheme,
+} from "@/lib/theme"
 import type { AppNotification, Role } from "@/types"
 
 const ROLE_STORAGE_KEY = "agencyops_demo_role"
 const VALID_ROLES = new Set<Role>(DEMO_ROLES)
+
+function subscribeUiTheme(callback: () => void) {
+  window.addEventListener("storage", callback)
+  window.addEventListener("agencyops-ui-theme-change", callback)
+  return () => {
+    window.removeEventListener("storage", callback)
+    window.removeEventListener("agencyops-ui-theme-change", callback)
+  }
+}
+
+function getClientUiThemeSnapshot(): UiTheme {
+  try {
+    const saved = window.localStorage.getItem(UI_THEME_STORAGE_KEY)
+    if (isValidUiTheme(saved)) return saved
+  } catch {
+    // ignore storage errors
+  }
+  return DEFAULT_UI_THEME
+}
+
+function getServerUiThemeSnapshot(): UiTheme {
+  return DEFAULT_UI_THEME
+}
 
 function subscribeRole(callback: () => void) {
   window.addEventListener("storage", callback)
@@ -33,6 +62,8 @@ function getServerRoleSnapshot(): Role {
 interface AppStateContextValue {
   role: Role
   setRole: (role: Role) => void
+  uiTheme: UiTheme
+  setUiTheme: (theme: UiTheme) => void
   timezone: string
   setTimezone: (tz: string) => void
   celebrationDismissed: boolean
@@ -109,6 +140,23 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       // ignore storage errors
     }
   }, [])
+  const uiTheme = React.useSyncExternalStore(
+    subscribeUiTheme,
+    getClientUiThemeSnapshot,
+    getServerUiThemeSnapshot
+  )
+  React.useEffect(() => {
+    document.documentElement.dataset.theme = uiTheme
+  }, [uiTheme])
+  const setUiTheme = React.useCallback((nextTheme: UiTheme) => {
+    document.documentElement.dataset.theme = nextTheme
+    try {
+      window.localStorage.setItem(UI_THEME_STORAGE_KEY, nextTheme)
+      window.dispatchEvent(new Event("agencyops-ui-theme-change"))
+    } catch {
+      // ignore storage errors
+    }
+  }, [])
   const [timezone, setTimezone] = React.useState<string>("America/New_York")
   const [celebrationDismissed, setCelebrationDismissed] = React.useState(false)
   const [notifications, setNotifications] = React.useState<AppNotification[]>(
@@ -139,6 +187,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     () => ({
       role,
       setRole,
+      uiTheme,
+      setUiTheme,
       timezone,
       setTimezone,
       celebrationDismissed,
@@ -153,6 +203,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [
       role,
       setRole,
+      uiTheme,
+      setUiTheme,
       timezone,
       celebrationDismissed,
       dismissCelebration,
