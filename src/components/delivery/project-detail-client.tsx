@@ -33,63 +33,60 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { formatUsdEquivalent } from "@/lib/currency"
-import { MOCK_TASKS } from "@/mocks/tasks"
-import { MOCK_USERS } from "@/mocks/users"
-import type { ActivityComment, Project, ProjectFile } from "@/types"
+import { useStore } from "@/lib/store"
+import type { Project } from "@/types"
 
 export function ProjectDetailClient({
   initialProject,
 }: {
   initialProject: Project
 }) {
-  const [project, setProject] = React.useState<Project>(initialProject)
-  const [files, setFiles] = React.useState<ProjectFile[]>(initialProject.files)
-  const [comments, setComments] = React.useState<ActivityComment[]>(
-    initialProject.comments
-  )
+  const {
+    tasks,
+    users,
+    getProjectById,
+    updateProject,
+    addProjectFile,
+    addProjectComment,
+  } = useStore()
+
+  const project = getProjectById(initialProject.id) ?? initialProject
   const [newComment, setNewComment] = React.useState("")
 
+  const files = project.files
+  const comments = project.comments
+
   const projectTasks = React.useMemo(
-    () => MOCK_TASKS.filter((t) => t.projectId === project.id),
-    [project.id]
+    () => tasks.filter((t) => t.projectId === project.id),
+    [tasks, project.id]
   )
 
   const teamMembers = React.useMemo(
-    () => MOCK_USERS.filter((u) => project.memberIds.includes(u.id)),
-    [project.memberIds]
+    () => users.filter((u) => project.memberIds.includes(u.id)),
+    [users, project.memberIds]
   )
 
   const manager = React.useMemo(
-    () => MOCK_USERS.find((u) => u.id === project.managerId),
-    [project.managerId]
+    () => users.find((u) => u.id === project.managerId),
+    [users, project.managerId]
   )
 
   function toggleFileVisibility(fileId: string) {
-    setFiles((prev) =>
-      prev.map((f) => {
-        if (f.id !== fileId) return f
-        const next = !f.clientVisible
-        toast.success(
-          `${f.name} is now ${next ? "visible to client" : "internal only"}`
-        )
-        return { ...f, clientVisible: next }
-      })
-    )
+    const nextFiles = files.map((f) => {
+      if (f.id !== fileId) return f
+      const next = !f.clientVisible
+      toast.success(
+        `${f.name} is now ${next ? "visible to client" : "internal only"}`
+      )
+      return { ...f, clientVisible: next }
+    })
+    updateProject(project.id, { files: nextFiles })
   }
 
   function handleAddComment(e: React.FormEvent) {
     e.preventDefault()
     if (!newComment.trim()) return
-    const item: ActivityComment = {
-      id: `pc-new-${comments.length + 1}`,
-      authorId: "usr-1",
-      authorName: "Marcus Vance",
-      authorRole: "Super Admin",
-      content: newComment.trim(),
-      createdAt: "2026-11-11 18:30",
-      type: "comment",
-    }
-    setComments((prev) => [...prev, item])
+    addProjectComment(project.id, newComment.trim())
     setNewComment("")
     toast.success("Comment posted to project feed")
   }
@@ -97,17 +94,14 @@ export function ProjectDetailClient({
   function handleMockUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    const added: ProjectFile = {
-      id: `pf-new-${files.length + 1}`,
+    addProjectFile(project.id, {
       name: file.name,
       size: `${Math.max(120, Math.round(file.size / 1024))} KB`,
       type: file.type || "application/octet-stream",
       folder: "Deliverables",
       clientVisible: false,
       uploadedBy: "Marcus Vance",
-      uploadedAt: "2026-11-11",
-    }
-    setFiles((prev) => [added, ...prev])
+    })
     toast.success(`Uploaded ${file.name} (internal visibility by default)`)
   }
 
@@ -266,7 +260,7 @@ export function ProjectDetailClient({
                     onClick={() => {
                       const next =
                         project.status === "Progress" ? "Complete" : "Progress"
-                      setProject({ ...project, status: next })
+                      updateProject(project.id, { status: next })
                       toast.success(`Project status toggled to ${next}`)
                     }}
                   >
@@ -300,7 +294,7 @@ export function ProjectDetailClient({
                 </p>
               ) : (
                 projectTasks.map((task) => {
-                  const assignees = MOCK_USERS.filter((u) =>
+                  const assignees = users.filter((u) =>
                     task.assigneeIds.includes(u.id)
                   )
                   return (

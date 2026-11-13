@@ -25,37 +25,53 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency, formatUsdEquivalent, toUsd } from "@/lib/currency"
-import { MOCK_INVOICES } from "@/mocks/billing"
-import { MOCK_ATTENDANCE_RECORDS, MOCK_LEAVE_BALANCES } from "@/mocks/hrm"
-import { MOCK_LEADS } from "@/mocks/leads"
-import { MOCK_PROJECTS } from "@/mocks/projects"
+import { useStore } from "@/lib/store"
 import type { StaffUser } from "@/types"
 
 export function User360Client({ user }: { user: StaffUser }) {
+  const {
+    invoices,
+    attendanceRecords,
+    leaveBalances,
+    leads: allLeads,
+    projects: allProjects,
+  } = useStore()
+
   const attendance = React.useMemo(
-    () => MOCK_ATTENDANCE_RECORDS.filter((a) => a.userId === user.id),
-    [user.id]
+    () => attendanceRecords.filter((a) => a.userId === user.id),
+    [attendanceRecords, user.id]
   )
   const leads = React.useMemo(
-    () => MOCK_LEADS.filter((l) => l.assignedStaffIds.includes(user.id)),
-    [user.id]
+    () => allLeads.filter((l) => l.assignedStaffIds.includes(user.id)),
+    [allLeads, user.id]
   )
   const projects = React.useMemo(
     () =>
-      MOCK_PROJECTS.filter(
+      allProjects.filter(
         (p) => p.managerId === user.id || p.memberIds.includes(user.id)
       ),
-    [user.id]
+    [allProjects, user.id]
   )
   const salesInvoices = React.useMemo(
-    () => MOCK_INVOICES.filter((inv) => inv.salesRepId === user.id),
-    [user.id]
+    () => invoices.filter((inv) => inv.salesRepId === user.id),
+    [invoices, user.id]
   )
   const leaveBalance = React.useMemo(
     () =>
-      MOCK_LEAVE_BALANCES.find((b) => b.userId === user.id) ??
-      MOCK_LEAVE_BALANCES[0],
-    [user.id]
+      leaveBalances.find((b) => b.userId === user.id) ?? {
+        id: `lb-${user.id}`,
+        userId: user.id,
+        userName: user.name,
+        department: user.department,
+        annualTotal: 20,
+        annualUsed: 0,
+        sickTotal: 10,
+        sickUsed: 0,
+        casualTotal: 6,
+        casualUsed: 0,
+        carryForward: 0,
+      },
+    [leaveBalances, user.id, user.name, user.department]
   )
 
   const totalSalesUsd = React.useMemo(

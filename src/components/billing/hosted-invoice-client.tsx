@@ -30,7 +30,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { formatCurrency, formatUsdEquivalent } from "@/lib/currency"
+import { formatCurrency, formatUsdEquivalent, toUsd } from "@/lib/currency"
+import { useStore } from "@/lib/store"
 import type { Invoice } from "@/types"
 
 const cardSchema = z.object({
@@ -46,6 +47,8 @@ const cardSchema = z.object({
 type CardFormValues = z.infer<typeof cardSchema>
 
 export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
+  const { updateInvoice, createTransaction } = useStore()
+
   const [paymentOutcome, setPaymentOutcome] = React.useState<
     "idle" | "success" | "failed"
   >(invoice.status === "Success" ? "success" : "idle")
@@ -68,9 +71,39 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
   function onPayCard() {
     if (simulateDecline) {
       setPaymentOutcome("failed")
+      updateInvoice(invoice.id, { status: "Denied" })
       toast.error("Card declined by issuing bank (simulated failure)")
     } else {
       setPaymentOutcome("success")
+      updateInvoice(invoice.id, {
+        status: "Success",
+        paidAt: new Date().toISOString().slice(0, 10),
+      })
+      createTransaction({
+        txRef: `TXN-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        clientName: invoice.clientName,
+        brandId: invoice.brandId,
+        brandName: invoice.brandName,
+        gateway: invoice.gateway,
+        currency: invoice.currency,
+        amount: invoice.total,
+        amountUsd: toUsd(invoice.total, invoice.currency),
+        status: "Success",
+        cardLast4: "4242",
+        cardBrand: "Visa",
+        events: [
+          {
+            id: `ev-${crypto.randomUUID().slice(0, 8)}`,
+            status: "Success",
+            title: "Payment Captured",
+            detail: `Charged via ${invoice.gateway} hosted checkout (simulated).`,
+            actor: "Client Self-Serve",
+            timestamp: new Date().toISOString().slice(0, 16).replace("T", " "),
+          },
+        ],
+      })
       toast.success(
         `Payment of ${formatCurrency(invoice.total, invoice.currency)} captured via ${invoice.gateway}`
       )
@@ -83,6 +116,7 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
       return
     }
     setProofSubmitted(true)
+    updateInvoice(invoice.id, { status: "Processing" })
     toast.success("Bank transfer proof uploaded for treasury verification")
   }
 
