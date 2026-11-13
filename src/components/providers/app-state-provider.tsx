@@ -3,6 +3,7 @@
 import * as React from "react"
 import { DEMO_ROLES } from "@/lib/permissions"
 import type { AppNotification, Role } from "@/types"
+import { useStore } from "@/lib/store"
 
 const ROLE_STORAGE_KEY = "agencyops_demo_role"
 const VALID_ROLES = new Set<Role>(DEMO_ROLES)
@@ -45,62 +46,17 @@ interface AppStateContextValue {
   setUnreadMessagesCount: React.Dispatch<React.SetStateAction<number>>
 }
 
-const INITIAL_NOTIFICATIONS: AppNotification[] = [
-  {
-    id: "notif-1",
-    title: "Payment Captured via Stripe",
-    description: "Invoice INV-2026-1042 ($4,850.00) marked as Success.",
-    category: "payment",
-    read: false,
-    timestamp: "8 mins ago",
-    href: "/transactions",
-  },
-  {
-    id: "notif-2",
-    title: "QA Failed on TSK-118",
-    description: "Homepage responsive hero layout moved to Re-Draw.",
-    category: "task",
-    read: false,
-    timestamp: "24 mins ago",
-    href: "/tasks",
-  },
-  {
-    id: "notif-3",
-    title: "New Enterprise Lead Assigned",
-    description: "Harborline Logistics ($18,500 est.) assigned to Elena Rostova.",
-    category: "lead",
-    read: false,
-    timestamp: "1 hour ago",
-    href: "/leads",
-  },
-  {
-    id: "notif-4",
-    title: "Pending Leave Request",
-    description: "Liam Gallagher requested 3 days Annual Leave (Nov 18–20).",
-    category: "hr",
-    read: false,
-    timestamp: "2 hours ago",
-    href: "/hrm/leave-requests",
-  },
-  {
-    id: "notif-5",
-    title: "Export Ready for Download",
-    description: "invoices-oct-2026.xlsx (48 rows) completed.",
-    category: "system",
-    read: true,
-    timestamp: "Yesterday",
-    href: "/export-logs",
-  },
-]
-
 const AppStateContext = React.createContext<AppStateContextValue | null>(null)
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
+  const store = useStore()
+
   const role = React.useSyncExternalStore(
     subscribeRole,
     getClientRoleSnapshot,
     getServerRoleSnapshot
   )
+
   const setRole = React.useCallback((nextRole: Role) => {
     try {
       window.localStorage.setItem(ROLE_STORAGE_KEY, nextRole)
@@ -109,27 +65,36 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       // ignore storage errors
     }
   }, [])
+
   const [timezone, setTimezone] = React.useState<string>("America/New_York")
   const [celebrationDismissed, setCelebrationDismissed] = React.useState(false)
-  const [notifications, setNotifications] = React.useState<AppNotification[]>(
-    INITIAL_NOTIFICATIONS
-  )
-  const [unreadMessagesCount, setUnreadMessagesCount] = React.useState(5)
 
+  const notifications = store.notifications
   const unreadNotificationsCount = React.useMemo(
     () => notifications.filter((n) => !n.read).length,
     [notifications]
   )
 
-  const markAllNotificationsRead = React.useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }, [])
+  const computedUnreadMessages = React.useMemo(
+    () => store.chatThreads.reduce((sum, t) => sum + (t.unreadCount || 0), 0),
+    [store.chatThreads]
+  )
 
-  const markNotificationRead = React.useCallback((id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    )
-  }, [])
+  const [manualUnreadMessagesCount, setUnreadMessagesCount] = React.useState<number | null>(null)
+
+  const unreadMessagesCount =
+    manualUnreadMessagesCount !== null ? manualUnreadMessagesCount : computedUnreadMessages
+
+  const markAllNotificationsRead = React.useCallback(() => {
+    store.markAllNotificationsRead()
+  }, [store])
+
+  const markNotificationRead = React.useCallback(
+    (id: string) => {
+      store.markNotificationRead(id)
+    },
+    [store]
+  )
 
   const dismissCelebration = React.useCallback(() => {
     setCelebrationDismissed(true)
@@ -148,7 +113,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       markAllNotificationsRead,
       markNotificationRead,
       unreadMessagesCount,
-      setUnreadMessagesCount,
+      setUnreadMessagesCount: setUnreadMessagesCount as React.Dispatch<
+        React.SetStateAction<number>
+      >,
     }),
     [
       role,

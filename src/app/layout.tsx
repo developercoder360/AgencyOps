@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/providers/theme-provider"
+import { StoreProvider } from "@/lib/store"
 import { AppStateProvider } from "@/components/providers/app-state-provider"
 
 const geistSans = Geist({
@@ -29,7 +30,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <ThemeProvider>
-          <AppStateProvider>{children}</AppStateProvider>
+          <StoreProvider>
+            <AppStateProvider>{children}</AppStateProvider>
+          </StoreProvider>
         </ThemeProvider>
       </body>
     </html>
