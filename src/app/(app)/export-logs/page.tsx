@@ -3,14 +3,14 @@
 import * as React from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
-import { AlertCircle, Download, FileSpreadsheet, Plus } from "lucide-react"
+import { AlertCircle, Download, FileSpreadsheet, Plus, Trash2 } from "lucide-react"
 import {
   DataTable,
   DataTableColumnHeader,
   ExportDialog,
   type FacetedFilterConfig,
 } from "@/components/data-table"
-import { PageHeader, StatusBadge } from "@/components/shared"
+import { ConfirmDeleteDialog, PageHeader, StatusBadge } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,7 +20,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { MOCK_EXPORT_LOGS } from "@/mocks/exports"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useStore } from "@/lib/store"
 import type { ExportLog, ExportStatus } from "@/types"
 
 const EXPORT_STATUSES: ExportStatus[] = [
@@ -31,8 +32,9 @@ const EXPORT_STATUSES: ExportStatus[] = [
 ]
 
 export default function ExportLogsPage() {
-  const [logs] = React.useState<ExportLog[]>(MOCK_EXPORT_LOGS)
+  const { exportLogs, deleteExportLog, isLoaded } = useStore()
   const [selected, setSelected] = React.useState<ExportLog | null>(null)
+  const [deleteTarget, setDeleteTarget] = React.useState<ExportLog | null>(null)
   const [customExportOpen, setCustomExportOpen] = React.useState(false)
 
   function downloadFile(log: ExportLog) {
@@ -45,6 +47,17 @@ export default function ExportLogsPage() {
     a.click()
     URL.revokeObjectURL(url)
     toast.success(`Downloaded ${log.fileName}`)
+  }
+
+  const promptDelete = React.useCallback((log: ExportLog) => {
+    setDeleteTarget(log)
+  }, [])
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    deleteExportLog(deleteTarget.id)
+    toast.success(`Removed export log: ${deleteTarget.fileName}`)
+    setDeleteTarget(null)
   }
 
   const columns = React.useMemo<ColumnDef<ExportLog>[]>(
@@ -117,22 +130,35 @@ export default function ExportLogsPage() {
         id: "actions",
         header: "",
         enableHiding: false,
-        cell: ({ row }) =>
-          row.original.status === "completed" ? (
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1 justify-end">
+            {row.original.status === "completed" ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={() => downloadFile(row.original)}
+                className="gap-1"
+              >
+                <Download className="size-3.5" />
+                Download
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
-              size="xs"
-              onClick={() => downloadFile(row.original)}
-              className="gap-1"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => promptDelete(row.original)}
+              aria-label="Delete log"
             >
-              <Download className="size-3.5" />
-              Download
+              <Trash2 className="size-3.5" />
             </Button>
-          ) : null,
+          </div>
+        ),
       },
     ],
-    []
+    [promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -157,12 +183,21 @@ export default function ExportLogsPage() {
     []
   )
 
+  if (!isLoaded) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-14 w-full" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Export Logs"
         description="Audit background CSV & XLSX report jobs across sales, billing, delivery, and HR modules."
-        badge={<Badge variant="secondary">{logs.length} jobs</Badge>}
+        badge={<Badge variant="secondary">{exportLogs.length} jobs</Badge>}
         actions={
           <Button
             type="button"
@@ -177,13 +212,14 @@ export default function ExportLogsPage() {
 
       <DataTable
         columns={columns}
-        data={logs}
+        data={exportLogs}
         searchPlaceholder="Search export files, module, user..."
         facetedFilters={facetedFilters}
         exportModule="Export Audit Logs"
         onRowClick={setSelected}
       />
 
+      {/* Detail Sheet */}
       <Sheet
         open={Boolean(selected)}
         onOpenChange={(open) => !open && setSelected(null)}
@@ -257,6 +293,14 @@ export default function ExportLogsPage() {
           { id: "createdAt", label: "Created Date" },
         ]}
         rowCount={142}
+      />
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open: boolean) => !open && setDeleteTarget(null)}
+        title={`Delete Export Log`}
+        description={`Are you sure you want to remove the log entry for "${deleteTarget?.fileName}"?`}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   )

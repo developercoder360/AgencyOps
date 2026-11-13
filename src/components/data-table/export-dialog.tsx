@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { ProgressBar } from "@/components/tremor"
 import { StatusBadge } from "@/components/shared"
+import { useStore } from "@/lib/store"
 import type { ExportStatus } from "@/types"
 
 export interface ExportColumnOption {
@@ -55,6 +56,7 @@ function ExportDialogBody({
   rowCount,
   onExportDownload,
 }: ExportDialogProps) {
+  const { createExportLog } = useStore()
   const [format, setFormat] = React.useState<"CSV" | "XLSX">("XLSX")
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
     columns.map((c) => c.id)
@@ -79,10 +81,29 @@ function ExportDialogBody({
   }
 
   function triggerBlobDownload(ext: "CSV" | "XLSX", cols: string[]) {
+    const fileName = `${moduleName.toLowerCase().replace(/\s+/g, "-")}-export.${ext.toLowerCase()}`
+    
+    // Write entry to Export Logs in Store
+    try {
+      createExportLog({
+        module: moduleName,
+        fileName,
+        format: ext,
+        rowCount,
+        columns: cols,
+        requestedBy: "Current User",
+        status: "completed",
+        fileSize: `${Math.max(12, Math.round(rowCount * 0.4))} KB`,
+      })
+    } catch {
+      // Store log write error should not prevent client download
+    }
+
     if (onExportDownload) {
       onExportDownload(ext, cols)
       return
     }
+
     const header = cols.join(",")
     const csvSample = `${header}\n# Exported ${rowCount} rows from ${moduleName} (${ext} prototype export)\n`
     const blob = new Blob([csvSample], {
@@ -94,7 +115,7 @@ function ExportDialogBody({
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `${moduleName.toLowerCase().replace(/\s+/g, "-")}-export.${ext.toLowerCase()}`
+    a.download = fileName
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -141,7 +162,7 @@ function ExportDialogBody({
           Export {moduleName}
         </DialogTitle>
         <DialogDescription>
-          Choose file format and columns to generate an asynchronous export for{" "}
+          Choose file format and columns to generate an export for{" "}
           <span className="font-medium text-foreground">{rowCount}</span>{" "}
           matching row{rowCount === 1 ? "" : "s"}.
         </DialogDescription>
@@ -159,15 +180,15 @@ function ExportDialogBody({
               disabled={status === "queued" || status === "processing"}
               className={`flex items-center gap-2.5 rounded-lg border p-3 text-left text-sm transition-colors ${
                 format === "XLSX"
-                  ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary"
+                  ? "border-primary bg-primary/5 text-primary"
                   : "border-border hover:bg-muted/50"
               }`}
             >
-              <FileSpreadsheet className="size-4 text-emerald-600 dark:text-emerald-400" />
+              <FileSpreadsheet className="size-4 shrink-0" />
               <div>
-                <div className="font-medium">Excel (.XLSX)</div>
+                <div className="font-medium">Excel (.xlsx)</div>
                 <div className="text-[11px] text-muted-foreground">
-                  Formatted workbook
+                  Styled sheet with frozen headers
                 </div>
               </div>
             </button>
@@ -177,15 +198,15 @@ function ExportDialogBody({
               disabled={status === "queued" || status === "processing"}
               className={`flex items-center gap-2.5 rounded-lg border p-3 text-left text-sm transition-colors ${
                 format === "CSV"
-                  ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary"
+                  ? "border-primary bg-primary/5 text-primary"
                   : "border-border hover:bg-muted/50"
               }`}
             >
-              <FileText className="size-4 text-blue-600 dark:text-blue-400" />
+              <FileText className="size-4 shrink-0" />
               <div>
-                <div className="font-medium">CSV (.CSV)</div>
+                <div className="font-medium">Raw CSV (.csv)</div>
                 <div className="text-[11px] text-muted-foreground">
-                  UTF-8 plain text
+                  Lightweight universal text delimiter
                 </div>
               </div>
             </button>
@@ -195,80 +216,62 @@ function ExportDialogBody({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-              Columns ({selectedIds.length}/{columns.length})
+              Columns to Include ({selectedIds.length}/{columns.length})
             </Label>
             <div className="flex gap-2">
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                size="xs"
                 onClick={() => setSelectedIds(columns.map((c) => c.id))}
+                className="text-xs text-primary hover:underline"
               >
                 Select All
-              </Button>
-              <Button
+              </button>
+              <span className="text-xs text-muted-foreground">•</span>
+              <button
                 type="button"
-                variant="ghost"
-                size="xs"
                 onClick={() => setSelectedIds([])}
+                className="text-xs text-muted-foreground hover:underline"
               >
                 Clear
-              </Button>
+              </button>
             </div>
           </div>
-          <div className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto rounded-lg border border-border p-3">
-            {columns.map((col) => {
-              const checked = selectedIds.includes(col.id)
-              return (
-                <label
-                  key={col.id}
-                  className="flex cursor-pointer items-center gap-2 text-xs text-foreground"
-                >
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={() => toggleColumn(col.id)}
-                  />
-                  <span className="truncate">{col.label}</span>
-                </label>
-              )
-            })}
+          <div className="max-h-44 space-y-2 overflow-y-auto rounded-lg border border-border p-3">
+            {columns.map((col) => (
+              <label
+                key={col.id}
+                className="flex cursor-pointer items-center gap-2.5 text-xs text-foreground"
+              >
+                <Checkbox
+                  checked={selectedIds.includes(col.id)}
+                  onCheckedChange={() => toggleColumn(col.id)}
+                />
+                <span>{col.label}</span>
+              </label>
+            ))}
           </div>
         </div>
 
+        {/* Async Progress Simulation */}
         {status !== "idle" ? (
-          <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-medium">
+          <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-2 font-medium">
                 {status === "completed" ? (
-                  <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+                  <CheckCircle2 className="size-4 text-emerald-600" />
                 ) : (
                   <Loader2 className="size-4 animate-spin text-primary" />
                 )}
-                <span>Export job status</span>
-              </div>
+                {status === "queued" && "Queued in background worker pool..."}
+                {status === "processing" && "Serializing records into dataset..."}
+                {status === "completed" && "Export ready for download"}
+              </span>
               <StatusBadge status={status} />
             </div>
             <ProgressBar
               value={progress}
-              label={`${progress}%`}
               color={status === "completed" ? "emerald" : "blue"}
             />
-            {status === "completed" ? (
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-xs text-muted-foreground">
-                  File ready for immediate download.
-                </span>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  onClick={() => triggerBlobDownload(format, selectedIds)}
-                >
-                  <Download className="mr-1 size-3" />
-                  Download {format}
-                </Button>
-              </div>
-            ) : null}
           </div>
         ) : null}
       </div>
@@ -281,23 +284,30 @@ function ExportDialogBody({
         >
           Close
         </Button>
-        <Button
-          type="button"
-          onClick={startExport}
-          disabled={status === "queued" || status === "processing"}
-        >
-          {status === "queued" || status === "processing" ? (
-            <>
-              <Loader2 className="mr-1.5 size-4 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Download className="mr-1.5 size-4" />
-              Start Export
-            </>
-          )}
-        </Button>
+        {status === "completed" ? (
+          <Button
+            type="button"
+            onClick={() => triggerBlobDownload(format, selectedIds)}
+            className="gap-1.5"
+          >
+            <Download className="size-4" />
+            Download {format}
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            onClick={startExport}
+            disabled={status === "queued" || status === "processing"}
+            className="gap-1.5"
+          >
+            {status === "queued" || status === "processing" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            Start Export
+          </Button>
+        )}
       </DialogFooter>
     </>
   )

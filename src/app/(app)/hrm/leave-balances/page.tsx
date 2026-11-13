@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { MOCK_LEAVE_BALANCES } from "@/mocks/hrm"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useStore } from "@/lib/store"
 import type { LeaveBalance } from "@/types"
 
 const adjustSchema = z.object({
@@ -33,8 +34,7 @@ const adjustSchema = z.object({
 })
 
 export default function LeaveBalancesPage() {
-  const [balances, setBalances] =
-    React.useState<LeaveBalance[]>(MOCK_LEAVE_BALANCES)
+  const { leaveBalances, updateLeaveBalance, isLoaded } = useStore()
   const [editing, setEditing] = React.useState<LeaveBalance | null>(null)
 
   const form = useForm<z.infer<typeof adjustSchema>>({
@@ -62,9 +62,7 @@ export default function LeaveBalancesPage() {
 
   function onSubmit(values: z.infer<typeof adjustSchema>) {
     if (!editing) return
-    setBalances((prev) =>
-      prev.map((b) => (b.id === editing.id ? { ...b, ...values } : b))
-    )
+    updateLeaveBalance(editing.id, values)
     toast.success(`Adjusted leave quotas for ${editing.userName}`)
     setEditing(null)
   }
@@ -162,17 +160,26 @@ export default function LeaveBalancesPage() {
     [openAdjust]
   )
 
+  if (!isLoaded) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-14 w-full" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Leave Balances"
         description="View remaining annual, sick, casual, and carried-forward PTO quotas per staff member."
-        badge={<Badge variant="secondary">{balances.length} staff</Badge>}
+        badge={<Badge variant="secondary">{leaveBalances.length} staff</Badge>}
       />
 
       <DataTable
         columns={columns}
-        data={balances}
+        data={leaveBalances}
         searchPlaceholder="Search employee or department..."
         exportModule="Leave Balances"
         onRowClick={openAdjust}

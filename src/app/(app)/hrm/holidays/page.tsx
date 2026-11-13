@@ -6,13 +6,13 @@ import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { CalendarHeart, Plus } from "lucide-react"
+import { CalendarHeart, Plus, Trash2 } from "lucide-react"
 import {
   DataTable,
   DataTableColumnHeader,
   type FacetedFilterConfig,
 } from "@/components/data-table"
-import { PageHeader } from "@/components/shared"
+import { ConfirmDeleteDialog, PageHeader } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,21 +32,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
-import { MOCK_HOLIDAYS } from "@/mocks/hrm"
+import { useStore } from "@/lib/store"
 import type { Holiday } from "@/types"
 
 const schema = z.object({
-  name: z.string().min(2),
-  date: z.string().min(8),
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  date: z.string().min(8, "Enter valid date"),
   type: z.enum(["Public", "Company", "Optional"]),
-  region: z.string().min(2),
-  description: z.string().min(3),
+  region: z.string().min(2, "Enter region"),
+  description: z.string().min(3, "Enter description"),
 })
 
 export default function HolidaysPage() {
-  const [holidays, setHolidays] = React.useState<Holiday[]>(MOCK_HOLIDAYS)
+  const { holidays, createHoliday, deleteHoliday, isLoaded } = useStore()
   const [open, setOpen] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] = React.useState<Holiday | null>(null)
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -60,16 +62,27 @@ export default function HolidaysPage() {
   })
 
   function onSubmit(values: z.infer<typeof schema>) {
-    const created: Holiday = {
-      id: `hol-new-${holidays.length + 1}`,
-      ...values,
-    }
-    setHolidays((prev) =>
-      [...prev, created].sort((a, b) => a.date.localeCompare(b.date))
-    )
+    const created = createHoliday({
+      name: values.name,
+      date: values.date,
+      type: values.type,
+      region: values.region,
+      description: values.description,
+    })
     toast.success(`Added holiday: ${created.name}`)
     form.reset()
     setOpen(false)
+  }
+
+  const promptDelete = React.useCallback((hol: Holiday) => {
+    setDeleteTarget(hol)
+  }, [])
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    deleteHoliday(deleteTarget.id)
+    toast.success(`Removed holiday: ${deleteTarget.name}`)
+    setDeleteTarget(null)
   }
 
   const columns = React.useMemo<ColumnDef<Holiday>[]>(
@@ -121,8 +134,27 @@ export default function HolidaysPage() {
         accessorKey: "region",
         header: "Region",
       },
+      {
+        id: "actions",
+        header: "",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => promptDelete(row.original)}
+              aria-label="Delete holiday"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
+      },
     ],
-    []
+    [promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -140,11 +172,21 @@ export default function HolidaysPage() {
     []
   )
 
+  if (!isLoaded) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-14 w-full" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Agency Holidays"
         description="Regional bank holidays and paid company-wide recharge days synced with payroll attendance."
+        badge={<Badge variant="secondary">{holidays.length} holidays</Badge>}
         actions={
           <Button
             type="button"
@@ -178,6 +220,11 @@ export default function HolidaysPage() {
             <div className="space-y-1.5">
               <Label htmlFor="hol-name">Holiday Name</Label>
               <Input id="hol-name" {...form.register("name")} />
+              {form.formState.errors.name ? (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.name.message}
+                </p>
+              ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -229,6 +276,14 @@ export default function HolidaysPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open: boolean) => !open && setDeleteTarget(null)}
+        title={`Delete Holiday "${deleteTarget?.name}"`}
+        description={`Are you sure you want to remove the holiday scheduled for ${deleteTarget?.date}?`}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -21,6 +22,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Table2,
+  Trash2,
   Upload,
 } from "lucide-react"
 import {
@@ -30,6 +32,7 @@ import {
 } from "@/components/data-table"
 import {
   AvatarGroup,
+  ConfirmDeleteDialog,
   PageHeader,
   StatusBadge,
 } from "@/components/shared"
@@ -63,11 +66,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
-import { MOCK_BRANDS } from "@/mocks/brands"
-import { MOCK_PROJECTS } from "@/mocks/projects"
-import { REFERENCE_DATE_ISO } from "@/mocks/seed"
-import { MOCK_TASKS } from "@/mocks/tasks"
-import { MOCK_USERS } from "@/mocks/users"
+import { useStore } from "@/lib/store"
 import type { Task, TaskPriority, TaskStatus } from "@/types"
 import { cn } from "cn"
 
@@ -102,16 +101,29 @@ const qaFailSchema = z.object({
 
 const createTaskSchema = z.object({
   title: z.string().min(3, "Task title required"),
-  projectId: z.string().min(1),
+  projectId: z.string().min(1, "Select a project"),
   priority: z.enum(["Regular", "High", "Urgent"]),
-  assigneeId: z.string().min(1),
+  assigneeId: z.string().min(1, "Assign a team member"),
   dueDate: z.string().min(8),
   estimatedHours: z.number().min(1).max(200),
   description: z.string().optional(),
 })
 
 export default function TasksPage() {
-  const [tasks, setTasks] = React.useState<Task[]>(MOCK_TASKS)
+  const {
+    tasks,
+    projects,
+    brands,
+    users,
+    createTask,
+    updateTask: storeUpdateTask,
+    deleteTask,
+    toggleSubtask: storeToggleSubtask,
+    addTaskComment: storeAddTaskComment,
+    recordQAReview,
+    setTaskOnHold,
+  } = useStore()
+
   const [viewMode, setViewMode] = React.useState<"kanban" | "table">("kanban")
   const [brandFilter, setBrandFilter] = React.useState("all")
   const [selectedTask, setSelectedTask] = React.useState<Task | null>(null)
@@ -120,6 +132,23 @@ export default function TasksPage() {
   const [qaFailDialogOpen, setQaFailDialogOpen] = React.useState(false)
   const [redFlagUsers, setRedFlagUsers] = React.useState<string[]>([])
   const [createOpen, setCreateOpen] = React.useState(false)
+
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = React.useState<Task | null>(null)
+
+  const promptDelete = React.useCallback((task: Task) => {
+    setDeleteTarget(task)
+  }, [])
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    deleteTask(deleteTarget.id)
+    toast.success(`Removed task ${deleteTarget.code}`)
+    if (selectedTask?.id === deleteTarget.id) {
+      setSelectedTask(null)
+    }
+    setDeleteTarget(null)
+  }
 
   const holdForm = useForm<z.infer<typeof onHoldSchema>>({
     resolver: zodResolver(onHoldSchema),
@@ -139,11 +168,10 @@ export default function TasksPage() {
     resolver: zodResolver(createTaskSchema),
     defaultValues: {
       title: "",
-      projectId: MOCK_PROJECTS[0].id,
+      projectId: projects[0]?.id ?? "",
       priority: "High",
-      assigneeId:
-        MOCK_USERS.find((u) => u.role === "Designer/Developer")?.id ?? "usr-4",
-      dueDate: "2026-11-18",
+      assigneeId: users[0]?.id ?? "usr-admin",
+      dueDate: "2026-11-20",
       estimatedHours: 8,
       description: "",
     },
@@ -158,37 +186,35 @@ export default function TasksPage() {
   )
 
   function updateTask(updated: Task) {
-    setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
+    storeUpdateTask(updated.id, updated)
     setSelectedTask(updated)
   }
 
-  function toggleSubtask(task: Task, subtaskId: string) {
-    const updated: Task = {
-      ...task,
-      subtasks: task.subtasks.map((st) =>
-        st.id === subtaskId ? { ...st, completed: !st.completed } : st
-      ),
-    }
-    updateTask(updated)
+  function handleToggleSubtask(task: Task, subtaskId: string) {
+    const target = task.subtasks.find((st) => st.id === subtaskId)
+    const nextCompleted = !target?.completed
+    storeToggleSubtask(task.id, subtaskId, nextCompleted)
+    const updatedSubtasks = task.subtasks.map((st) =>
+      st.id === subtaskId ? { ...st, completed: nextCompleted } : st
+    )
+    setSelectedTask({ ...task, subtasks: updatedSubtasks })
   }
 
-  function addTaskComment(e: React.FormEvent) {
+  function handleAddTaskComment(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedTask || !commentText.trim()) return
-    const updated: Task = {
-      ...selectedTask,
-      comments: [
-        ...selectedTask.comments,
-        {
-          id: `tc-new-${Date.now()}`,
-          authorId: "usr-1",
-          authorName: "Marcus Vance",
-          content: commentText.trim(),
-          createdAt: "2026-11-11 18:40",
-        },
-      ],
+    storeAddTaskComment(selectedTask.id, commentText.trim(), "usr-admin")
+    const newComment = {
+      id: `tc-${crypto.randomUUID().slice(0, 8)}`,
+      authorId: "usr-admin",
+      authorName: users.find((u) => u.id === "usr-admin")?.name ?? "Administrator",
+      content: commentText.trim(),
+      createdAt: new Date().toISOString().replace("T", " ").slice(0, 16),
     }
-    updateTask(updated)
+    setSelectedTask({
+      ...selectedTask,
+      comments: [...selectedTask.comments, newComment],
+    })
     setCommentText("")
     toast.success("Comment added to task")
   }
@@ -197,19 +223,18 @@ export default function TasksPage() {
     if (!selectedTask) return
     const file = e.target.files?.[0]
     if (!file) return
+    const today = new Date().toISOString().slice(0, 10)
+    const newFile = {
+      id: `ev-${crypto.randomUUID().slice(0, 8)}`,
+      name: file.name,
+      size: `${Math.max(90, Math.round(file.size / 1024))} KB`,
+      type: file.type || "image/png",
+      uploadedBy: "Current User",
+      uploadedAt: today,
+    }
     const updated: Task = {
       ...selectedTask,
-      evidenceFiles: [
-        ...selectedTask.evidenceFiles,
-        {
-          id: `ev-new-${Date.now()}`,
-          name: file.name,
-          size: `${Math.max(90, Math.round(file.size / 1024))} KB`,
-          type: file.type || "image/png",
-          uploadedBy: "Marcus Vance",
-          uploadedAt: REFERENCE_DATE_ISO,
-        },
-      ],
+      evidenceFiles: [...selectedTask.evidenceFiles, newFile],
     }
     updateTask(updated)
     toast.success(`Attached evidence: ${file.name}`)
@@ -217,34 +242,42 @@ export default function TasksPage() {
 
   function onHoldSubmit(values: z.infer<typeof onHoldSchema>) {
     if (!selectedTask) return
+    setTaskOnHold(selectedTask.id, values.reason)
     const updated: Task = {
       ...selectedTask,
       status: "On Hold",
       onHoldReason: values.reason,
     }
-    updateTask(updated)
+    setSelectedTask(updated)
     holdForm.reset()
     setHoldDialogOpen(false)
     toast.warning(`${selectedTask.code} placed On Hold`)
   }
 
   function handleQaPass(task: Task) {
+    const today = new Date().toISOString().replace("T", " ").slice(0, 16)
+    recordQAReview(task.id, {
+      outcome: "Pass",
+      reviewerName: "Current Reviewer",
+      evidenceNames: task.evidenceFiles.map((f) => f.name),
+      redFlagUserIds: [],
+    })
     const updated: Task = {
       ...task,
       status: "Complete",
       qaHistory: [
         ...task.qaHistory,
         {
-          id: `qa-pass-${Date.now()}`,
+          id: `qa-pass-${crypto.randomUUID().slice(0, 8)}`,
           outcome: "Pass",
-          reviewerName: "Tariq Al-Mansoor",
+          reviewerName: "Current Reviewer",
           evidenceNames: task.evidenceFiles.map((f) => f.name),
           redFlagUserIds: [],
-          timestamp: "2026-11-11 18:45",
+          timestamp: today,
         },
       ],
     }
-    updateTask(updated)
+    setSelectedTask(updated)
     toast.success(`${task.code} passed QA and moved to Complete`)
   }
 
@@ -260,6 +293,15 @@ export default function TasksPage() {
 
   function onQaFailSubmit(values: z.infer<typeof qaFailSchema>) {
     if (!selectedTask) return
+    const today = new Date().toISOString().replace("T", " ").slice(0, 16)
+    recordQAReview(selectedTask.id, {
+      outcome: "Fail",
+      reviewerName: "Current Reviewer",
+      category: values.category,
+      reason: values.reason,
+      evidenceNames: [values.evidenceName],
+      redFlagUserIds: redFlagUsers,
+    })
     const updated: Task = {
       ...selectedTask,
       status: "Re-Draw",
@@ -269,29 +311,29 @@ export default function TasksPage() {
       evidenceFiles: [
         ...selectedTask.evidenceFiles,
         {
-          id: `ev-fail-${selectedTask.evidenceFiles.length + 1}`,
+          id: `ev-fail-${crypto.randomUUID().slice(0, 8)}`,
           name: values.evidenceName,
           size: "640 KB",
           type: "image/png",
-          uploadedBy: "Tariq Al-Mansoor",
-          uploadedAt: REFERENCE_DATE_ISO,
+          uploadedBy: "Reviewer",
+          uploadedAt: today.slice(0, 10),
         },
       ],
       qaHistory: [
         ...selectedTask.qaHistory,
         {
-          id: `qa-fail-${selectedTask.qaHistory.length + 1}`,
+          id: `qa-fail-${crypto.randomUUID().slice(0, 8)}`,
           outcome: "Fail",
-          reviewerName: "Tariq Al-Mansoor",
+          reviewerName: "Current Reviewer",
           category: values.category,
           reason: values.reason,
           evidenceNames: [values.evidenceName],
           redFlagUserIds: redFlagUsers,
-          timestamp: "2026-11-11 18:50",
+          timestamp: today,
         },
       ],
     }
-    updateTask(updated)
+    setSelectedTask(updated)
     setQaFailDialogOpen(false)
     toast.error(
       `${selectedTask.code} failed QA (${values.category}) → moved to Re-Draw`
@@ -300,10 +342,14 @@ export default function TasksPage() {
 
   function onCreateTask(values: z.infer<typeof createTaskSchema>) {
     const project =
-      MOCK_PROJECTS.find((p) => p.id === values.projectId) ?? MOCK_PROJECTS[0]
-    const code = `TSK-${160 + tasks.length}`
-    const created: Task = {
-      id: `tsk-new-${tasks.length + 1}`,
+      projects.find((p) => p.id === values.projectId) ?? projects[0]
+    if (!project) {
+      toast.error("Please create a project first.")
+      return
+    }
+
+    const code = `TSK-${String(tasks.length + 161).padStart(4, "0")}`
+    const created = createTask({
       code,
       title: values.title,
       description:
@@ -315,14 +361,14 @@ export default function TasksPage() {
       status: "Open",
       priority: values.priority,
       assigneeIds: [values.assigneeId],
-      reviewerId: "usr-5",
+      reviewerId: "usr-admin",
       dueDate: values.dueDate,
       estimatedHours: values.estimatedHours,
       loggedHours: 0,
       subtasks: [
         {
-          id: "st-new-1",
-          title: "Review specifications & Figma tokens",
+          id: `st-${crypto.randomUUID().slice(0, 8)}`,
+          title: "Review specifications & brief",
           completed: false,
           assigneeId: values.assigneeId,
         },
@@ -331,13 +377,13 @@ export default function TasksPage() {
       evidenceFiles: [],
       qaHistory: [],
       redFlaggedUserIds: [],
-      createdAt: REFERENCE_DATE_ISO,
-    }
-    setTasks((prev) => [created, ...prev])
-    toast.success(`Created task ${code}`)
+    })
+    toast.success(`Created task ${created.code}`)
     createForm.reset()
     setCreateOpen(false)
   }
+
+  const todayIso = new Date().toISOString().slice(0, 10)
 
   const columns = React.useMemo<ColumnDef<Task>[]>(
     () => [
@@ -391,7 +437,7 @@ export default function TasksPage() {
         id: "assignees",
         header: "Assignees",
         cell: ({ row }) => {
-          const people = MOCK_USERS.filter((u) =>
+          const people = users.filter((u) =>
             row.original.assigneeIds.includes(u.id)
           )
           return (
@@ -415,7 +461,7 @@ export default function TasksPage() {
         cell: ({ row }) => {
           const overdue =
             row.original.status !== "Complete" &&
-            row.original.dueDate < REFERENCE_DATE_ISO
+            row.original.dueDate < todayIso
           return (
             <span
               className={cn(
@@ -430,8 +476,35 @@ export default function TasksPage() {
           )
         },
       },
+      {
+        id: "actions",
+        header: "",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => setSelectedTask(row.original)}
+            >
+              Details
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => promptDelete(row.original)}
+              className="text-destructive hover:bg-destructive/10"
+              title="Delete task"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
+      },
     ],
-    []
+    [users, promptDelete, todayIso]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -449,10 +522,10 @@ export default function TasksPage() {
       {
         columnId: "brandName",
         title: "Brand",
-        options: MOCK_BRANDS.map((b) => ({ label: b.name, value: b.name })),
+        options: brands.map((b) => ({ label: b.name, value: b.name })),
       },
     ],
-    []
+    [brands]
   )
 
   return (
@@ -470,7 +543,7 @@ export default function TasksPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Brands</SelectItem>
-                  {MOCK_BRANDS.map((b) => (
+                  {brands.map((b) => (
                     <SelectItem key={b.id} value={b.id}>
                       {b.name}
                     </SelectItem>
@@ -535,7 +608,7 @@ export default function TasksPage() {
                   <div className="max-h-[580px] overflow-y-auto pr-1">
                     <div className="space-y-2.5">
                       {colTasks.map((task) => {
-                        const assignees = MOCK_USERS.filter((u) =>
+                        const assignees = users.filter((u) =>
                           task.assigneeIds.includes(u.id)
                         )
                         const doneSubtasks = task.subtasks.filter(
@@ -543,7 +616,7 @@ export default function TasksPage() {
                         ).length
                         const overdue =
                           task.status !== "Complete" &&
-                          task.dueDate < REFERENCE_DATE_ISO
+                          task.dueDate < todayIso
 
                         return (
                           <button
@@ -712,36 +785,36 @@ export default function TasksPage() {
                     Assignees & QA Reviewer
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {MOCK_USERS.filter((u) =>
-                      selectedTask.assigneeIds.includes(u.id)
-                    ).map((u) => {
-                      const flagged =
-                        selectedTask.redFlaggedUserIds.includes(u.id)
-                      return (
-                        <div
-                          key={u.id}
-                          className={cn(
-                            "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs",
-                            flagged
-                              ? "border-rose-300 bg-rose-50/70 dark:border-rose-500/40 dark:bg-rose-500/15"
-                              : "border-border"
-                          )}
-                        >
-                          <span
-                            className={`flex size-6 items-center justify-center rounded-full text-[10px] font-bold text-white ${u.avatarColor}`}
+                    {users
+                      .filter((u) => selectedTask.assigneeIds.includes(u.id))
+                      .map((u) => {
+                        const flagged =
+                          selectedTask.redFlaggedUserIds.includes(u.id)
+                        return (
+                          <div
+                            key={u.id}
+                            className={cn(
+                              "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs",
+                              flagged
+                               ? "border-rose-300 bg-rose-50/70 dark:border-rose-500/40 dark:bg-rose-500/15"
+                                : "border-border"
+                            )}
                           >
-                            {u.avatarInitials}
-                          </span>
-                          <span className="font-medium">{u.name}</span>
-                          {flagged ? (
-                            <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">
-                              <Flag className="mr-0.5 size-2.5" />
-                              Red Flag
-                            </Badge>
-                          ) : null}
-                        </div>
-                      )
-                    })}
+                            <span
+                              className={`flex size-6 items-center justify-center rounded-full text-[10px] font-bold text-white ${u.avatarColor}`}
+                            >
+                              {u.avatarInitials}
+                            </span>
+                            <span className="font-medium">{u.name}</span>
+                            {flagged ? (
+                              <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">
+                                <Flag className="mr-0.5 size-2.5" />
+                                Red Flag
+                              </Badge>
+                            ) : null}
+                          </div>
+                        )
+                      })}
                   </div>
                 </div>
 
@@ -753,26 +826,30 @@ export default function TasksPage() {
                     {selectedTask.subtasks.length})
                   </div>
                   <div className="space-y-2 rounded-lg border border-border p-3">
-                    {selectedTask.subtasks.map((st) => (
-                      <label
-                        key={st.id}
-                        className="flex cursor-pointer items-center gap-2.5 text-sm"
-                      >
-                        <Checkbox
-                          checked={st.completed}
-                          onCheckedChange={() =>
-                            toggleSubtask(selectedTask, st.id)
-                          }
-                        />
-                        <span
-                          className={cn(
-                            st.completed && "text-muted-foreground line-through"
-                          )}
+                    {selectedTask.subtasks.length === 0 ? (
+                      <div className="text-xs text-muted-foreground">No subtasks yet.</div>
+                    ) : (
+                      selectedTask.subtasks.map((st) => (
+                        <label
+                          key={st.id}
+                          className="flex cursor-pointer items-center gap-2.5 text-sm"
                         >
-                          {st.title}
-                        </span>
-                      </label>
-                    ))}
+                          <Checkbox
+                            checked={st.completed}
+                            onCheckedChange={() =>
+                              handleToggleSubtask(selectedTask, st.id)
+                            }
+                          />
+                          <span
+                            className={cn(
+                              st.completed && "text-muted-foreground line-through"
+                            )}
+                          >
+                            {st.title}
+                          </span>
+                        </label>
+                      ))
+                    )}
                   </div>
                 </div>
 
@@ -882,7 +959,7 @@ export default function TasksPage() {
                       </div>
                     ))}
                   </div>
-                  <form onSubmit={addTaskComment} className="flex gap-2">
+                  <form onSubmit={handleAddTaskComment} className="flex gap-2">
                     <Input
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
@@ -897,21 +974,33 @@ export default function TasksPage() {
                 </div>
               </div>
 
-              {/* Action bar: On Hold + QA Pass / Fail */}
+              {/* Action bar: On Hold + QA Pass / Fail + Delete */}
               <SheetFooter className="border-t border-border sm:flex-row sm:justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    holdForm.reset({ reason: selectedTask.onHoldReason ?? "" })
-                    setHoldDialogOpen(true)
-                  }}
-                  className="gap-1.5"
-                >
-                  <PauseCircle className="size-4 text-amber-600" />
-                  Put On Hold
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10"
+                    onClick={() => promptDelete(selectedTask)}
+                  >
+                    <Trash2 className="mr-1.5 size-4" />
+                    Delete
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      holdForm.reset({ reason: selectedTask.onHoldReason ?? "" })
+                      setHoldDialogOpen(true)
+                    }}
+                    className="gap-1.5"
+                  >
+                    <PauseCircle className="size-4 text-amber-600" />
+                    Put On Hold
+                  </Button>
+                </div>
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -948,8 +1037,7 @@ export default function TasksPage() {
               Place Task On Hold
             </DialogTitle>
             <DialogDescription>
-              Specify the client or internal dependency blocking{" "}
-              {selectedTask?.code}.
+              Specify the blocker dependency for {selectedTask?.code}.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -984,7 +1072,7 @@ export default function TasksPage() {
         </DialogContent>
       </Dialog>
 
-      {/* QA Fail Dialog (Reason, Category, Evidence, Red-Flag Users) */}
+      {/* QA Fail Dialog */}
       <Dialog open={qaFailDialogOpen} onOpenChange={setQaFailDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -1058,34 +1146,34 @@ export default function TasksPage() {
                   Red-Flag Assignees
                 </Label>
                 <div className="space-y-1.5 rounded-lg border border-border p-3">
-                  {MOCK_USERS.filter((u) =>
-                    selectedTask.assigneeIds.includes(u.id)
-                  ).map((u) => {
-                    const checked = redFlagUsers.includes(u.id)
-                    return (
-                      <label
-                        key={u.id}
-                        className="flex cursor-pointer items-center justify-between text-sm"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={() =>
-                              setRedFlagUsers((prev) =>
-                                prev.includes(u.id)
-                                  ? prev.filter((id) => id !== u.id)
-                                  : [...prev, u.id]
-                              )
-                            }
-                          />
-                          <span>{u.name}</span>
-                        </span>
-                        <Badge variant="outline" className="text-[10px]">
-                          {u.role}
-                        </Badge>
-                      </label>
-                    )
-                  })}
+                  {users
+                    .filter((u) => selectedTask.assigneeIds.includes(u.id))
+                    .map((u) => {
+                      const checked = redFlagUsers.includes(u.id)
+                      return (
+                        <label
+                          key={u.id}
+                          className="flex cursor-pointer items-center justify-between text-sm"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() =>
+                                setRedFlagUsers((prev) =>
+                                  prev.includes(u.id)
+                                    ? prev.filter((id) => id !== u.id)
+                                    : [...prev, u.id]
+                                )
+                              }
+                            />
+                            <span>{u.name}</span>
+                          </span>
+                          <Badge variant="outline" className="text-[10px]">
+                            {u.role}
+                          </Badge>
+                        </label>
+                      )
+                    })}
                 </div>
               </div>
             ) : null}
@@ -1121,7 +1209,7 @@ export default function TasksPage() {
           >
             <div className="space-y-1.5">
               <Label htmlFor="tsk-title">Task Title</Label>
-              <Input id="tsk-title" {...createForm.register("title")} />
+              <Input id="tsk-title" placeholder="Implement mobile navigation" {...createForm.register("title")} />
               {createForm.formState.errors.title ? (
                 <p className="text-xs text-destructive">
                   {createForm.formState.errors.title.message}
@@ -1130,24 +1218,37 @@ export default function TasksPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Project</Label>
-              <Controller
-                control={createForm.control}
-                name="projectId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MOCK_PROJECTS.slice(0, 15).map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.code} — {p.clientCompany}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
+              {projects.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border p-2 text-xs text-muted-foreground">
+                  <Link href="/projects" className="text-primary underline">
+                    Create a project first
+                  </Link>
+                </div>
+              ) : (
+                <Controller
+                  control={createForm.control}
+                  name="projectId"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.code} — {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              )}
+              {createForm.formState.errors.projectId ? (
+                <p className="text-xs text-destructive">
+                  {createForm.formState.errors.projectId.message}
+                </p>
+              ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -1179,14 +1280,12 @@ export default function TasksPage() {
                   render={({ field }) => (
                     <Select value={field.value} onValueChange={field.onChange}>
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Select assignee" />
                       </SelectTrigger>
                       <SelectContent>
-                        {MOCK_USERS.filter(
-                          (u) => u.role === "Designer/Developer"
-                        ).map((u) => (
+                        {users.map((u) => (
                           <SelectItem key={u.id} value={u.id}>
-                            {u.name}
+                            {u.name} ({u.role})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1221,7 +1320,7 @@ export default function TasksPage() {
                 {...createForm.register("description")}
               />
             </div>
-            <SheetFooter className="px-0">
+            <SheetFooter className="px-0 pt-2">
               <Button
                 type="button"
                 variant="outline"
@@ -1229,11 +1328,21 @@ export default function TasksPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Create Task</Button>
+              <Button type="submit" disabled={projects.length === 0}>
+                Create Task
+              </Button>
             </SheetFooter>
           </form>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title={`Delete Task "${deleteTarget?.title}" (${deleteTarget?.code})?`}
+        description="Are you sure you want to delete this task deliverable? All subtasks, QA history, and comments will be removed."
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

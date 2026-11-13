@@ -6,9 +6,9 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Plus } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { DataTable, DataTableColumnHeader } from "@/components/data-table"
-import { PageHeader } from "@/components/shared"
+import { ConfirmDeleteDialog, PageHeader } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,24 +21,38 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { MOCK_LEAVE_TYPES } from "@/mocks/hrm"
+import { useStore } from "@/lib/store"
 import type { LeaveType } from "@/types"
 
 const schema = z.object({
-  name: z.string().min(2),
-  code: z.string().min(2).max(5),
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  code: z.string().min(2, "Code must be at least 2 characters").max(5, "Code max 5 characters"),
   daysAllowedPerYear: z.number().min(1).max(120),
   carryForwardLimit: z.number().min(0).max(30),
-  description: z.string().min(4),
+  description: z.string().min(4, "Description must be at least 4 characters"),
 })
 
 export default function LeaveTypesPage() {
-  const [types, setTypes] = React.useState<LeaveType[]>(MOCK_LEAVE_TYPES)
+  const {
+    leaveTypes,
+    createLeaveType,
+    deleteLeaveType,
+    checkLeaveTypeDeletion,
+    isLoaded,
+  } = useStore()
+
   const [open, setOpen] = React.useState(false)
   const [paid, setPaid] = React.useState(true)
   const [requiresDoc, setRequiresDoc] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] = React.useState<{
+    id: string
+    name: string
+    warning?: string
+    blocked?: boolean
+  } | null>(null)
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -52,8 +66,7 @@ export default function LeaveTypesPage() {
   })
 
   function onSubmit(values: z.infer<typeof schema>) {
-    const created: LeaveType = {
-      id: `lt-new-${types.length + 1}`,
+    const created = createLeaveType({
       name: values.name,
       code: values.code.toUpperCase(),
       daysAllowedPerYear: values.daysAllowedPerYear,
@@ -62,11 +75,30 @@ export default function LeaveTypesPage() {
       requiresDocument: requiresDoc,
       color: "#2563EB",
       description: values.description,
-    }
-    setTypes((prev) => [created, ...prev])
+    })
     toast.success(`Added leave policy: ${created.name}`)
     form.reset()
     setOpen(false)
+  }
+
+  const promptDelete = React.useCallback(
+    (lt: LeaveType) => {
+      const check = checkLeaveTypeDeletion(lt.id)
+      setDeleteTarget({
+        id: lt.id,
+        name: lt.name,
+        warning: check.reason,
+        blocked: !check.allowed,
+      })
+    },
+    [checkLeaveTypeDeletion]
+  )
+
+  function handleConfirmDelete() {
+    if (!deleteTarget || deleteTarget.blocked) return
+    deleteLeaveType(deleteTarget.id)
+    toast.success(`Removed leave policy: ${deleteTarget.name}`)
+    setDeleteTarget(null)
   }
 
   const columns = React.useMemo<ColumnDef<LeaveType>[]>(
@@ -130,9 +162,37 @@ export default function LeaveTypesPage() {
           </span>
         ),
       },
+      {
+        id: "actions",
+        header: "",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => promptDelete(row.original)}
+              aria-label="Delete leave type"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
+      },
     ],
-    []
+    [promptDelete]
   )
+
+  if (!isLoaded) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-14 w-full" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -153,7 +213,7 @@ export default function LeaveTypesPage() {
 
       <DataTable
         columns={columns}
-        data={types}
+        data={leaveTypes}
         searchPlaceholder="Search leave types..."
         exportModule="Leave Types"
       />
@@ -171,10 +231,20 @@ export default function LeaveTypesPage() {
               <div className="col-span-2 space-y-1.5">
                 <Label htmlFor="lt-name">Policy Name</Label>
                 <Input id="lt-name" {...form.register("name")} />
+                {form.formState.errors.name ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.name.message}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="lt-code">Code</Label>
                 <Input id="lt-code" placeholder="BL" {...form.register("code")} />
+                {form.formState.errors.code ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.code.message}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -218,6 +288,11 @@ export default function LeaveTypesPage() {
                 rows={3}
                 {...form.register("description")}
               />
+              {form.formState.errors.description ? (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.description.message}
+                </p>
+              ) : null}
             </div>
             <SheetFooter className="px-0">
               <Button
@@ -232,6 +307,15 @@ export default function LeaveTypesPage() {
           </form>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open: boolean) => !open && setDeleteTarget(null)}
+        title={`Delete Policy "${deleteTarget?.name}"`}
+        description={deleteTarget?.warning || `Are you sure you want to delete ${deleteTarget?.name}?`}
+        warningMessage={deleteTarget?.blocked ? deleteTarget.warning : undefined}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

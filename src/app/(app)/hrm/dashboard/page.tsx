@@ -43,42 +43,32 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  MOCK_ATTENDANCE_RECORDS,
-  MOCK_LEAVE_REQUESTS,
-} from "@/mocks/hrm"
+import { useStore } from "@/lib/store"
 import type { LeaveRequest } from "@/types"
 
 const rejectSchema = z.object({
   remarks: z.string().min(4, "Provide rejection remarks for the employee"),
 })
 
-const ATTENDANCE_TREND = [
-  { day: "Nov 03", Present: 14, Late: 2, Leave: 1 },
-  { day: "Nov 04", Present: 15, Late: 1, Leave: 1 },
-  { day: "Nov 05", Present: 13, Late: 3, Leave: 1 },
-  { day: "Nov 06", Present: 15, Late: 1, Leave: 1 },
-  { day: "Nov 07", Present: 14, Late: 2, Leave: 1 },
-  { day: "Nov 10", Present: 14, Late: 2, Leave: 1 },
-  { day: "Nov 11", Present: 13, Late: 2, Leave: 2 },
-]
-
 export default function HrmDashboardPage() {
-  const [requests, setRequests] =
-    React.useState<LeaveRequest[]>(MOCK_LEAVE_REQUESTS)
-  const [rejectTarget, setRejectTarget] = React.useState<LeaveRequest | null>(
-    null
-  )
+  const { attendanceRecords, leaveRequests, users, reviewLeaveRequest } = useStore()
+  const [rejectTarget, setRejectTarget] = React.useState<LeaveRequest | null>(null)
 
   const form = useForm<z.infer<typeof rejectSchema>>({
     resolver: zodResolver(rejectSchema),
     defaultValues: { remarks: "" },
   })
 
-  const todayRecords = React.useMemo(
-    () => MOCK_ATTENDANCE_RECORDS.filter((r) => r.date === "2026-11-11"),
-    []
-  )
+  const todayIso = React.useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  const todayRecords = React.useMemo(() => {
+    const today = attendanceRecords.filter((r) => r.date === todayIso)
+    if (today.length > 0) return today
+    if (attendanceRecords.length === 0) return []
+    // If no records for today, use the most recent recorded date
+    const latestDate = attendanceRecords.reduce((max, r) => (r.date > max ? r.date : max), "")
+    return attendanceRecords.filter((r) => r.date === latestDate)
+  }, [attendanceRecords, todayIso])
 
   const presentToday = todayRecords.filter(
     (r) => r.status === "present" || r.status === "halfday"
@@ -89,8 +79,8 @@ export default function HrmDashboardPage() {
   ).length
 
   const pendingLeaves = React.useMemo(
-    () => requests.filter((r) => r.status === "pending"),
-    [requests]
+    () => leaveRequests.filter((r) => r.status === "pending"),
+    [leaveRequests]
   )
 
   const trackerData: TrackerBlock[] = React.useMemo(
@@ -112,36 +102,33 @@ export default function HrmDashboardPage() {
     [todayRecords]
   )
 
+  const trendData = React.useMemo(() => {
+    if (attendanceRecords.length === 0) return []
+    const datesMap = new Map<string, { day: string; Present: number; Late: number; Leave: number }>()
+
+    for (const r of attendanceRecords) {
+      const day = r.date.slice(5)
+      const existing = datesMap.get(r.date) ?? { day, Present: 0, Late: 0, Leave: 0 }
+      if (r.status === "present" || r.status === "halfday") existing.Present += 1
+      else if (r.status === "late") existing.Late += 1
+      else if (r.status === "leave") existing.Leave += 1
+      datesMap.set(r.date, existing)
+    }
+
+    return Array.from(datesMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-7)
+      .map(([, v]) => v)
+  }, [attendanceRecords])
+
   function handleApprove(req: LeaveRequest) {
-    setRequests((prev) =>
-      prev.map((item) =>
-        item.id === req.id
-          ? {
-              ...item,
-              status: "approved",
-              reviewedBy: "Nadia Kapoor",
-              reviewRemarks: "Approved via HR Overview",
-            }
-          : item
-      )
-    )
+    reviewLeaveRequest(req.id, "approved", "HR Manager", "Approved via HR Overview")
     toast.success(`Approved ${req.leaveTypeName} for ${req.userName}`)
   }
 
   function onRejectSubmit(values: z.infer<typeof rejectSchema>) {
     if (!rejectTarget) return
-    setRequests((prev) =>
-      prev.map((item) =>
-        item.id === rejectTarget.id
-          ? {
-              ...item,
-              status: "rejected",
-              reviewedBy: "Nadia Kapoor",
-              reviewRemarks: values.remarks,
-            }
-          : item
-      )
-    )
+    reviewLeaveRequest(rejectTarget.id, "rejected", "HR Manager", values.remarks)
     toast.error(`Rejected leave request for ${rejectTarget.userName}`)
     form.reset()
     setRejectTarget(null)
@@ -166,14 +153,14 @@ export default function HrmDashboardPage() {
         }
       />
 
-      {/* Tremor KPI Row */}
+      {/* KPI Row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           title="Present Today"
           value={presentToday}
           delta="+5.2%"
           deltaType="increase"
-          subtitle={`Out of ${todayRecords.length} active scheduled staff`}
+          subtitle={`Out of ${todayRecords.length || users.length} active scheduled staff`}
           icon={<UserCheck className="size-4" />}
         />
         <KpiCard
@@ -199,7 +186,7 @@ export default function HrmDashboardPage() {
           delta={`${pendingLeaves.length} open`}
           deltaType={pendingLeaves.length > 5 ? "moderateIncrease" : "unchanged"}
           isIncreasePositive={false}
-          subtitle="Awaiting HR Manager review"
+          subtitle="Awaiting HR review"
           icon={<CalendarClock className="size-4" />}
         />
       </div>
@@ -209,7 +196,7 @@ export default function HrmDashboardPage() {
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle>Today&apos;s Roster Pulse (Nov 11, 2026)</CardTitle>
+              <CardTitle>Workforce Roster Pulse</CardTitle>
               <CardDescription>
                 Hover each employee block for live check-in classification
               </CardDescription>
@@ -239,7 +226,13 @@ export default function HrmDashboardPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Tracker data={trackerData} />
+          {trackerData.length > 0 ? (
+            <Tracker data={trackerData} />
+          ) : (
+            <div className="flex h-12 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+              No daily attendance records logged yet. Check in on the Daily Attendance page.
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -253,12 +246,18 @@ export default function HrmDashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <AreaChart
-              data={ATTENDANCE_TREND}
-              index="day"
-              categories={["Present", "Late", "Leave"]}
-              colors={["emerald", "amber", "indigo"]}
-            />
+            {trendData.length > 0 ? (
+              <AreaChart
+                data={trendData}
+                index="day"
+                categories={["Present", "Late", "Leave"]}
+                colors={["emerald", "amber", "indigo"]}
+              />
+            ) : (
+              <div className="flex h-48 items-center justify-center text-xs text-muted-foreground">
+                No attendance trend data available yet.
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -298,43 +297,39 @@ export default function HrmDashboardPage() {
                             {req.department}
                           </div>
                         </TableCell>
-                        <TableCell className="text-xs">
-                          {req.leaveTypeName}
+                        <TableCell>
+                          <Badge variant="outline">{req.leaveTypeName}</Badge>
                         </TableCell>
-                        <TableCell className="text-xs tabular-nums">
-                          <div>
-                            {req.startDate} → {req.endDate}
-                          </div>
-                          <div className="text-muted-foreground">
-                            {req.days} day{req.days > 1 ? "s" : ""}
-                          </div>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {req.startDate} → {req.endDate} ({req.days}d)
                         </TableCell>
                         <TableCell>
                           <StatusBadge status={req.status} />
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-1">
                             <Button
                               type="button"
-                              size="xs"
+                              variant="ghost"
+                              size="icon-xs"
                               onClick={() => handleApprove(req)}
-                              className="gap-1 bg-emerald-600 text-white hover:bg-emerald-700"
+                              className="text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/40"
+                              title="Approve request"
                             >
-                              <Check className="size-3" />
-                              Approve
+                              <Check className="size-4" />
                             </Button>
                             <Button
                               type="button"
-                              size="xs"
-                              variant="destructive"
+                              variant="ghost"
+                              size="icon-xs"
                               onClick={() => {
-                                form.reset({ remarks: "" })
                                 setRejectTarget(req)
+                                form.reset({ remarks: "" })
                               }}
-                              className="gap-1"
+                              className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40"
+                              title="Reject with remarks"
                             >
-                              <X className="size-3" />
-                              Reject
+                              <X className="size-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -348,7 +343,7 @@ export default function HrmDashboardPage() {
         </Card>
       </div>
 
-      {/* Reject Leave Remarks Dialog */}
+      {/* Reject Modal */}
       <Dialog
         open={Boolean(rejectTarget)}
         onOpenChange={(open) => !open && setRejectTarget(null)}
@@ -357,8 +352,8 @@ export default function HrmDashboardPage() {
           <DialogHeader>
             <DialogTitle>Reject Leave Request</DialogTitle>
             <DialogDescription>
-              Provide remarks for {rejectTarget?.userName} (
-              {rejectTarget?.startDate} – {rejectTarget?.endDate}).
+              Provide clear remarks explaining why {rejectTarget?.userName}&apos;s{" "}
+              {rejectTarget?.leaveTypeName} cannot be approved at this time.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -366,11 +361,11 @@ export default function HrmDashboardPage() {
             className="space-y-4"
           >
             <div className="space-y-1.5">
-              <Label htmlFor="reject-remarks">HR Review Remarks</Label>
+              <Label htmlFor="remarks">Mandatory HR Remarks</Label>
               <Textarea
-                id="reject-remarks"
+                id="remarks"
                 rows={3}
-                placeholder="Explain coverage conflict or requested alternate dates..."
+                placeholder="e.g., Conflicting project milestone deadlines..."
                 {...form.register("remarks")}
               />
               {form.formState.errors.remarks ? (

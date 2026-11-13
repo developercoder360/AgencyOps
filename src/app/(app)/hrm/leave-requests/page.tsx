@@ -1,18 +1,19 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Check, Plus, X } from "lucide-react"
+import { Check, Plus, Trash2, X } from "lucide-react"
 import {
   DataTable,
   DataTableColumnHeader,
   type FacetedFilterConfig,
 } from "@/components/data-table"
-import { PageHeader, StatusBadge } from "@/components/shared"
+import { ConfirmDeleteDialog, PageHeader, StatusBadge } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -40,35 +41,42 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
-import { MOCK_LEAVE_REQUESTS, MOCK_LEAVE_TYPES } from "@/mocks/hrm"
-import { MOCK_USERS } from "@/mocks/users"
+import { useStore } from "@/lib/store"
 import type { LeaveRequest } from "@/types"
 
 const applySchema = z.object({
-  userId: z.string().min(1),
-  leaveTypeId: z.string().min(1),
-  startDate: z.string().min(8),
-  endDate: z.string().min(8),
+  userId: z.string().min(1, "Select an employee"),
+  leaveTypeId: z.string().min(1, "Select a leave type"),
+  startDate: z.string().min(8, "Enter start date"),
+  endDate: z.string().min(8, "Enter end date"),
   days: z.number().min(1).max(30),
   reason: z.string().min(4, "Provide a leave reason"),
 })
 
 export default function LeaveRequestsPage() {
-  const [requests, setRequests] =
-    React.useState<LeaveRequest[]>(MOCK_LEAVE_REQUESTS)
+  const {
+    leaveRequests,
+    leaveTypes,
+    users,
+    createLeaveRequest,
+    reviewLeaveRequest,
+    deleteLeaveRequest,
+    isLoaded,
+  } = useStore()
+
   const [applyOpen, setApplyOpen] = React.useState(false)
   const [selected, setSelected] = React.useState<LeaveRequest | null>(null)
-  const [rejectTarget, setRejectTarget] = React.useState<LeaveRequest | null>(
-    null
-  )
+  const [rejectTarget, setRejectTarget] = React.useState<LeaveRequest | null>(null)
+  const [deleteTarget, setDeleteTarget] = React.useState<LeaveRequest | null>(null)
   const [remarks, setRemarks] = React.useState("")
 
   const form = useForm<z.infer<typeof applySchema>>({
     resolver: zodResolver(applySchema),
     defaultValues: {
-      userId: MOCK_USERS[3].id,
-      leaveTypeId: MOCK_LEAVE_TYPES[0].id,
+      userId: "",
+      leaveTypeId: "",
       startDate: "2026-11-18",
       endDate: "2026-11-20",
       days: 3,
@@ -76,14 +84,26 @@ export default function LeaveRequestsPage() {
     },
   })
 
+  // Prepopulate default ids if available
+  React.useEffect(() => {
+    if (users.length > 0 && !form.getValues("userId")) {
+      form.setValue("userId", users[0].id)
+    }
+    if (leaveTypes.length > 0 && !form.getValues("leaveTypeId")) {
+      form.setValue("leaveTypeId", leaveTypes[0].id)
+    }
+  }, [users, leaveTypes, form])
+
   function onApply(values: z.infer<typeof applySchema>) {
-    const user =
-      MOCK_USERS.find((u) => u.id === values.userId) ?? MOCK_USERS[0]
-    const lt =
-      MOCK_LEAVE_TYPES.find((l) => l.id === values.leaveTypeId) ??
-      MOCK_LEAVE_TYPES[0]
-    const created: LeaveRequest = {
-      id: `lr-new-${requests.length + 1}`,
+    const user = users.find((u) => u.id === values.userId)
+    const lt = leaveTypes.find((l) => l.id === values.leaveTypeId)
+
+    if (!user || !lt) {
+      toast.error("Invalid user or leave type selection")
+      return
+    }
+
+    createLeaveRequest({
       userId: user.id,
       userName: user.name,
       department: user.department,
@@ -94,48 +114,56 @@ export default function LeaveRequestsPage() {
       days: values.days,
       reason: values.reason,
       status: "pending",
-      appliedAt: "2026-11-11",
-    }
-    setRequests((prev) => [created, ...prev])
+    })
+
     toast.success(`Submitted leave request for ${user.name}`)
-    form.reset()
+    form.reset({
+      userId: users[0]?.id || "",
+      leaveTypeId: leaveTypes[0]?.id || "",
+      startDate: "2026-11-18",
+      endDate: "2026-11-20",
+      days: 3,
+      reason: "",
+    })
     setApplyOpen(false)
   }
 
-  function approveRequest(req: LeaveRequest) {
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === req.id
-          ? {
-              ...r,
-              status: "approved",
-              reviewedBy: "Nadia Kapoor",
-              reviewRemarks: "Approved",
-            }
-          : r
-      )
-    )
-    toast.success(`Approved ${req.userName}'s leave`)
-  }
+  const approveRequest = React.useCallback(
+    (req: LeaveRequest) => {
+      reviewLeaveRequest(req.id, "approved", "Approved", "Nadia Kapoor")
+      toast.success(`Approved ${req.userName}'s leave`)
+    },
+    [reviewLeaveRequest]
+  )
+
+  const promptReject = React.useCallback((req: LeaveRequest) => {
+    setRemarks("")
+    setRejectTarget(req)
+  }, [])
+
+  const promptDelete = React.useCallback((req: LeaveRequest) => {
+    setDeleteTarget(req)
+  }, [])
 
   function confirmReject(e: React.FormEvent) {
     e.preventDefault()
     if (!rejectTarget) return
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === rejectTarget.id
-          ? {
-              ...r,
-              status: "rejected",
-              reviewedBy: "Nadia Kapoor",
-              reviewRemarks: remarks || "Rejected due to team bandwidth",
-            }
-          : r
-      )
+    reviewLeaveRequest(
+      rejectTarget.id,
+      "rejected",
+      remarks || "Rejected due to team bandwidth",
+      "Nadia Kapoor"
     )
     toast.error(`Rejected leave request for ${rejectTarget.userName}`)
     setRemarks("")
     setRejectTarget(null)
+  }
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    deleteLeaveRequest(deleteTarget.id)
+    toast.success("Leave request removed")
+    setDeleteTarget(null)
   }
 
   const columns = React.useMemo<ColumnDef<LeaveRequest>[]>(
@@ -188,35 +216,45 @@ export default function LeaveRequestsPage() {
         id: "actions",
         header: "",
         enableHiding: false,
-        cell: ({ row }) =>
-          row.original.status === "pending" ? (
-            <div className="flex gap-1">
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="outline"
-                onClick={() => approveRequest(row.original)}
-                aria-label="Approve leave"
-              >
-                <Check className="size-3.5 text-emerald-600" />
-              </Button>
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="outline"
-                onClick={() => {
-                  setRemarks("")
-                  setRejectTarget(row.original)
-                }}
-                aria-label="Reject leave"
-              >
-                <X className="size-3.5 text-rose-600" />
-              </Button>
-            </div>
-          ) : null,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            {row.original.status === "pending" ? (
+              <>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="outline"
+                  onClick={() => approveRequest(row.original)}
+                  aria-label="Approve leave"
+                >
+                  <Check className="size-3.5 text-emerald-600" />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="outline"
+                  onClick={() => promptReject(row.original)}
+                  aria-label="Reject leave"
+                >
+                  <X className="size-3.5 text-rose-600" />
+                </Button>
+              </>
+            ) : null}
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => promptDelete(row.original)}
+              aria-label="Delete request"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
       },
     ],
-    []
+    [approveRequest, promptReject, promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -233,21 +271,33 @@ export default function LeaveRequestsPage() {
       {
         columnId: "leaveTypeName",
         title: "Leave Type",
-        options: MOCK_LEAVE_TYPES.map((lt) => ({
+        options: leaveTypes.map((lt) => ({
           label: lt.name,
           value: lt.name,
         })),
       },
     ],
-    []
+    [leaveTypes]
   )
+
+  if (!isLoaded) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-14 w-full" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    )
+  }
+
+  const missingUsers = users.length === 0
+  const missingLeaveTypes = leaveTypes.length === 0
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Leave Requests"
         description="Submit, review, approve, or reject employee time-off applications."
-        badge={<Badge variant="secondary">{requests.length} requests</Badge>}
+        badge={<Badge variant="secondary">{leaveRequests.length} requests</Badge>}
         actions={
           <Button
             type="button"
@@ -262,7 +312,7 @@ export default function LeaveRequestsPage() {
 
       <DataTable
         columns={columns}
-        data={requests}
+        data={leaveRequests}
         searchPlaceholder="Search employee or reason..."
         facetedFilters={facetedFilters}
         dateField="startDate"
@@ -323,91 +373,111 @@ export default function LeaveRequestsPage() {
               Submit a new PTO or medical leave request.
             </SheetDescription>
           </SheetHeader>
-          <form onSubmit={form.handleSubmit(onApply)} className="space-y-4 p-4">
-            <div className="space-y-1.5">
-              <Label>Employee</Label>
-              <Controller
-                control={form.control}
-                name="userId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MOCK_USERS.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+          {missingUsers || missingLeaveTypes ? (
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Before applying for leave, you must have at least one employee and one leave policy configured.
+              </p>
+              <div className="flex flex-col gap-2 pt-2">
+                {missingUsers && (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href="/users">Add Staff Member First</Link>
+                  </Button>
                 )}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Leave Type</Label>
-              <Controller
-                control={form.control}
-                name="leaveTypeId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MOCK_LEAVE_TYPES.map((lt) => (
-                        <SelectItem key={lt.id} value={lt.id}>
-                          {lt.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                {missingLeaveTypes && (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href="/hrm/leave-types">Add Leave Policy First</Link>
+                  </Button>
                 )}
-              />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+          ) : (
+            <form onSubmit={form.handleSubmit(onApply)} className="space-y-4 p-4">
               <div className="space-y-1.5">
-                <Label htmlFor="lr-start">Start Date</Label>
-                <Input
-                  id="lr-start"
-                  type="date"
-                  {...form.register("startDate")}
+                <Label>Employee</Label>
+                <Controller
+                  control={form.control}
+                  name="userId"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select staff..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.name} ({u.department})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="lr-end">End Date</Label>
-                <Input id="lr-end" type="date" {...form.register("endDate")} />
+                <Label>Leave Type</Label>
+                <Controller
+                  control={form.control}
+                  name="leaveTypeId"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select leave policy..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {leaveTypes.map((lt) => (
+                          <SelectItem key={lt.id} value={lt.id}>
+                            {lt.name} ({lt.daysAllowedPerYear}d max)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lr-days">Total Days</Label>
-              <Input
-                id="lr-days"
-                type="number"
-                {...form.register("days", { valueAsNumber: true })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lr-reason">Reason</Label>
-              <Textarea id="lr-reason" rows={3} {...form.register("reason")} />
-              {form.formState.errors.reason ? (
-                <p className="text-xs text-destructive">
-                  {form.formState.errors.reason.message}
-                </p>
-              ) : null}
-            </div>
-            <SheetFooter className="px-0">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setApplyOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">Submit Request</Button>
-            </SheetFooter>
-          </form>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="lr-start">Start Date</Label>
+                  <Input
+                    id="lr-start"
+                    type="date"
+                    {...form.register("startDate")}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lr-end">End Date</Label>
+                  <Input id="lr-end" type="date" {...form.register("endDate")} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lr-days">Total Days</Label>
+                <Input
+                  id="lr-days"
+                  type="number"
+                  {...form.register("days", { valueAsNumber: true })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lr-reason">Reason</Label>
+                <Textarea id="lr-reason" rows={3} {...form.register("reason")} />
+                {form.formState.errors.reason ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.reason.message}
+                  </p>
+                ) : null}
+              </div>
+              <SheetFooter className="px-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setApplyOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">Submit Request</Button>
+              </SheetFooter>
+            </form>
+          )}
         </SheetContent>
       </Sheet>
 
@@ -446,6 +516,14 @@ export default function LeaveRequestsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open: boolean) => !open && setDeleteTarget(null)}
+        title="Delete Leave Request"
+        description={`Are you sure you want to remove the leave request for ${deleteTarget?.userName}?`}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

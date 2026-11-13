@@ -6,9 +6,9 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Clock, Plus } from "lucide-react"
+import { Clock, Plus, Trash2 } from "lucide-react"
 import { DataTable, DataTableColumnHeader } from "@/components/data-table"
-import { PageHeader } from "@/components/shared"
+import { ConfirmDeleteDialog, PageHeader } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,23 +21,37 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import { MOCK_SHIFTS } from "@/mocks/hrm"
+import { useStore } from "@/lib/store"
 import type { ShiftSchedule } from "@/types"
 
 const schema = z.object({
-  name: z.string().min(3),
-  code: z.string().min(2).max(10),
-  startTime: z.string().min(4),
-  endTime: z.string().min(4),
+  name: z.string().min(3, "Name must be at least 3 characters"),
+  code: z.string().min(2, "Code must be at least 2 characters").max(10),
+  startTime: z.string().min(4, "Enter start time"),
+  endTime: z.string().min(4, "Enter end time"),
   graceMinutes: z.number().min(0).max(60),
-  timezone: z.string().min(3),
+  timezone: z.string().min(3, "Enter timezone"),
 })
 
 export default function ShiftSchedulingPage() {
-  const [shifts, setShifts] = React.useState<ShiftSchedule[]>(MOCK_SHIFTS)
+  const {
+    shiftSchedules,
+    createShiftSchedule,
+    deleteShiftSchedule,
+    checkShiftDeletion,
+    isLoaded,
+  } = useStore()
+
   const [open, setOpen] = React.useState(false)
   const [isNight, setIsNight] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] = React.useState<{
+    id: string
+    name: string
+    warning?: string
+    blocked?: boolean
+  } | null>(null)
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -52,8 +66,7 @@ export default function ShiftSchedulingPage() {
   })
 
   function onSubmit(values: z.infer<typeof schema>) {
-    const created: ShiftSchedule = {
-      id: `sh-new-${shifts.length + 1}`,
+    const created = createShiftSchedule({
       name: values.name,
       code: values.code.toUpperCase(),
       startTime: values.startTime,
@@ -63,11 +76,30 @@ export default function ShiftSchedulingPage() {
       workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
       assignedCount: 0,
       isNightShift: isNight,
-    }
-    setShifts((prev) => [created, ...prev])
+    })
     toast.success(`Created shift ${created.name}`)
     form.reset()
     setOpen(false)
+  }
+
+  const promptDelete = React.useCallback(
+    (sh: ShiftSchedule) => {
+      const check = checkShiftDeletion(sh.id)
+      setDeleteTarget({
+        id: sh.id,
+        name: sh.name,
+        warning: check.reason,
+        blocked: !check.allowed,
+      })
+    },
+    [checkShiftDeletion]
+  )
+
+  function handleConfirmDelete() {
+    if (!deleteTarget || deleteTarget.blocked) return
+    deleteShiftSchedule(deleteTarget.id)
+    toast.success(`Removed shift ${deleteTarget.name}`)
+    setDeleteTarget(null)
   }
 
   const columns = React.useMemo<ColumnDef<ShiftSchedule>[]>(
@@ -134,15 +166,44 @@ export default function ShiftSchedulingPage() {
           </Badge>
         ),
       },
+      {
+        id: "actions",
+        header: "",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => promptDelete(row.original)}
+              aria-label="Delete shift"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
+      },
     ],
-    []
+    [promptDelete]
   )
+
+  if (!isLoaded) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-14 w-full" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Shift Scheduling"
         description="Manage global office shifts, grace windows, and regional timezone alignments."
+        badge={<Badge variant="secondary">{shiftSchedules.length} shifts</Badge>}
         actions={
           <Button
             type="button"
@@ -157,7 +218,7 @@ export default function ShiftSchedulingPage() {
 
       <DataTable
         columns={columns}
-        data={shifts}
+        data={shiftSchedules}
         searchPlaceholder="Search shifts or timezones..."
         exportModule="Shift Schedules"
       />
@@ -175,10 +236,20 @@ export default function ShiftSchedulingPage() {
               <div className="col-span-2 space-y-1.5">
                 <Label htmlFor="sh-name">Shift Name</Label>
                 <Input id="sh-name" {...form.register("name")} />
+                {form.formState.errors.name ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.name.message}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="sh-code">Code</Label>
                 <Input id="sh-code" {...form.register("code")} />
+                {form.formState.errors.code ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.code.message}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -207,6 +278,11 @@ export default function ShiftSchedulingPage() {
               <div className="space-y-1.5">
                 <Label htmlFor="sh-tz">Timezone</Label>
                 <Input id="sh-tz" {...form.register("timezone")} />
+                {form.formState.errors.timezone ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.timezone.message}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border p-3">
@@ -230,6 +306,15 @@ export default function ShiftSchedulingPage() {
           </form>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open: boolean) => !open && setDeleteTarget(null)}
+        title={`Delete Shift "${deleteTarget?.name}"`}
+        description={deleteTarget?.warning || `Are you sure you want to delete ${deleteTarget?.name}?`}
+        warningMessage={deleteTarget?.blocked ? deleteTarget.warning : undefined}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

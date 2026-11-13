@@ -14,6 +14,7 @@ import {
   LayoutGrid,
   List,
   Plus,
+  Trash2,
 } from "lucide-react"
 import {
   DataTable,
@@ -22,6 +23,7 @@ import {
 } from "@/components/data-table"
 import {
   AvatarGroup,
+  ConfirmDeleteDialog,
   PageHeader,
   StatusBadge,
 } from "@/components/shared"
@@ -55,10 +57,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { formatUsdEquivalent } from "@/lib/currency"
-import { MOCK_BRANDS } from "@/mocks/brands"
-import { MOCK_PROJECTS } from "@/mocks/projects"
-import { REFERENCE_DATE_ISO } from "@/mocks/seed"
-import { MOCK_USERS } from "@/mocks/users"
+import { useStore } from "@/lib/store"
 import type { Project, ProjectStatus } from "@/types"
 import { cn } from "cn"
 
@@ -82,7 +81,7 @@ const projectSchema = z.object({
   name: z.string().min(3, "Project name is required"),
   clientName: z.string().min(2, "Client name is required"),
   clientCompany: z.string().min(2, "Company is required"),
-  brandId: z.string().min(1),
+  brandId: z.string().min(1, "Select a brand"),
   category: z.enum([
     "Web Design",
     "Logo & Branding",
@@ -100,20 +99,50 @@ const projectSchema = z.object({
 type ProjectFormValues = z.infer<typeof projectSchema>
 
 function isDeadlineOverdue(project: Project): boolean {
+  const today = new Date().toISOString().slice(0, 10)
   return (
     project.status === "Overdue" ||
-    (project.status !== "Complete" && project.deadline < REFERENCE_DATE_ISO)
+    (project.status !== "Complete" && project.deadline < today)
   )
 }
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = React.useState<Project[]>(MOCK_PROJECTS)
+  const {
+    projects,
+    brands,
+    users,
+    createProject,
+    deleteProject,
+    checkProjectDeletion,
+  } = useStore()
+
   const [viewMode, setViewMode] = React.useState<"list" | "card">("list")
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
-  const [selectedProject, setSelectedProject] = React.useState<Project | null>(
-    null
-  )
   const [createOpen, setCreateOpen] = React.useState(false)
+
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = React.useState<Project | null>(null)
+  const [deleteWarning, setDeleteWarning] = React.useState<string | undefined>()
+
+  const promptDelete = React.useCallback(
+    (project: Project) => {
+      const check = checkProjectDeletion(project.id)
+      setDeleteWarning(check.warningMessage)
+      setDeleteTarget(project)
+    },
+    [checkProjectDeletion]
+  )
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    const res = deleteProject(deleteTarget.id)
+    if (!res.allowed) {
+      toast.error(res.reason || "Failed to delete project.")
+    } else {
+      toast.success(`Removed project ${deleteTarget.code}`)
+    }
+    setDeleteTarget(null)
+  }
 
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectSchema),
@@ -121,7 +150,7 @@ export default function ProjectsPage() {
       name: "",
       clientName: "",
       clientCompany: "",
-      brandId: MOCK_BRANDS[0].id,
+      brandId: brands[0]?.id ?? "",
       category: "Web Design",
       priority: "High",
       budget: 8500,
@@ -140,35 +169,35 @@ export default function ProjectsPage() {
   )
 
   function onCreateProject(values: ProjectFormValues) {
-    const brand =
-      MOCK_BRANDS.find((b) => b.id === values.brandId) ?? MOCK_BRANDS[0]
-    const code = `PRJ-${350 + projects.length}`
-    const created: Project = {
-      id: `prj-new-${projects.length + 1}`,
+    const brand = brands.find((b) => b.id === values.brandId) ?? brands[0]
+    const brandName = brand ? brand.name : "Primary Brand"
+    const today = new Date().toISOString().slice(0, 10)
+    const code = `PRJ-${String(projects.length + 351).padStart(4, "0")}`
+
+    const created = createProject({
       code,
       name: values.name,
       clientName: values.clientName,
       clientCompany: values.clientCompany,
-      brandId: brand.id,
-      brandName: brand.name,
+      brandId: values.brandId,
+      brandName,
       category: values.category,
       status: "Open",
       priority: values.priority,
       budget: values.budget,
       currency: values.currency,
-      progress: 10,
-      startDate: REFERENCE_DATE_ISO,
+      progress: 0,
+      startDate: today,
       deadline: values.deadline,
-      managerId: "usr-3",
-      memberIds: ["usr-4", "usr-7", "usr-5"],
+      managerId: users[0]?.id ?? "usr-admin",
+      memberIds: users.slice(0, 3).map((u) => u.id),
       description:
         values.description ||
         `${values.category} delivery for ${values.clientCompany}.`,
       files: [],
       comments: [],
-    }
-    setProjects((prev) => [created, ...prev])
-    toast.success(`Created project ${code}`)
+    })
+    toast.success(`Created project ${created.code}`)
     form.reset()
     setCreateOpen(false)
   }
@@ -227,10 +256,14 @@ export default function ProjectsPage() {
         id: "members",
         header: "Members",
         cell: ({ row }) => {
-          const team = MOCK_USERS.filter((u) =>
+          const team = users.filter((u) =>
             row.original.memberIds.includes(u.id)
           )
-          return <AvatarGroup people={team} max={3} />
+          return team.length > 0 ? (
+            <AvatarGroup people={team} max={3} />
+          ) : (
+            <span className="text-xs text-muted-foreground">Unassigned</span>
+          )
         },
       },
       {
@@ -279,16 +312,28 @@ export default function ProjectsPage() {
         header: "",
         enableHiding: false,
         cell: ({ row }) => (
-          <Button asChild variant="ghost" size="xs" className="gap-1">
-            <Link href={`/projects/${row.original.id}`}>
-              Open
-              <ExternalLink className="size-3" />
-            </Link>
-          </Button>
+          <div className="flex items-center justify-end gap-1">
+            <Button asChild variant="ghost" size="xs" className="gap-1">
+              <Link href={`/projects/${row.original.id}`}>
+                Open
+                <ExternalLink className="size-3" />
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => promptDelete(row.original)}
+              title="Delete project"
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
         ),
       },
     ],
-    []
+    [users, promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -301,40 +346,38 @@ export default function ProjectsPage() {
       {
         columnId: "brandName",
         title: "Brand",
-        options: MOCK_BRANDS.map((b) => ({ label: b.name, value: b.name })),
+        options: brands.map((b) => ({ label: b.name, value: b.name })),
       },
     ],
-    []
+    [brands]
   )
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Projects"
-        description="Manage agency delivery timelines, team allocations, and client-facing milestones."
-        badge={<Badge variant="secondary">{projects.length} projects</Badge>}
+        title="Delivery Projects"
+        description="Client creative and technical deliverable workspaces with real-time tasks, subtasks, files, and chats."
+        badge={<Badge variant="secondary">{projects.length} active</Badge>}
         actions={
-          <>
-            <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-border p-0.5">
               <Button
                 type="button"
-                size="xs"
-                variant={viewMode === "list" ? "default" : "ghost"}
+                variant={viewMode === "list" ? "secondary" : "ghost"}
+                size="icon-xs"
                 onClick={() => setViewMode("list")}
-                className="gap-1"
+                aria-label="List view"
               >
-                <List className="size-3.5" />
-                List
+                <List className="size-4" />
               </Button>
               <Button
                 type="button"
-                size="xs"
-                variant={viewMode === "card" ? "default" : "ghost"}
+                variant={viewMode === "card" ? "secondary" : "ghost"}
+                size="icon-xs"
                 onClick={() => setViewMode("card")}
-                className="gap-1"
+                aria-label="Card view"
               >
-                <LayoutGrid className="size-3.5" />
-                Cards
+                <LayoutGrid className="size-4" />
               </Button>
             </div>
             <Button
@@ -345,7 +388,7 @@ export default function ProjectsPage() {
               <Plus className="size-4" />
               New Project
             </Button>
-          </>
+          </div>
         }
       />
 
@@ -353,15 +396,15 @@ export default function ProjectsPage() {
         <DataTable
           columns={columns}
           data={projects}
-          searchPlaceholder="Search projects..."
+          searchPlaceholder="Search projects by title, client, category..."
           facetedFilters={facetedFilters}
           dateField="deadline"
           exportModule="Projects"
-          onRowClick={setSelectedProject}
         />
       ) : (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Card View Status Filter Tabs */}
+          <div className="flex flex-wrap items-center gap-1.5">
             <Button
               type="button"
               size="xs"
@@ -370,181 +413,122 @@ export default function ProjectsPage() {
             >
               All ({projects.length})
             </Button>
-            {PROJECT_STATUSES.map((s) => (
-              <Button
-                key={s}
-                type="button"
-                size="xs"
-                variant={statusFilter === s ? "default" : "outline"}
-                onClick={() => setStatusFilter(s)}
-              >
-                {s} ({projects.filter((p) => p.status === s).length})
-              </Button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {filteredForCards.map((project) => {
-              const team = MOCK_USERS.filter((u) =>
-                project.memberIds.includes(u.id)
-              )
-              const overdue = isDeadlineOverdue(project)
+            {PROJECT_STATUSES.map((st) => {
+              const count = projects.filter((p) => p.status === st).length
               return (
-                <Card
-                  key={project.id}
-                  className="flex flex-col justify-between transition-shadow hover:shadow-md"
+                <Button
+                  key={st}
+                  type="button"
+                  size="xs"
+                  variant={statusFilter === st ? "default" : "outline"}
+                  onClick={() => setStatusFilter(st)}
                 >
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-xs font-semibold text-primary">
-                        {project.code}
-                      </span>
-                      <StatusBadge status={project.status} />
-                    </div>
-                    <CardTitle className="mt-1 line-clamp-1 text-base">
-                      <Link
-                        href={`/projects/${project.id}`}
-                        className="hover:text-primary hover:underline"
-                      >
-                        {project.name}
-                      </Link>
-                    </CardTitle>
-                    <CardDescription>
-                      {project.brandName} • {project.category}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <ProgressBar
-                      value={project.progress}
-                      label={`${project.progress}%`}
-                      color={
-                        project.status === "Complete"
-                          ? "emerald"
-                          : overdue
-                            ? "rose"
-                            : "blue"
-                      }
-                    />
-                    <div className="flex items-center justify-between text-xs">
-                      <AvatarGroup people={team} max={3} />
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 tabular-nums",
-                          overdue
-                            ? "font-semibold text-rose-600 dark:text-rose-400"
-                            : "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarDays className="size-3.5" />
-                        {project.deadline}
-                      </span>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="justify-between py-2.5 text-xs">
-                    <span className="font-medium tabular-nums">
-                      {formatUsdEquivalent(project.budget, project.currency)}
-                    </span>
-                    <Button asChild variant="ghost" size="xs" className="gap-1">
-                      <Link href={`/projects/${project.id}`}>
-                        Open Workspace
-                        <ExternalLink className="size-3" />
-                      </Link>
-                    </Button>
-                  </CardFooter>
-                </Card>
+                  {st} ({count})
+                </Button>
               )
             })}
           </div>
+
+          {filteredForCards.length === 0 ? (
+            <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
+              No projects found. Click &quot;New Project&quot; to begin delivery.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredForCards.map((prj) => {
+                const assignedUsers = users.filter((u) =>
+                  prj.memberIds.includes(u.id)
+                )
+                const overdue = isDeadlineOverdue(prj)
+                return (
+                  <Card
+                    key={prj.id}
+                    className="flex flex-col justify-between transition-colors hover:border-primary/50"
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <Badge variant="outline" className="font-mono text-[11px]">
+                            {prj.code}
+                          </Badge>
+                          <CardTitle className="mt-1.5 line-clamp-1 text-base">
+                            <Link
+                              href={`/projects/${prj.id}`}
+                              className="hover:text-primary hover:underline"
+                            >
+                              {prj.name}
+                            </Link>
+                          </CardTitle>
+                          <CardDescription className="line-clamp-1">
+                            {prj.clientCompany} • {prj.category}
+                          </CardDescription>
+                        </div>
+                        <StatusBadge status={prj.status} />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3 pb-3 text-xs">
+                      <div>
+                        <div className="mb-1 flex justify-between text-muted-foreground">
+                          <span>Progress</span>
+                          <span className="font-medium text-foreground">
+                            {prj.progress}%
+                          </span>
+                        </div>
+                        <ProgressBar
+                          value={prj.progress}
+                          color={
+                            prj.status === "Complete"
+                              ? "emerald"
+                              : prj.status === "Overdue"
+                                ? "rose"
+                                : "blue"
+                          }
+                        />
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="font-semibold tabular-nums text-foreground">
+                          {formatUsdEquivalent(prj.budget, prj.currency)}
+                        </span>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 font-mono tabular-nums",
+                            overdue
+                              ? "font-semibold text-rose-600 dark:text-rose-400"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarDays className="size-3.5" />
+                          {prj.deadline}
+                        </span>
+                      </div>
+                    </CardContent>
+                    <CardFooter className="flex items-center justify-between border-t border-border pt-3">
+                      <AvatarGroup people={assignedUsers} max={3} />
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => promptDelete(prj)}
+                          className="text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                        <Button asChild variant="outline" size="xs">
+                          <Link href={`/projects/${prj.id}`}>
+                            Details
+                            <ExternalLink className="ml-1 size-3" />
+                          </Link>
+                        </Button>
+                      </div>
+                    </CardFooter>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
-
-      {/* Quick Preview Sheet */}
-      <Sheet
-        open={Boolean(selectedProject)}
-        onOpenChange={(open) => !open && setSelectedProject(null)}
-      >
-        <SheetContent side="right" className="overflow-y-auto sm:max-w-lg">
-          {selectedProject ? (
-            <>
-              <SheetHeader className="border-b border-border pb-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className="font-mono">
-                    {selectedProject.code}
-                  </Badge>
-                  <StatusBadge status={selectedProject.status} />
-                  <StatusBadge status={selectedProject.priority} showDot={false} />
-                </div>
-                <SheetTitle className="mt-1">{selectedProject.name}</SheetTitle>
-                <SheetDescription>
-                  {selectedProject.clientName} ({selectedProject.clientCompany})
-                </SheetDescription>
-              </SheetHeader>
-              <div className="space-y-4 p-4 text-sm">
-                <p className="text-muted-foreground">
-                  {selectedProject.description}
-                </p>
-                <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3 text-xs">
-                  <div>
-                    <div className="text-muted-foreground">Brand</div>
-                    <div className="font-medium">
-                      {selectedProject.brandName}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Budget</div>
-                    <div className="font-semibold tabular-nums">
-                      {formatUsdEquivalent(
-                        selectedProject.budget,
-                        selectedProject.currency
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Start Date</div>
-                    <div className="tabular-nums">
-                      {selectedProject.startDate}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Deadline</div>
-                    <div
-                      className={cn(
-                        "tabular-nums",
-                        isDeadlineOverdue(selectedProject) &&
-                          "font-semibold text-rose-600 dark:text-rose-400"
-                      )}
-                    >
-                      {selectedProject.deadline}
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <div className="text-xs font-medium text-muted-foreground">
-                    Overall Completion
-                  </div>
-                  <ProgressBar
-                    value={selectedProject.progress}
-                    label={`${selectedProject.progress}%`}
-                    color={
-                      selectedProject.status === "Complete"
-                        ? "emerald"
-                        : "blue"
-                    }
-                  />
-                </div>
-              </div>
-              <SheetFooter className="border-t border-border">
-                <Button asChild className="w-full gap-1.5">
-                  <Link href={`/projects/${selectedProject.id}`}>
-                    Open Project Workspace
-                    <ExternalLink className="size-4" />
-                  </Link>
-                </Button>
-              </SheetFooter>
-            </>
-          ) : null}
-        </SheetContent>
-      </Sheet>
 
       {/* Create Project Sheet */}
       <Sheet open={createOpen} onOpenChange={setCreateOpen}>
@@ -561,7 +545,7 @@ export default function ProjectsPage() {
           >
             <div className="space-y-1.5">
               <Label htmlFor="prj-name">Project Title</Label>
-              <Input id="prj-name" {...form.register("name")} />
+              <Input id="prj-name" placeholder="Brand Replatforming" {...form.register("name")} />
               {form.formState.errors.name ? (
                 <p className="text-xs text-destructive">
                   {form.formState.errors.name.message}
@@ -571,34 +555,42 @@ export default function ProjectsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="prj-client">Client Name</Label>
-                <Input id="prj-client" {...form.register("clientName")} />
+                <Input id="prj-client" placeholder="John Smith" {...form.register("clientName")} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="prj-company">Company</Label>
-                <Input id="prj-company" {...form.register("clientCompany")} />
+                <Input id="prj-company" placeholder="Acme Inc" {...form.register("clientCompany")} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Brand</Label>
-                <Controller
-                  control={form.control}
-                  name="brandId"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MOCK_BRANDS.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
+                {brands.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-border p-2 text-xs text-muted-foreground">
+                    <Link href="/brands" className="text-primary underline">
+                      Add a brand first
+                    </Link>
+                  </div>
+                ) : (
+                  <Controller
+                    control={form.control}
+                    name="brandId"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {brands.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>Category</Label>
@@ -680,7 +672,7 @@ export default function ProjectsPage() {
               <Label htmlFor="prj-desc">Scope Description</Label>
               <Textarea id="prj-desc" rows={3} {...form.register("description")} />
             </div>
-            <SheetFooter className="px-0">
+            <SheetFooter className="px-0 pt-2">
               <Button
                 type="button"
                 variant="outline"
@@ -688,11 +680,22 @@ export default function ProjectsPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Create Project</Button>
+              <Button type="submit" disabled={brands.length === 0}>
+                Create Project
+              </Button>
             </SheetFooter>
           </form>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title={`Delete Project "${deleteTarget?.name}" (${deleteTarget?.code})?`}
+        description="Are you sure you want to delete this project workspace?"
+        warningMessage={deleteWarning}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }
