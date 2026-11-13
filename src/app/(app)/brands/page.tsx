@@ -7,9 +7,9 @@ import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Globe, Plus, Upload } from "lucide-react"
+import { Edit3, Globe, Plus, Trash2, Upload } from "lucide-react"
 import { DataTable, DataTableColumnHeader } from "@/components/data-table"
-import { PageHeader, StatusBadge } from "@/components/shared"
+import { ConfirmDeleteDialog, PageHeader, StatusBadge } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,23 +23,28 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { formatCurrency } from "@/lib/currency"
-import { MOCK_BRANDS } from "@/mocks/brands"
+import { useStore } from "@/lib/store"
 import type { Brand } from "@/types"
 
 const brandSchema = z.object({
-  name: z.string().min(2),
-  domain: z.string().min(4),
-  tagline: z.string().min(4),
-  email: z.string().email(),
-  phone: z.string().min(6),
+  name: z.string().min(2, "Brand name must be at least 2 characters"),
+  domain: z.string().min(4, "Domain required"),
+  tagline: z.string().min(4, "Tagline required"),
+  email: z.string().email("Valid email required"),
+  phone: z.string().min(6, "Phone number required"),
   primaryColor: z.string().min(4),
 })
 
 export default function BrandsPage() {
-  const [brands, setBrands] = React.useState<Brand[]>(MOCK_BRANDS)
+  const { brands, createBrand, updateBrand, deleteBrand, checkBrandDeletion } = useStore()
+
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Brand | null>(null)
   const [logoPreview, setLogoPreview] = React.useState<string | null>(null)
+
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = React.useState<Brand | null>(null)
+  const [deleteWarning, setDeleteWarning] = React.useState<string | undefined>()
 
   const form = useForm<z.infer<typeof brandSchema>>({
     resolver: zodResolver(brandSchema),
@@ -71,18 +76,48 @@ export default function BrandsPage() {
     setOpen(true)
   }
 
-  function openEdit(brand: Brand) {
-    setEditing(brand)
-    setLogoPreview(brand.logoUrl ?? null)
-    form.reset({
-      name: brand.name,
-      domain: brand.domain,
-      tagline: brand.tagline,
-      email: brand.email,
-      phone: brand.phone,
-      primaryColor: brand.primaryColor,
-    })
-    setOpen(true)
+  const openEdit = React.useCallback(
+    (brand: Brand) => {
+      setEditing(brand)
+      setLogoPreview(brand.logoUrl ?? null)
+      form.reset({
+        name: brand.name,
+        domain: brand.domain,
+        tagline: brand.tagline,
+        email: brand.email,
+        phone: brand.phone,
+        primaryColor: brand.primaryColor,
+      })
+      setOpen(true)
+    },
+    [form]
+  )
+
+  const promptDelete = React.useCallback(
+    (brand: Brand) => {
+      const check = checkBrandDeletion(brand.id)
+      if (!check.allowed) {
+        toast.error(check.reason || "Cannot delete this brand because other records depend on it.")
+        return
+      }
+      setDeleteWarning(undefined)
+      setDeleteTarget(brand)
+    },
+    [checkBrandDeletion]
+  )
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    const res = deleteBrand(deleteTarget.id)
+    if (!res.allowed) {
+      toast.error(res.reason || "Failed to delete brand.")
+    } else {
+      toast.success(`Removed brand ${deleteTarget.name}`)
+      if (editing?.id === deleteTarget.id) {
+        setOpen(false)
+      }
+    }
+    setDeleteTarget(null)
   }
 
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -107,22 +142,14 @@ export default function BrandsPage() {
       .slice(0, 2)
 
     if (editing) {
-      setBrands((prev) =>
-        prev.map((b) =>
-          b.id === editing.id
-            ? {
-                ...b,
-                ...values,
-                logoText: initials || b.logoText,
-                logoUrl: logoPreview ?? undefined,
-              }
-            : b
-        )
-      )
+      updateBrand(editing.id, {
+        ...values,
+        logoText: initials || editing.logoText,
+        logoUrl: logoPreview ?? undefined,
+      })
       toast.success(`Updated brand ${values.name}`)
     } else {
-      const created: Brand = {
-        id: `brd-new-${brands.length + 1}`,
+      const created = createBrand({
         name: values.name,
         slug: values.name.toLowerCase().replace(/\s+/g, "-"),
         domain: values.domain,
@@ -135,9 +162,7 @@ export default function BrandsPage() {
         activeLeads: 0,
         monthlyRevenueUsd: 0,
         status: "Active",
-        createdAt: "2026-11-11",
-      }
-      setBrands((prev) => [created, ...prev])
+      })
       toast.success(`Added agency brand ${created.name}`)
     }
     setOpen(false)
@@ -213,8 +238,38 @@ export default function BrandsPage() {
         header: "Status",
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
       },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => (
+          <div
+            className="flex items-center justify-end gap-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => openEdit(row.original)}
+              aria-label={`Edit ${row.original.name}`}
+            >
+              <Edit3 className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => promptDelete(row.original)}
+              aria-label={`Delete ${row.original.name}`}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
+      },
     ],
-    []
+    [openEdit, promptDelete]
   )
 
   return (
@@ -271,85 +326,150 @@ export default function BrandsPage() {
                     .map((w) => w[0])
                     .join("")
                     .toUpperCase()
-                    .slice(0, 2)}
+                    .slice(0, 2) || "BR"}
                 </div>
               )}
               <div className="space-y-1.5">
-                <Label htmlFor="brand-logo-upload" className="cursor-pointer">
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted">
+                <Label htmlFor="brand-logo-file" className="cursor-pointer">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted">
                     <Upload className="size-3.5 text-primary" />
-                    Upload Logo Preview
+                    Upload Logo Asset
                   </span>
                 </Label>
                 <input
-                  id="brand-logo-upload"
+                  id="brand-logo-file"
                   type="file"
                   accept="image/*"
                   className="sr-only"
                   onChange={handleLogoChange}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  PNG, SVG, or JPG • Instant client-side preview
+                  Accepts PNG, JPG, or SVG. Stored in browser.
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="brd-name">Brand Name</Label>
-                <Input id="brd-name" {...form.register("name")} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="brd-color">Accent Color</Label>
-                <Input
-                  id="brd-color"
-                  type="color"
-                  className="h-9 cursor-pointer p-1"
-                  {...form.register("primaryColor")}
-                />
-              </div>
-            </div>
             <div className="space-y-1.5">
-              <Label htmlFor="brd-domain">Website Domain</Label>
+              <Label htmlFor="br-name">Brand Name</Label>
               <Input
-                id="brd-domain"
-                placeholder="studio.example.com"
-                {...form.register("domain")}
+                id="br-name"
+                placeholder="e.g. Apex Studio"
+                {...form.register("name")}
               />
+              {form.formState.errors.name && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.name.message}
+                </p>
+              )}
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="brd-tag">Tagline</Label>
-              <Input id="brd-tag" {...form.register("tagline")} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="brd-email">Support Email</Label>
+                <Label htmlFor="br-domain">Domain</Label>
                 <Input
-                  id="brd-email"
+                  id="br-domain"
+                  placeholder="apexstudio.com"
+                  {...form.register("domain")}
+                />
+                {form.formState.errors.domain && (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.domain.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="br-color">Primary Color</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    className="size-8 cursor-pointer rounded border border-border"
+                    {...form.register("primaryColor")}
+                  />
+                  <Input
+                    id="br-color"
+                    className="font-mono text-xs uppercase"
+                    {...form.register("primaryColor")}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="br-tagline">Tagline</Label>
+              <Input
+                id="br-tagline"
+                placeholder="High-converting digital branding & web design"
+                {...form.register("tagline")}
+              />
+              {form.formState.errors.tagline && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.tagline.message}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="br-email">Support Email</Label>
+                <Input
+                  id="br-email"
                   type="email"
+                  placeholder="hello@brand.com"
                   {...form.register("email")}
                 />
+                {form.formState.errors.email && (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.email.message}
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="brd-phone">Phone</Label>
-                <Input id="brd-phone" {...form.register("phone")} />
+                <Label htmlFor="br-phone">Inquiry Phone</Label>
+                <Input
+                  id="br-phone"
+                  placeholder="+1 (555) 012-3456"
+                  {...form.register("phone")}
+                />
+                {form.formState.errors.phone && (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.phone.message}
+                  </p>
+                )}
               </div>
             </div>
-            <SheetFooter className="px-0">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">
-                {editing ? "Save Brand" : "Create Brand"}
-              </Button>
+
+            <SheetFooter className="mt-6 border-t border-border pt-4">
+              {editing ? (
+                <div className="flex w-full items-center justify-between">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-destructive hover:bg-destructive/10"
+                    onClick={() => promptDelete(editing)}
+                  >
+                    <Trash2 className="mr-1.5 size-4" />
+                    Delete Brand
+                  </Button>
+                  <Button type="submit">Save Changes</Button>
+                </div>
+              ) : (
+                <Button type="submit" className="w-full">
+                  Create Brand
+                </Button>
+              )}
             </SheetFooter>
           </form>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title={`Delete Brand "${deleteTarget?.name}"?`}
+        description="Are you sure you want to delete this agency brand storefront? This cannot be undone."
+        warningMessage={deleteWarning}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -15,6 +16,7 @@ import {
   MoreHorizontal,
   Phone,
   Plus,
+  Trash2,
   UserCheck,
 } from "lucide-react"
 import {
@@ -24,6 +26,7 @@ import {
 } from "@/components/data-table"
 import {
   AvatarGroup,
+  ConfirmDeleteDialog,
   PageHeader,
   StatusBadge,
 } from "@/components/shared"
@@ -33,6 +36,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -54,9 +58,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { formatCurrency } from "@/lib/currency"
-import { MOCK_BRANDS, MOCK_CITIES } from "@/mocks/brands"
-import { MOCK_LEADS } from "@/mocks/leads"
-import { MOCK_USERS } from "@/mocks/users"
+import { useStore } from "@/lib/store"
 import type { CurrencyCode, Lead, LeadSource, LeadStatus } from "@/types"
 
 const LEAD_SOURCES: LeadSource[] = [
@@ -110,28 +112,42 @@ const leadSchema = z.object({
 
 type LeadFormValues = z.infer<typeof leadSchema>
 
-const STAFF_OPTIONS = MOCK_USERS.filter((u) => u.status === "Active")
-
 export default function LeadsPage() {
-  const [leads, setLeads] = React.useState<Lead[]>(MOCK_LEADS)
+  const {
+    leads,
+    brands,
+    cities,
+    users,
+    createLead,
+    updateLead,
+    deleteLead,
+    checkLeadDeletion,
+  } = useStore()
+
   const [selectedLead, setSelectedLead] = React.useState<Lead | null>(null)
   const [formOpen, setFormOpen] = React.useState(false)
   const [editingLead, setEditingLead] = React.useState<Lead | null>(null)
+
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = React.useState<Lead | null>(null)
+  const [deleteWarning, setDeleteWarning] = React.useState<string | undefined>()
+
+  const activeStaff = React.useMemo(() => users.filter((u) => u.status === "Active"), [users])
 
   const form = useForm<LeadFormValues>({
     resolver: zodResolver(leadSchema),
     defaultValues: {
       name: "",
       email: "",
-      phone: "",
+      phone: "+1 (555) 201-9900",
       company: "",
-      brandId: MOCK_BRANDS[0].id,
+      brandId: brands[0]?.id ?? "",
       source: "Google Ads",
-      city: MOCK_CITIES[0].name,
+      city: cities[0]?.name ?? "",
       currency: "USD",
       estimatedValue: 5000,
       status: "New",
-      assignedStaffId: STAFF_OPTIONS[1]?.id ?? STAFF_OPTIONS[0].id,
+      assignedStaffId: activeStaff[0]?.id ?? "",
       notes: "",
     },
   })
@@ -143,13 +159,13 @@ export default function LeadsPage() {
       email: "",
       phone: "+1 (555) 201-9900",
       company: "",
-      brandId: MOCK_BRANDS[0].id,
+      brandId: brands[0]?.id ?? "",
       source: "Google Ads",
-      city: MOCK_CITIES[0].name,
+      city: cities[0]?.name ?? "",
       currency: "USD",
       estimatedValue: 5000,
       status: "New",
-      assignedStaffId: STAFF_OPTIONS[1]?.id ?? STAFF_OPTIONS[0].id,
+      assignedStaffId: activeStaff[0]?.id ?? "",
       notes: "",
     })
     setFormOpen(true)
@@ -169,34 +185,67 @@ export default function LeadsPage() {
         currency: lead.currency,
         estimatedValue: lead.estimatedValue,
         status: lead.status,
-        assignedStaffId: lead.assignedStaffIds[0] ?? STAFF_OPTIONS[0].id,
+        assignedStaffId: lead.assignedStaffIds[0] ?? activeStaff[0]?.id ?? "",
         notes: lead.notes,
       })
       setFormOpen(true)
     },
-    [form]
+    [form, activeStaff]
   )
 
+  const promptDelete = React.useCallback(
+    (lead: Lead) => {
+      const check = checkLeadDeletion(lead.id)
+      if (!check.allowed) {
+        toast.error(check.reason || "Cannot delete this lead.")
+        return
+      }
+      setDeleteWarning(undefined)
+      setDeleteTarget(lead)
+    },
+    [checkLeadDeletion]
+  )
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    const res = deleteLead(deleteTarget.id)
+    if (!res.allowed) {
+      toast.error(res.reason || "Failed to delete lead.")
+    } else {
+      toast.success(`Removed lead ${deleteTarget.code}`)
+      if (selectedLead?.id === deleteTarget.id) {
+        setSelectedLead(null)
+      }
+      if (editingLead?.id === deleteTarget.id) {
+        setFormOpen(false)
+      }
+    }
+    setDeleteTarget(null)
+  }
+
   function onSubmit(values: LeadFormValues) {
-    const brand =
-      MOCK_BRANDS.find((b) => b.id === values.brandId) ?? MOCK_BRANDS[0]
-    const cityObj =
-      MOCK_CITIES.find((c) => c.name === values.city) ?? MOCK_CITIES[0]
-    const owner =
-      MOCK_USERS.find((u) => u.id === values.assignedStaffId) ?? MOCK_USERS[0]
+    const brand = brands.find((b) => b.id === values.brandId) ?? brands[0]
+    const cityObj = cities.find((c) => c.name === values.city) ?? cities[0]
+    const owner = users.find((u) => u.id === values.assignedStaffId) ?? users[0]
+
+    const brandName = brand ? brand.name : "Primary Brand"
+    const cityName = cityObj ? cityObj.name : values.city
+    const countryName = cityObj ? cityObj.country : "United States"
+    const ownerName = owner ? owner.name : "Staff"
+
+    const now = new Date().toISOString().replace("T", " ").slice(0, 16)
 
     if (editingLead) {
-      const updated: Lead = {
-        ...editingLead,
+      const updated = {
         name: values.name,
         email: values.email,
         phone: values.phone,
         company: values.company,
-        brandId: brand.id,
-        brandName: brand.name,
+        brandId: values.brandId,
+        brandName,
         source: values.source,
-        city: cityObj.name,
-        country: cityObj.country,
+        city: cityName,
+        country: countryName,
         currency: values.currency as CurrencyCode,
         estimatedValue: values.estimatedValue,
         status: values.status,
@@ -209,53 +258,45 @@ export default function LeadsPage() {
                 {
                   id: `hist-${editingLead.assignmentHistory.length + 1}`,
                   fromStaffName:
-                    MOCK_USERS.find(
-                      (u) => u.id === editingLead.assignedStaffIds[0]
-                    )?.name ?? null,
-                  toStaffName: owner.name,
+                    users.find((u) => u.id === editingLead.assignedStaffIds[0])?.name ?? null,
+                  toStaffName: ownerName,
                   assignedBy: "Current User",
-                  timestamp: "2026-11-11 18:10",
+                  timestamp: now,
                   note: "Updated owner via Lead Edit drawer",
                 },
               ]
             : editingLead.assignmentHistory,
       }
-      setLeads((prev) =>
-        prev.map((l) => (l.id === editingLead.id ? updated : l))
-      )
-      setSelectedLead(updated)
-      toast.success(`Lead ${updated.code} updated`)
+      updateLead(editingLead.id, updated)
+      setSelectedLead((prev) => (prev && prev.id === editingLead.id ? { ...prev, ...updated } : prev))
+      toast.success(`Lead ${editingLead.code} updated`)
     } else {
-      const created: Lead = {
-        id: `lead-new-${leads.length + 1}`,
-        code: `LD-${2090 + leads.length}`,
+      const created = createLead({
         name: values.name,
         email: values.email,
         phone: values.phone,
         company: values.company,
-        brandId: brand.id,
-        brandName: brand.name,
+        brandId: values.brandId,
+        brandName,
         source: values.source,
-        city: cityObj.name,
-        country: cityObj.country,
+        city: cityName,
+        country: countryName,
         currency: values.currency as CurrencyCode,
         estimatedValue: values.estimatedValue,
         status: values.status,
         assignedStaffIds: [values.assignedStaffId],
-        createdAt: "2026-11-11",
         notes: values.notes ?? "",
         assignmentHistory: [
           {
-            id: `hist-new-1`,
+            id: `hist-1`,
             fromStaffName: null,
-            toStaffName: owner.name,
+            toStaffName: ownerName,
             assignedBy: "Manual Intake",
-            timestamp: "2026-11-11 18:00",
-            note: `Lead created under ${brand.name}`,
+            timestamp: now,
+            note: `Lead created under ${brandName}`,
           },
         ],
-      }
-      setLeads((prev) => [created, ...prev])
+      })
       toast.success(`Lead ${created.code} created`)
     }
     setFormOpen(false)
@@ -328,10 +369,14 @@ export default function LeadsPage() {
         id: "assigned",
         header: "Assigned Staff",
         cell: ({ row }) => {
-          const staff = MOCK_USERS.filter((u) =>
+          const staff = users.filter((u) =>
             row.original.assignedStaffIds.includes(u.id)
           )
-          return <AvatarGroup people={staff} max={3} />
+          return staff.length > 0 ? (
+            <AvatarGroup people={staff} max={3} />
+          ) : (
+            <span className="text-xs text-muted-foreground">Unassigned</span>
+          )
         },
       },
       {
@@ -384,12 +429,19 @@ export default function LeadsPage() {
               <DropdownMenuItem onSelect={() => openEditSheet(row.original)}>
                 Edit Lead
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => promptDelete(row.original)}
+              >
+                Delete Lead
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ),
       },
     ],
-    [openEditSheet]
+    [users, openEditSheet, promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -402,7 +454,7 @@ export default function LeadsPage() {
       {
         columnId: "brandName",
         title: "Brand",
-        options: MOCK_BRANDS.map((b) => ({ label: b.name, value: b.name })),
+        options: brands.map((b) => ({ label: b.name, value: b.name })),
       },
       {
         columnId: "source",
@@ -410,7 +462,7 @@ export default function LeadsPage() {
         options: LEAD_SOURCES.map((s) => ({ label: s, value: s })),
       },
     ],
-    []
+    [brands]
   )
 
   return (
@@ -503,26 +555,26 @@ export default function LeadsPage() {
                     Assigned Owners
                   </h3>
                   <div className="flex flex-wrap gap-2">
-                    {MOCK_USERS.filter((u) =>
-                      selectedLead.assignedStaffIds.includes(u.id)
-                    ).map((staff) => (
-                      <div
-                        key={staff.id}
-                        className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-xs"
-                      >
-                        <span
-                          className={`flex size-6 items-center justify-center rounded-full text-[10px] font-bold text-white ${staff.avatarColor}`}
+                    {users
+                      .filter((u) => selectedLead.assignedStaffIds.includes(u.id))
+                      .map((staff) => (
+                        <div
+                          key={staff.id}
+                          className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-xs"
                         >
-                          {staff.avatarInitials}
-                        </span>
-                        <div>
-                          <div className="font-medium">{staff.name}</div>
-                          <div className="text-[11px] text-muted-foreground">
-                            {staff.role}
+                          <span
+                            className={`flex size-6 items-center justify-center rounded-full text-[10px] font-bold text-white ${staff.avatarColor}`}
+                          >
+                            {staff.avatarInitials}
+                          </span>
+                          <div>
+                            <div className="font-medium">{staff.name}</div>
+                            <div className="text-[11px] text-muted-foreground">
+                              {staff.role}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
                   </div>
                 </div>
 
@@ -532,7 +584,7 @@ export default function LeadsPage() {
                     Intake Notes
                   </h3>
                   <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
-                    {selectedLead.notes}
+                    {selectedLead.notes || "No notes entered."}
                   </p>
                 </div>
 
@@ -568,7 +620,16 @@ export default function LeadsPage() {
                 </div>
               </div>
 
-              <SheetFooter className="border-t border-border">
+              <SheetFooter className="flex-row justify-between border-t border-border pt-4 sm:justify-between">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-destructive hover:bg-destructive/10"
+                  onClick={() => promptDelete(selectedLead)}
+                >
+                  <Trash2 className="mr-1.5 size-4" />
+                  Delete Lead
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -592,8 +653,7 @@ export default function LeadsPage() {
               {editingLead ? `Edit ${editingLead.code}` : "Create New Lead"}
             </SheetTitle>
             <SheetDescription>
-              Capture client contact details, brand assignment, and estimated
-              deal value.
+              Capture client contact details, brand assignment, and estimated deal value.
             </SheetDescription>
           </SheetHeader>
           <form
@@ -646,24 +706,37 @@ export default function LeadsPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Brand</Label>
-                <Controller
-                  control={form.control}
-                  name="brandId"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MOCK_BRANDS.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
+                {brands.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-border p-2 text-xs text-muted-foreground">
+                    <Link href="/brands" className="text-primary underline">
+                      Add a brand first
+                    </Link>
+                  </div>
+                ) : (
+                  <Controller
+                    control={form.control}
+                    name="brandId"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {brands.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                )}
+                {form.formState.errors.brandId ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.brandId.message}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-1.5">
@@ -690,24 +763,32 @@ export default function LeadsPage() {
 
               <div className="space-y-1.5">
                 <Label>City</Label>
-                <Controller
-                  control={form.control}
-                  name="city"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MOCK_CITIES.map((c) => (
-                          <SelectItem key={c.id} value={c.name}>
-                            {c.name} ({c.currency})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
+                {cities.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-border p-2 text-xs text-muted-foreground">
+                    <Link href="/cities" className="text-primary underline">
+                      Add a city first
+                    </Link>
+                  </div>
+                ) : (
+                  <Controller
+                    control={form.control}
+                    name="city"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select city" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cities.map((c) => (
+                            <SelectItem key={c.id} value={c.name}>
+                              {c.name} ({c.currency})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -769,24 +850,32 @@ export default function LeadsPage() {
 
             <div className="space-y-1.5">
               <Label>Assign Owner</Label>
-              <Controller
-                control={form.control}
-                name="assignedStaffId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STAFF_OPTIONS.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name} — {u.role}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
+              {activeStaff.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border p-2 text-xs text-muted-foreground">
+                  <Link href="/users" className="text-primary underline">
+                    Add staff member first
+                  </Link>
+                </div>
+              ) : (
+                <Controller
+                  control={form.control}
+                  name="assignedStaffId"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Assign staff owner" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeStaff.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.name} — {u.role}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -809,6 +898,15 @@ export default function LeadsPage() {
           </form>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title={`Delete Lead "${deleteTarget?.name}" (${deleteTarget?.code})?`}
+        description="Are you sure you want to remove this CRM lead? This action cannot be undone."
+        warningMessage={deleteWarning}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

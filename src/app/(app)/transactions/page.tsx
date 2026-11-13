@@ -4,11 +4,10 @@ import * as React from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 import {
-  AlertTriangle,
   CreditCard,
   History,
   RotateCcw,
-  ShieldAlert,
+  Trash2,
 } from "lucide-react"
 import {
   DataTable,
@@ -16,6 +15,7 @@ import {
   type FacetedFilterConfig,
 } from "@/components/data-table"
 import {
+  ConfirmDeleteDialog,
   GatewayBadge,
   PageHeader,
   StatusBadge,
@@ -31,8 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/currency"
-import { MOCK_TRANSACTIONS } from "@/mocks/billing"
-import { MOCK_BRANDS } from "@/mocks/brands"
+import { useStore } from "@/lib/store"
 import type { PaymentGateway, PaymentStatus, Transaction } from "@/types"
 
 const TX_STATUSES: PaymentStatus[] = [
@@ -54,35 +53,60 @@ const GATEWAYS: PaymentGateway[] = [
 ]
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] =
-    React.useState<Transaction[]>(MOCK_TRANSACTIONS)
+  const { transactions, brands, updateTransaction, deleteTransaction } = useStore()
   const [selectedTx, setSelectedTx] = React.useState<Transaction | null>(null)
+
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = React.useState<Transaction | null>(null)
+
+  function promptDelete(tx: Transaction) {
+    setDeleteTarget(tx)
+  }
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    deleteTransaction(deleteTarget.id)
+    toast.success(`Removed transaction record ${deleteTarget.txRef}`)
+    if (selectedTx?.id === deleteTarget.id) {
+      setSelectedTx(null)
+    }
+    setDeleteTarget(null)
+  }
 
   function handleRefundAction(tx: Transaction) {
     const nextStatus: PaymentStatus =
       tx.status === "Refund Requested" ? "Refunded" : "Refund Requested"
-    const updated: Transaction = {
-      ...tx,
+    const now = new Date().toISOString().replace("T", " ").slice(0, 16)
+
+    const updatedEvents = [
+      ...tx.events,
+      {
+        id: `evt-${crypto.randomUUID()}`,
+        status: nextStatus,
+        title:
+          nextStatus === "Refunded"
+            ? "Refund processed to original payment method"
+            : "Refund request logged by Finance",
+        detail: `Updated via Transactions ledger`,
+        actor: "Current User",
+        timestamp: now,
+      },
+    ]
+
+    updateTransaction(tx.id, {
       status: nextStatus,
-      events: [
-        ...tx.events,
-        {
-          id: `evt-${Date.now()}`,
-          status: nextStatus,
-          title:
-            nextStatus === "Refunded"
-              ? "Refund processed to original payment method"
-              : "Refund request logged by Finance",
-          detail: `Updated via Transactions modal`,
-          actor: "Marcus Vance",
-          timestamp: "2026-11-11 18:15",
-        },
-      ],
-    }
-    setTransactions((prev) =>
-      prev.map((item) => (item.id === tx.id ? updated : item))
+      events: updatedEvents,
+    })
+
+    setSelectedTx((prev) =>
+      prev && prev.id === tx.id
+        ? {
+            ...prev,
+            status: nextStatus,
+            events: updatedEvents,
+          }
+        : prev
     )
-    setSelectedTx(updated)
     toast.success(`${tx.txRef} updated to ${nextStatus}`)
   }
 
@@ -148,9 +172,9 @@ export default function TransactionsPage() {
         ),
         cell: ({ row }) => (
           <div className="tabular-nums">
-            <div className="font-medium">
+            <span className="font-semibold">
               {formatCurrency(row.original.amount, row.original.currency)}
-            </div>
+            </span>
             {row.original.currency !== "USD" ? (
               <div className="text-[11px] text-muted-foreground">
                 ≈ {formatCurrency(row.original.amountUsd, "USD")}
@@ -161,33 +185,37 @@ export default function TransactionsPage() {
       },
       {
         accessorKey: "status",
-        header: "Status / Dispute",
-        cell: ({ row }) => (
-          <div className="flex items-center gap-1.5">
-            <StatusBadge status={row.original.status} />
-            {row.original.status === "Chargeback" ? (
-              <ShieldAlert
-                className="size-3.5 text-rose-600 dark:text-rose-400"
-                aria-label="Dispute open"
-              />
-            ) : row.original.status === "Refund Requested" ? (
-              <AlertTriangle
-                className="size-3.5 text-amber-600 dark:text-amber-400"
-                aria-label="Refund review needed"
-              />
-            ) : null}
-          </div>
-        ),
+        header: "Status",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
       },
       {
         accessorKey: "createdAt",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Date" />
+          <DataTableColumnHeader column={column} title="Settled" />
         ),
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
             {row.original.createdAt}
           </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => promptDelete(row.original)}
+              title="Delete transaction record"
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
         ),
       },
     ],
@@ -209,31 +237,31 @@ export default function TransactionsPage() {
       {
         columnId: "brandName",
         title: "Brand",
-        options: MOCK_BRANDS.map((b) => ({ label: b.name, value: b.name })),
+        options: brands.map((b) => ({ label: b.name, value: b.name })),
       },
     ],
-    []
+    [brands]
   )
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Transactions"
-        description="Monitor multi-gateway settlements, failed authorizations, refund workflows, and chargeback disputes."
-        badge={<Badge variant="secondary">{transactions.length} txns</Badge>}
+        title="Transactions Ledger"
+        description="Unified payment logs across Stripe, Square, Authorize.Net, and NMI merchant gateways."
+        badge={<Badge variant="secondary">{transactions.length} records</Badge>}
       />
 
       <DataTable
         columns={columns}
         data={transactions}
-        searchPlaceholder="Search transactions..."
+        searchPlaceholder="Search by tx ref, invoice, client, brand..."
         facetedFilters={facetedFilters}
         dateField="createdAt"
-        exportModule="Transactions"
+        exportModule="Transactions Ledger"
         onRowClick={setSelectedTx}
       />
 
-      {/* Transaction Detail Dialog with Event Timeline */}
+      {/* Detail & Event History Dialog */}
       <Dialog
         open={Boolean(selectedTx)}
         onOpenChange={(open) => !open && setSelectedTx(null)}
@@ -242,7 +270,7 @@ export default function TransactionsPage() {
           {selectedTx ? (
             <>
               <DialogHeader>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2">
                   <Badge variant="outline" className="font-mono">
                     {selectedTx.txRef}
                   </Badge>
@@ -319,22 +347,31 @@ export default function TransactionsPage() {
               </div>
 
               <DialogFooter className="sm:justify-between">
-                {(selectedTx.status === "Success" ||
-                  selectedTx.status === "Refund Requested") ? (
+                <div className="flex gap-2">
                   <Button
                     type="button"
-                    variant="outline"
-                    onClick={() => handleRefundAction(selectedTx)}
-                    className="gap-1.5"
+                    variant="ghost"
+                    className="text-destructive hover:bg-destructive/10"
+                    onClick={() => promptDelete(selectedTx)}
                   >
-                    <RotateCcw className="size-4" />
-                    {selectedTx.status === "Refund Requested"
-                      ? "Approve & Mark Refunded"
-                      : "Request Refund"}
+                    <Trash2 className="mr-1.5 size-4" />
+                    Delete
                   </Button>
-                ) : (
-                  <div />
-                )}
+                  {(selectedTx.status === "Success" ||
+                    selectedTx.status === "Refund Requested") ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleRefundAction(selectedTx)}
+                      className="gap-1.5"
+                    >
+                      <RotateCcw className="size-4" />
+                      {selectedTx.status === "Refund Requested"
+                        ? "Approve & Mark Refunded"
+                        : "Request Refund"}
+                    </Button>
+                  ) : null}
+                </div>
                 <Button
                   type="button"
                   onClick={() => setSelectedTx(null)}
@@ -346,6 +383,14 @@ export default function TransactionsPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title={`Delete Transaction "${deleteTarget?.txRef}"?`}
+        description="Are you sure you want to remove this ledger entry? This cannot be undone."
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

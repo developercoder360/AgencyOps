@@ -1,15 +1,16 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
-import { ArrowUpRight, Globe, Mail, MapPin, Phone, Tag } from "lucide-react"
+import { ArrowUpRight, Globe, Mail, MapPin, Phone, Tag, Trash2 } from "lucide-react"
 import {
   DataTable,
   DataTableColumnHeader,
   type FacetedFilterConfig,
 } from "@/components/data-table"
-import { PageHeader } from "@/components/shared"
+import { ConfirmDeleteDialog, PageHeader } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,23 +21,41 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { MOCK_BRANDS } from "@/mocks/brands"
-import { MOCK_SIGNUPS } from "@/mocks/leads"
+import { useStore } from "@/lib/store"
 import type { SignUp } from "@/types"
 
 export default function SignUpsPage() {
-  const [signUps, setSignUps] = React.useState<SignUp[]>(MOCK_SIGNUPS)
+  const { signUps, brands, convertSignUpToLead, deleteSignUp } = useStore()
   const [selected, setSelected] = React.useState<SignUp | null>(null)
 
-  function handleConvert(item: SignUp) {
-    const updated: SignUp = {
-      ...item,
-      convertedToLead: true,
-      leadId: item.leadId ?? `lead-conv-${item.code}`,
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = React.useState<SignUp | null>(null)
+
+  const handleConvert = React.useCallback(
+    (item: SignUp) => {
+      const lead = convertSignUpToLead(item.id)
+      if (lead) {
+        toast.success(`Converted ${item.code} (${item.name}) to CRM Lead ${lead.code}`)
+        setSelected((prev) => (prev && prev.id === item.id ? { ...prev, convertedToLead: true, leadId: lead.id } : prev))
+      } else {
+        toast.error("Could not convert sign-up to lead.")
+      }
+    },
+    [convertSignUpToLead]
+  )
+
+  const promptDelete = React.useCallback((item: SignUp) => {
+    setDeleteTarget(item)
+  }, [])
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    deleteSignUp(deleteTarget.id)
+    toast.success(`Removed submission ${deleteTarget.code}`)
+    if (selected?.id === deleteTarget.id) {
+      setSelected(null)
     }
-    setSignUps((prev) => prev.map((s) => (s.id === item.id ? updated : s)))
-    setSelected(updated)
-    toast.success(`Converted ${item.code} (${item.name}) to CRM Lead`)
+    setDeleteTarget(null)
   }
 
   const columns = React.useMemo<ColumnDef<SignUp>[]>(
@@ -114,8 +133,39 @@ export default function SignUpsPage() {
           </span>
         ),
       },
+      {
+        id: "actions",
+        header: "",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end gap-1">
+            {!row.original.convertedToLead && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={() => handleConvert(row.original)}
+                className="gap-1 text-primary"
+              >
+                Convert
+                <ArrowUpRight className="size-3" />
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => promptDelete(row.original)}
+              title="Delete submission"
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
+      },
     ],
-    []
+    [handleConvert, promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -123,7 +173,7 @@ export default function SignUpsPage() {
       {
         columnId: "brandName",
         title: "Brand",
-        options: MOCK_BRANDS.map((b) => ({ label: b.name, value: b.name })),
+        options: brands.map((b) => ({ label: b.name, value: b.name })),
       },
       {
         columnId: "converted",
@@ -134,7 +184,7 @@ export default function SignUpsPage() {
         ],
       },
     ],
-    []
+    [brands]
   )
 
   return (
@@ -206,15 +256,24 @@ export default function SignUpsPage() {
                     Submitted Brief Notes
                   </div>
                   <p className="rounded-lg border border-border p-3 text-muted-foreground">
-                    {selected.notes}
+                    {selected.notes || "No additional notes provided."}
                   </p>
                 </div>
               </div>
 
-              <SheetFooter className="border-t border-border">
+              <SheetFooter className="flex-row justify-between border-t border-border pt-4 sm:justify-between">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-destructive hover:bg-destructive/10"
+                  onClick={() => promptDelete(selected)}
+                >
+                  <Trash2 className="mr-1.5 size-4" />
+                  Delete
+                </Button>
                 {selected.convertedToLead ? (
-                  <Button type="button" variant="outline" disabled>
-                    Already Linked to Lead
+                  <Button asChild variant="outline">
+                    <Link href="/leads">View in Leads</Link>
                   </Button>
                 ) : (
                   <Button
@@ -231,6 +290,14 @@ export default function SignUpsPage() {
           ) : null}
         </SheetContent>
       </Sheet>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title={`Delete Sign Up "${deleteTarget?.name}"?`}
+        description="Are you sure you want to remove this submission record? This cannot be undone."
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

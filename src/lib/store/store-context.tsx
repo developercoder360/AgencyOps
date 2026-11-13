@@ -54,9 +54,11 @@ export interface StoreContextValue {
   users: StaffUser[]
   leads: Lead[]
   signups: SignUp[]
+  signUps: SignUp[]
   invoices: Invoice[]
   transactions: Transaction[]
   marketingSpendings: MarketingSpend[]
+  marketingSpends: MarketingSpend[]
   projects: Project[]
   tasks: Task[]
   chatThreads: ChatThread[]
@@ -96,7 +98,14 @@ export interface StoreContextValue {
   updateBrand: (id: string, updates: Partial<Brand>) => void
   deleteBrand: (id: string) => DeletionCheckResult
 
-  createCity: (city: Omit<City, "id"> & { id?: string }) => City
+  createCity: (
+    city: Omit<City, "id" | "activeClients" | "leadCount" | "status"> & {
+      id?: string
+      activeClients?: number
+      leadCount?: number
+      status?: City["status"]
+    }
+  ) => City
   updateCity: (id: string, updates: Partial<City>) => void
   deleteCity: (id: string) => DeletionCheckResult
 
@@ -104,13 +113,24 @@ export interface StoreContextValue {
   updateTeam: (id: string, updates: Partial<Team>) => void
   deleteTeam: (id: string) => DeletionCheckResult
 
-  createUser: (user: Omit<StaffUser, "id" | "joinedAt"> & { id?: string; joinedAt?: string }) => StaffUser
+  createUser: (
+    user: Omit<StaffUser, "id" | "joinedAt" | "brandIds" | "timezone" | "birthday" | "monthlyTargetUsd" | "redFlagCount"> & {
+      id?: string
+      joinedAt?: string
+      brandIds?: string[]
+      timezone?: string
+      birthday?: string
+      monthlyTargetUsd?: number
+      redFlagCount?: number
+    }
+  ) => StaffUser
   updateUser: (id: string, updates: Partial<StaffUser>) => void
   deleteUser: (id: string) => DeletionCheckResult
 
   createLead: (
-    lead: Omit<Lead, "id" | "createdAt" | "assignmentHistory"> & {
+    lead: Omit<Lead, "id" | "code" | "createdAt" | "assignmentHistory"> & {
       id?: string
+      code?: string
       createdAt?: string
       assignmentHistory?: Lead["assignmentHistory"]
     }
@@ -123,16 +143,20 @@ export interface StoreContextValue {
   deleteSignUp: (id: string) => void
   convertSignUpToLead: (
     signupId: string,
-    leadData: {
+    leadData?: Partial<{
       estimatedValue: number
       currency: "USD" | "GBP" | "CAD"
       assignedStaffId: string
       city: string
-    }
+    }>
   ) => Lead | null
 
   createInvoice: (
-    inv: Omit<Invoice, "id" | "issuedAt"> & { id?: string; issuedAt?: string }
+    inv: Omit<Invoice, "id" | "invoiceNumber" | "issuedAt"> & {
+      id?: string
+      invoiceNumber?: string
+      issuedAt?: string
+    }
   ) => Invoice
   updateInvoice: (id: string, updates: Partial<Invoice>) => void
   deleteInvoice: (id: string) => DeletionCheckResult
@@ -300,9 +324,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       users: store.users,
       leads: store.leads,
       signups: store.signups,
+      signUps: store.signups,
       invoices: store.invoices,
       transactions: store.transactions,
       marketingSpendings: store.marketingSpendings,
+      marketingSpends: store.marketingSpendings,
       projects: store.projects,
       tasks: store.tasks,
       chatThreads: store.chatThreads,

@@ -162,8 +162,18 @@ class StoreManager {
   }
 
   // --- City Actions ---
-  public createCity(city: Omit<City, "id"> & { id?: string }): City {
+  public createCity(
+    city: Omit<City, "id" | "activeClients" | "leadCount" | "status"> & {
+      id?: string
+      activeClients?: number
+      leadCount?: number
+      status?: City["status"]
+    }
+  ): City {
     const newCity: City = {
+      activeClients: 0,
+      leadCount: 0,
+      status: "Active",
       ...city,
       id: city.id || `cit-${crypto.randomUUID().slice(0, 8)}`,
     }
@@ -226,8 +236,23 @@ class StoreManager {
   }
 
   // --- User Actions ---
-  public createUser(user: Omit<StaffUser, "id" | "joinedAt"> & { id?: string; joinedAt?: string }): StaffUser {
+  public createUser(
+    user: Omit<StaffUser, "id" | "joinedAt" | "brandIds" | "timezone" | "birthday" | "monthlyTargetUsd" | "redFlagCount"> & {
+      id?: string
+      joinedAt?: string
+      brandIds?: string[]
+      timezone?: string
+      birthday?: string
+      monthlyTargetUsd?: number
+      redFlagCount?: number
+    }
+  ): StaffUser {
     const newUser: StaffUser = {
+      brandIds: [],
+      timezone: "America/New_York",
+      birthday: "1994-01-01",
+      monthlyTargetUsd: 10000,
+      redFlagCount: 0,
       ...user,
       id: user.id || `usr-${crypto.randomUUID().slice(0, 8)}`,
       joinedAt: user.joinedAt || new Date().toISOString().slice(0, 10),
@@ -277,12 +302,21 @@ class StoreManager {
   }
 
   // --- Lead Actions ---
-  public createLead(lead: Omit<Lead, "id" | "createdAt" | "assignmentHistory"> & { id?: string; createdAt?: string; assignmentHistory?: Lead["assignmentHistory"] }): Lead {
+  public createLead(
+    lead: Omit<Lead, "id" | "code" | "createdAt" | "assignmentHistory"> & {
+      id?: string
+      code?: string
+      createdAt?: string
+      assignmentHistory?: Lead["assignmentHistory"]
+    }
+  ): Lead {
+    const nextSeq = this.data.leads.length + 101
     const newLead: Lead = {
+      code: `LD-${nextSeq}`,
+      assignmentHistory: [],
       ...lead,
       id: lead.id || `ld-${crypto.randomUUID().slice(0, 8)}`,
       createdAt: lead.createdAt || new Date().toISOString().slice(0, 10),
-      assignmentHistory: lead.assignmentHistory || [],
     }
     this.setAndPersist((s) => ({
       ...s,
@@ -338,12 +372,12 @@ class StoreManager {
 
   public convertSignUpToLead(
     signupId: string,
-    leadData: {
+    leadData?: Partial<{
       estimatedValue: number
       currency: "USD" | "GBP" | "CAD"
       assignedStaffId: string
       city: string
-    }
+    }>
   ): Lead | null {
     const signup = this.data.signups.find((s) => s.id === signupId)
     if (!signup) return null
@@ -361,12 +395,12 @@ class StoreManager {
       brandId: signup.brandId,
       brandName: brand ? brand.name : signup.brandName,
       source: signup.source,
-      city: leadData.city || signup.city || "New York",
+      city: leadData?.city || signup.city || "New York",
       country: "United States",
-      estimatedValue: leadData.estimatedValue || 5000,
-      currency: leadData.currency || "USD",
+      estimatedValue: leadData?.estimatedValue || 5000,
+      currency: leadData?.currency || "USD",
       status: "New",
-      assignedStaffIds: [leadData.assignedStaffId || this.data.users[0]?.id || "usr-admin"],
+      assignedStaffIds: [leadData?.assignedStaffId || this.data.users[0]?.id || "usr-admin"],
       createdAt: new Date().toISOString().slice(0, 10),
       notes: `Converted from Sign Up ${signup.code}. Interest: ${signup.serviceInterest}`,
       assignmentHistory: [
@@ -374,7 +408,7 @@ class StoreManager {
           id: `hist-${crypto.randomUUID().slice(0, 8)}`,
           fromStaffName: null,
           toStaffName:
-            this.data.users.find((u) => u.id === leadData.assignedStaffId)?.name ?? "Assigned Staff",
+            this.data.users.find((u) => u.id === leadData?.assignedStaffId)?.name ?? "Assigned Staff",
           assignedBy: "System",
           timestamp: new Date().toISOString().slice(0, 16).replace("T", " "),
           note: `Auto-assigned upon conversion from Sign Up ${signup.code}`,
@@ -395,11 +429,18 @@ class StoreManager {
 
   // --- Invoice Actions ---
   public createInvoice(
-    inv: Omit<Invoice, "id" | "issuedAt"> & { id?: string; issuedAt?: string }
+    inv: Omit<Invoice, "id" | "invoiceNumber" | "issuedAt"> & {
+      id?: string
+      invoiceNumber?: string
+      issuedAt?: string
+    }
   ): Invoice {
+    const invoiceNumber =
+      inv.invoiceNumber || `INV-2026-${String(this.data.invoices.length + 1060).padStart(4, "0")}`
     const newInvoice: Invoice = {
       ...inv,
       id: inv.id || `inv-${crypto.randomUUID().slice(0, 8)}`,
+      invoiceNumber,
       issuedAt: inv.issuedAt || new Date().toISOString().slice(0, 10),
     }
     this.setAndPersist((s) => ({

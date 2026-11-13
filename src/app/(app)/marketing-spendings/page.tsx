@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 import {
@@ -8,6 +9,7 @@ import {
   Eye,
   MousePointerClick,
   Plus,
+  Trash2,
   TrendingUp,
 } from "lucide-react"
 import {
@@ -15,7 +17,7 @@ import {
   DataTableColumnHeader,
   type FacetedFilterConfig,
 } from "@/components/data-table"
-import { KpiCard, PageHeader } from "@/components/shared"
+import { ConfirmDeleteDialog, KpiCard, PageHeader } from "@/components/shared"
 import { BarChart } from "@/components/tremor"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -53,8 +55,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency } from "@/lib/currency"
-import { MOCK_BRANDS } from "@/mocks/brands"
-import { MOCK_MARKETING_SPENDS } from "@/mocks/marketing"
+import { useStore } from "@/lib/store"
 import type { LeadSource, MarketingSpend } from "@/types"
 
 const CHANNELS: LeadSource[] = [
@@ -66,30 +67,37 @@ const CHANNELS: LeadSource[] = [
 ]
 
 export default function MarketingSpendingsPage() {
-  const [spends, setSpends] = React.useState<MarketingSpend[]>(
-    MOCK_MARKETING_SPENDS
-  )
+  const { brands, marketingSpends, createMarketingSpend, deleteMarketingSpend } = useStore()
+
   const [logOpen, setLogOpen] = React.useState(false)
-  const [brandId, setBrandId] = React.useState(MOCK_BRANDS[0].id)
+  const [brandId, setBrandId] = React.useState("")
   const [source, setSource] = React.useState<LeadSource>("Google Ads")
   const [spendAmount, setSpendAmount] = React.useState("480")
   const [leadsCount, setLeadsCount] = React.useState("12")
 
+  const activeBrandId = brandId || brands[0]?.id || ""
+
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = React.useState<MarketingSpend | null>(null)
+
   const totals = React.useMemo(() => {
-    const totalSpend = spends.reduce((acc, s) => acc + s.spendUsd, 0)
-    const totalRev = spends.reduce((acc, s) => acc + s.revenueAttributedUsd, 0)
-    const totalClicks = spends.reduce((acc, s) => acc + s.clicks, 0)
-    const totalImpressions = spends.reduce((acc, s) => acc + s.impressions, 0)
+    const totalSpend = marketingSpends.reduce((acc, s) => acc + s.spendUsd, 0)
+    const totalRev = marketingSpends.reduce((acc, s) => acc + s.revenueAttributedUsd, 0)
+    const totalClicks = marketingSpends.reduce((acc, s) => acc + s.clicks, 0)
+    const totalImpressions = marketingSpends.reduce((acc, s) => acc + s.impressions, 0)
     const roas = totalSpend > 0 ? (totalRev / totalSpend).toFixed(2) : "0.00"
     return { totalSpend, totalRev, totalClicks, totalImpressions, roas }
-  }, [spends])
+  }, [marketingSpends])
 
   const chartData = React.useMemo(() => {
+    if (marketingSpends.length === 0) {
+      return []
+    }
     const byDate = new Map<
       string,
       { date: string; Spend: number; Revenue: number }
     >()
-    for (const item of spends) {
+    for (const item of marketingSpends) {
       const existing = byDate.get(item.date) ?? {
         date: item.date.slice(5),
         Spend: 0,
@@ -102,18 +110,18 @@ export default function MarketingSpendingsPage() {
     return Array.from(byDate.values()).sort((a, b) =>
       a.date.localeCompare(b.date)
     )
-  }, [spends])
+  }, [marketingSpends])
 
   // Brand x Source Matrix
   const matrixRows = React.useMemo(() => {
-    return MOCK_BRANDS.map((brand) => {
+    return brands.map((brand) => {
       const row: Record<string, string | number> = {
         brandId: brand.id,
         brandName: brand.name,
       }
       let brandTotal = 0
       for (const ch of CHANNELS) {
-        const val = spends
+        const val = marketingSpends
           .filter((s) => s.brandId === brand.id && s.source === ch)
           .reduce((acc, s) => acc + s.spendUsd, 0)
         row[ch] = val
@@ -122,29 +130,50 @@ export default function MarketingSpendingsPage() {
       row.total = brandTotal
       return row
     })
-  }, [spends])
+  }, [brands, marketingSpends])
 
   function handleAddSpend(e: React.FormEvent) {
     e.preventDefault()
-    const brand =
-      MOCK_BRANDS.find((b) => b.id === brandId) ?? MOCK_BRANDS[0]
-    const spendNum = Math.max(10, Number(spendAmount) || 250)
-    const leadsNum = Math.max(1, Number(leadsCount) || 5)
-    const created: MarketingSpend = {
-      id: `mkt-new-${spends.length + 1}`,
-      date: "2026-11-11",
+    const brand = brands.find((b) => b.id === activeBrandId) ?? brands[0]
+    if (!brand) {
+      toast.error("Please add a brand first.")
+      return
+    }
+
+    const spendUsd = parseFloat(spendAmount) || 0
+    const leadsGenerated = parseInt(leadsCount, 10) || 0
+    const clicks = Math.round(spendUsd * 2.3)
+    const impressions = clicks * 24
+    const revenueAttributedUsd = Math.round(spendUsd * 2.8)
+    const today = new Date().toISOString().slice(0, 10)
+
+    createMarketingSpend({
       brandId: brand.id,
       brandName: brand.name,
       source,
-      spendUsd: spendNum,
-      impressions: spendNum * 34,
-      clicks: leadsNum * 14,
-      leadsGenerated: leadsNum,
-      revenueAttributedUsd: spendNum * 4.5,
-    }
-    setSpends((prev) => [created, ...prev])
-    toast.success(`Logged ${formatCurrency(spendNum)} spend for ${brand.name} (${source})`)
+      date: today,
+      spendUsd,
+      impressions,
+      clicks,
+      leadsGenerated,
+      revenueAttributedUsd,
+    })
+
+    toast.success(
+      `Logged ${formatCurrency(spendUsd)} spend for ${brand.name} (${source})`
+    )
     setLogOpen(false)
+  }
+
+  const promptDelete = React.useCallback((item: MarketingSpend) => {
+    setDeleteTarget(item)
+  }, [])
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    deleteMarketingSpend(deleteTarget.id)
+    toast.success(`Removed spend entry for ${deleteTarget.brandName}`)
+    setDeleteTarget(null)
   }
 
   const columns = React.useMemo<ColumnDef<MarketingSpend>[]>(
@@ -155,7 +184,9 @@ export default function MarketingSpendingsPage() {
           <DataTableColumnHeader column={column} title="Date" />
         ),
         cell: ({ row }) => (
-          <span className="font-mono text-xs">{row.original.date}</span>
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            {row.original.date}
+          </span>
         ),
       },
       {
@@ -170,14 +201,19 @@ export default function MarketingSpendingsPage() {
       {
         accessorKey: "source",
         header: "Channel",
+        cell: ({ row }) => (
+          <Badge variant="secondary" className="font-normal">
+            {row.original.source}
+          </Badge>
+        ),
       },
       {
         accessorKey: "spendUsd",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Spend" />
+          <DataTableColumnHeader column={column} title="Spend (USD)" />
         ),
         cell: ({ row }) => (
-          <span className="font-medium tabular-nums">
+          <span className="font-semibold tabular-nums">
             {formatCurrency(row.original.spendUsd)}
           </span>
         ),
@@ -195,7 +231,9 @@ export default function MarketingSpendingsPage() {
         accessorKey: "clicks",
         header: "Clicks",
         cell: ({ row }) => (
-          <span className="tabular-nums">{row.original.clicks.toLocaleString("en-US")}</span>
+          <span className="tabular-nums text-muted-foreground">
+            {row.original.clicks.toLocaleString("en-US")}
+          </span>
         ),
       },
       {
@@ -218,8 +256,27 @@ export default function MarketingSpendingsPage() {
           </span>
         ),
       },
+      {
+        id: "actions",
+        header: "",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => promptDelete(row.original)}
+              title="Delete record"
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
+      },
     ],
-    []
+    [promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -227,7 +284,7 @@ export default function MarketingSpendingsPage() {
       {
         columnId: "brandName",
         title: "Brand",
-        options: MOCK_BRANDS.map((b) => ({ label: b.name, value: b.name })),
+        options: brands.map((b) => ({ label: b.name, value: b.name })),
       },
       {
         columnId: "source",
@@ -235,7 +292,7 @@ export default function MarketingSpendingsPage() {
         options: CHANNELS.map((c) => ({ label: c, value: c })),
       },
     ],
-    []
+    [brands]
   )
 
   return (
@@ -243,6 +300,7 @@ export default function MarketingSpendingsPage() {
       <PageHeader
         title="Marketing Spendings"
         description="Daily ad spend allocation across brands and acquisition channels with attributed return."
+        badge={<Badge variant="secondary">{marketingSpends.length} records</Badge>}
         actions={
           <Button
             type="button"
@@ -258,7 +316,7 @@ export default function MarketingSpendingsPage() {
       {/* KPI Summary */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          title="14-Day Ad Spend"
+          title="Media Ad Spend"
           value={formatCurrency(totals.totalSpend)}
           delta="+6.4%"
           deltaType="moderateIncrease"
@@ -292,17 +350,22 @@ export default function MarketingSpendingsPage() {
           <CardTitle>Daily Marketing Spend vs Attributed Revenue</CardTitle>
           <CardDescription>
             Combined multi-brand media spend compared against attributed revenue
-            over the last 14 days
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <BarChart
-            data={chartData}
-            index="date"
-            categories={["Spend", "Revenue"]}
-            colors={["amber", "blue"]}
-            valueFormatter={(v) => formatCurrency(v, "USD", true)}
-          />
+          {chartData.length > 0 ? (
+            <BarChart
+              data={chartData}
+              index="date"
+              categories={["Spend", "Revenue"]}
+              colors={["amber", "blue"]}
+              valueFormatter={(v) => formatCurrency(v, "USD", true)}
+            />
+          ) : (
+            <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
+              No marketing spend recorded yet. Click &quot;Log Daily Spend&quot; to begin tracking campaigns.
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -318,48 +381,57 @@ export default function MarketingSpendingsPage() {
             <CardHeader>
               <CardTitle>Spend Matrix (Brand × Channel)</CardTitle>
               <CardDescription>
-                Aggregated USD media allocation per brand across paid & organic
-                channels
+                Aggregated USD media allocation per brand across paid & organic channels
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Brand</TableHead>
-                      {CHANNELS.map((ch) => (
-                        <TableHead key={ch} className="text-right">
-                          {ch}
-                        </TableHead>
-                      ))}
-                      <TableHead className="text-right font-semibold">
-                        Total Spend
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {matrixRows.map((row) => (
-                      <TableRow key={String(row.brandId)}>
-                        <TableCell className="font-medium">
-                          {String(row.brandName)}
-                        </TableCell>
+              {matrixRows.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">
+                  No brands configured yet.{" "}
+                  <Link href="/brands" className="text-primary underline">
+                    Add a brand first
+                  </Link>
+                  .
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Brand</TableHead>
                         {CHANNELS.map((ch) => (
-                          <TableCell
-                            key={ch}
-                            className="text-right tabular-nums text-muted-foreground"
-                          >
-                            {formatCurrency(Number(row[ch] ?? 0))}
-                          </TableCell>
+                          <TableHead key={ch} className="text-right">
+                            {ch}
+                          </TableHead>
                         ))}
-                        <TableCell className="text-right font-bold tabular-nums text-foreground">
-                          {formatCurrency(Number(row.total ?? 0))}
-                        </TableCell>
+                        <TableHead className="text-right font-semibold">
+                          Total Spend
+                        </TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {matrixRows.map((row) => (
+                        <TableRow key={String(row.brandId)}>
+                          <TableCell className="font-medium">
+                            {String(row.brandName)}
+                          </TableCell>
+                          {CHANNELS.map((ch) => (
+                            <TableCell
+                              key={ch}
+                              className="text-right tabular-nums text-muted-foreground"
+                            >
+                              {formatCurrency(Number(row[ch] ?? 0))}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-right font-bold tabular-nums text-foreground">
+                            {formatCurrency(Number(row.total ?? 0))}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -367,7 +439,7 @@ export default function MarketingSpendingsPage() {
         <TabsContent value="ledger">
           <DataTable
             columns={columns}
-            data={spends}
+            data={marketingSpends}
             searchPlaceholder="Search daily spend records..."
             facetedFilters={facetedFilters}
             dateField="date"
@@ -382,24 +454,32 @@ export default function MarketingSpendingsPage() {
           <DialogHeader>
             <DialogTitle>Log Daily Marketing Spend</DialogTitle>
             <DialogDescription>
-              Record daily channel spend and lead attribution for a brand.
+              Record daily channel spend and lead attribution for a brand storefront.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddSpend} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Brand</Label>
-              <Select value={brandId} onValueChange={setBrandId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MOCK_BRANDS.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {brands.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border p-2 text-xs text-muted-foreground">
+                  <Link href="/brands" className="text-primary underline">
+                    Add a brand first
+                  </Link>
+                </div>
+              ) : (
+                <Select value={activeBrandId} onValueChange={setBrandId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select brand" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {brands.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -450,11 +530,21 @@ export default function MarketingSpendingsPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Save Entry</Button>
+              <Button type="submit" disabled={brands.length === 0}>
+                Save Entry
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title="Delete Spend Record?"
+        description="Are you sure you want to remove this marketing spend entry? This will adjust your ROAS and attribution numbers."
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

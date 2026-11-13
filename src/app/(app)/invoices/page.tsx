@@ -21,6 +21,7 @@ import {
   type FacetedFilterConfig,
 } from "@/components/data-table"
 import {
+  ConfirmDeleteDialog,
   GatewayBadge,
   PageHeader,
   StatusBadge,
@@ -47,9 +48,9 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { formatCurrency, formatUsdEquivalent } from "@/lib/currency"
-import { MOCK_INVOICES } from "@/mocks/billing"
-import { MOCK_BRANDS } from "@/mocks/brands"
+import { useStore } from "@/lib/store"
 import type {
+  Brand,
   CurrencyCode,
   Invoice,
   PaymentGateway,
@@ -85,7 +86,7 @@ const invoiceSchema = z.object({
   clientName: z.string().min(2, "Client name is required"),
   clientEmail: z.string().email("Valid email required"),
   clientCompany: z.string().min(2, "Company name is required"),
-  brandId: z.string().min(1),
+  brandId: z.string().min(1, "Please select a brand"),
   gateway: z.enum([
     "Stripe",
     "Square",
@@ -104,11 +105,49 @@ const invoiceSchema = z.object({
 type InvoiceFormValues = z.infer<typeof invoiceSchema>
 
 export default function InvoicesPage() {
-  const [invoices, setInvoices] = React.useState<Invoice[]>(MOCK_INVOICES)
+  const {
+    invoices,
+    brands,
+    createInvoice,
+    deleteInvoice,
+    checkInvoiceDeletion,
+  } = useStore()
+
   const [selectedInvoice, setSelectedInvoice] = React.useState<Invoice | null>(
     null
   )
   const [createOpen, setCreateOpen] = React.useState(false)
+
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = React.useState<Invoice | null>(null)
+  const [deleteWarning, setDeleteWarning] = React.useState<string | undefined>()
+
+  const promptDelete = React.useCallback(
+    (invoice: Invoice) => {
+      const check = checkInvoiceDeletion(invoice.id)
+      if (!check.allowed) {
+        toast.error(check.reason || "Cannot delete this invoice.")
+        return
+      }
+      setDeleteWarning(undefined)
+      setDeleteTarget(invoice)
+    },
+    [checkInvoiceDeletion]
+  )
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return
+    const res = deleteInvoice(deleteTarget.id)
+    if (!res.allowed) {
+      toast.error(res.reason || "Failed to delete invoice.")
+    } else {
+      toast.success(`Removed invoice ${deleteTarget.invoiceNumber}`)
+      if (selectedInvoice?.id === deleteTarget.id) {
+        setSelectedInvoice(null)
+      }
+    }
+    setDeleteTarget(null)
+  }
 
   function copyPublicCheckoutUrl(invoice: Invoice) {
     const url =
@@ -165,11 +204,14 @@ export default function InvoicesPage() {
       {
         accessorKey: "total",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Total" />
+          <DataTableColumnHeader column={column} title="Amount" />
         ),
         cell: ({ row }) => (
-          <div className="font-medium tabular-nums">
-            {formatUsdEquivalent(row.original.total, row.original.currency)}
+          <div className="font-semibold tabular-nums">
+            {formatCurrency(row.original.total, row.original.currency)}
+            <div className="text-[11px] font-normal text-muted-foreground">
+              {formatUsdEquivalent(row.original.total, row.original.currency)}
+            </div>
           </div>
         ),
       },
@@ -194,16 +236,39 @@ export default function InvoicesPage() {
         header: "",
         enableHiding: false,
         cell: ({ row }) => (
-          <Button asChild variant="ghost" size="xs" className="gap-1">
-            <Link href={`/invoice/${row.original.id}`}>
-              Pay Page
-              <ExternalLink className="size-3" />
-            </Link>
-          </Button>
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => copyPublicCheckoutUrl(row.original)}
+              title="Copy hosted payment link"
+            >
+              <Copy className="size-3.5" />
+            </Button>
+            <Button asChild variant="ghost" size="icon-xs">
+              <Link
+                href={`/invoice/${row.original.id}`}
+                title="Open hosted invoice checkout"
+              >
+                <ExternalLink className="size-3.5" />
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => promptDelete(row.original)}
+              title="Delete invoice"
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
         ),
       },
     ],
-    []
+    [promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -221,17 +286,17 @@ export default function InvoicesPage() {
       {
         columnId: "brandName",
         title: "Brand",
-        options: MOCK_BRANDS.map((b) => ({ label: b.name, value: b.name })),
+        options: brands.map((b) => ({ label: b.name, value: b.name })),
       },
     ],
-    []
+    [brands]
   )
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Invoices"
-        description="Multi-currency billing with hosted payment links across Stripe, Square, Authorize.Net, NMI, and Bank Transfer."
+        title="Invoices & Hosted Billing"
+        description="Multi-currency milestone invoices with hosted client checkout links, automated taxes, and PDF previews."
         badge={<Badge variant="secondary">{invoices.length} invoices</Badge>}
         actions={
           <Button
@@ -384,54 +449,71 @@ export default function InvoicesPage() {
                     Attachments ({selectedInvoice.attachments.length})
                   </h3>
                   <div className="space-y-2">
-                    {selectedInvoice.attachments.map((file) => (
-                      <div
-                        key={file.id}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5 text-xs"
-                      >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <FileText className="size-4 shrink-0 text-primary" />
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">
-                              {file.name}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground">
-                              {file.size} • Uploaded by {file.uploadedBy}
+                    {selectedInvoice.attachments.length === 0 ? (
+                      <div className="text-xs text-muted-foreground">
+                        No attachments uploaded.
+                      </div>
+                    ) : (
+                      selectedInvoice.attachments.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5 text-xs"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <FileText className="size-4 shrink-0 text-primary" />
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">
+                                {file.name}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {file.size} • Uploaded by {file.uploadedBy}
+                              </div>
                             </div>
                           </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            onClick={() =>
+                              toast.info(`Previewing ${file.name}`)
+                            }
+                          >
+                            View
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="xs"
-                          onClick={() =>
-                            toast.info(`Previewing ${file.name} (mock file)`)
-                          }
-                        >
-                          View
-                        </Button>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
 
-              <SheetFooter className="border-t border-border sm:flex-row sm:justify-between">
+              <SheetFooter className="flex-row justify-between border-t border-border pt-4 sm:justify-between">
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => copyPublicCheckoutUrl(selectedInvoice)}
-                  className="gap-1.5"
+                  variant="ghost"
+                  className="text-destructive hover:bg-destructive/10"
+                  onClick={() => promptDelete(selectedInvoice)}
                 >
-                  <Copy className="size-4" />
-                  Copy Payment Link
+                  <Trash2 className="mr-1.5 size-4" />
+                  Delete
                 </Button>
-                <Button asChild className="gap-1.5">
-                  <Link href={`/invoice/${selectedInvoice.id}`}>
-                    Open Hosted Checkout
-                    <ExternalLink className="size-4" />
-                  </Link>
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => copyPublicCheckoutUrl(selectedInvoice)}
+                    className="gap-1.5"
+                  >
+                    <Copy className="size-4" />
+                    Copy Link
+                  </Button>
+                  <Button asChild className="gap-1.5">
+                    <Link href={`/invoice/${selectedInvoice.id}`}>
+                      Checkout
+                      <ExternalLink className="size-4" />
+                    </Link>
+                  </Button>
+                </div>
               </SheetFooter>
             </>
           ) : null}
@@ -450,41 +532,59 @@ export default function InvoicesPage() {
           </SheetHeader>
           {createOpen ? (
             <CreateInvoiceForm
-              invoiceCount={invoices.length}
+              brands={brands}
               onClose={() => setCreateOpen(false)}
-              onCreate={(created) => {
-                setInvoices((prev) => [created, ...prev])
+              onCreate={(data) => {
+                const created = createInvoice(data)
+                toast.success(
+                  `Invoice ${created.invoiceNumber} created (${formatCurrency(created.total, created.currency)})`
+                )
                 setCreateOpen(false)
               }}
             />
           ) : null}
         </SheetContent>
       </Sheet>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title={`Delete Invoice "${deleteTarget?.invoiceNumber}"?`}
+        description="Are you sure you want to remove this invoice? This will break any existing hosted payment links."
+        warningMessage={deleteWarning}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }
 
 function CreateInvoiceForm({
-  invoiceCount,
+  brands,
   onClose,
   onCreate,
 }: {
-  invoiceCount: number
+  brands: Brand[]
   onClose: () => void
-  onCreate: (invoice: Invoice) => void
+  onCreate: (invoice: Omit<Invoice, "id" | "invoiceNumber">) => void
 }) {
+  const defaultDueDate = React.useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 14)
+    return d.toISOString().slice(0, 10)
+  }, [])
+
   const form = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: {
       clientName: "",
       clientEmail: "",
       clientCompany: "",
-      brandId: MOCK_BRANDS[0].id,
+      brandId: brands[0]?.id ?? "",
       gateway: "Stripe",
       currency: "USD",
       taxRate: 0,
       discountAmount: 0,
-      dueDate: "2026-11-25",
+      dueDate: defaultDueDate,
       notes: "Net-14 milestone billing. Includes responsive QA verification.",
       lineItems: [
         {
@@ -527,21 +627,20 @@ function CreateInvoiceForm({
   )
 
   function onSubmit(values: InvoiceFormValues) {
-    const brand =
-      MOCK_BRANDS.find((b) => b.id === values.brandId) ?? MOCK_BRANDS[0]
-    const invoiceNumber = `INV-2026-${1060 + invoiceCount}`
-    const created: Invoice = {
-      id: `inv-new-${invoiceCount + 1}`,
-      invoiceNumber,
+    const brand = brands.find((b) => b.id === values.brandId) ?? brands[0]
+    const brandName = brand ? brand.name : "Primary Brand"
+    const today = new Date().toISOString().slice(0, 10)
+
+    onCreate({
       clientName: values.clientName,
       clientEmail: values.clientEmail,
       clientCompany: values.clientCompany,
-      brandId: brand.id,
-      brandName: brand.name,
+      brandId: values.brandId,
+      brandName,
       gateway: values.gateway,
       currency: values.currency,
       lineItems: values.lineItems.map((item, idx) => ({
-        id: `li-new-${idx}`,
+        id: `li-new-${idx + 1}`,
         ...item,
       })),
       subtotal: liveSubtotal,
@@ -551,24 +650,11 @@ function CreateInvoiceForm({
       total: liveTotal,
       status: "Created",
       dueDate: values.dueDate,
-      issuedAt: "2026-11-11",
-      salesRepId: "usr-2",
-      attachments: [
-        {
-          id: "att-new-1",
-          name: `${invoiceNumber}-proposal.pdf`,
-          size: "380 KB",
-          type: "application/pdf",
-          uploadedBy: "Elena Rostova",
-          uploadedAt: "2026-11-11",
-        },
-      ],
+      issuedAt: today,
+      salesRepId: "usr-admin",
+      attachments: [],
       notes: values.notes,
-    }
-    toast.success(
-      `Invoice ${invoiceNumber} created (${formatCurrency(liveTotal, values.currency)})`
-    )
-    onCreate(created)
+    })
   }
 
   return (
@@ -576,7 +662,7 @@ function CreateInvoiceForm({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="space-y-1.5">
           <Label htmlFor="inv-client">Client Name</Label>
-          <Input id="inv-client" {...form.register("clientName")} />
+          <Input id="inv-client" placeholder="Jane Doe" {...form.register("clientName")} />
           {form.formState.errors.clientName ? (
             <p className="text-xs text-destructive">
               {form.formState.errors.clientName.message}
@@ -585,7 +671,7 @@ function CreateInvoiceForm({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="inv-company">Company</Label>
-          <Input id="inv-company" {...form.register("clientCompany")} />
+          <Input id="inv-company" placeholder="Acme Studios" {...form.register("clientCompany")} />
           {form.formState.errors.clientCompany ? (
             <p className="text-xs text-destructive">
               {form.formState.errors.clientCompany.message}
@@ -597,6 +683,7 @@ function CreateInvoiceForm({
           <Input
             id="inv-email"
             type="email"
+            placeholder="billing@acme.com"
             {...form.register("clientEmail")}
           />
           {form.formState.errors.clientEmail ? (
@@ -610,24 +697,37 @@ function CreateInvoiceForm({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <div className="space-y-1.5">
           <Label>Brand</Label>
-          <Controller
-            control={form.control}
-            name="brandId"
-            render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MOCK_BRANDS.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
+          {brands.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border p-2 text-xs text-muted-foreground">
+              <Link href="/brands" className="text-primary underline">
+                Add a brand first
+              </Link>
+            </div>
+          ) : (
+            <Controller
+              control={form.control}
+              name="brandId"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select brand" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {brands.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          )}
+          {form.formState.errors.brandId ? (
+            <p className="text-xs text-destructive">
+              {form.formState.errors.brandId.message}
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-1.5">
@@ -700,46 +800,31 @@ function CreateInvoiceForm({
           </Button>
         </div>
 
-        <div className="space-y-2 rounded-lg border border-border p-3">
-          {fields.map((fieldItem, idx) => (
+        <div className="space-y-2">
+          {fields.map((field, idx) => (
             <div
-              key={fieldItem.id}
-              className="grid grid-cols-12 items-end gap-2"
+              key={field.id}
+              className="grid grid-cols-12 items-center gap-2 rounded-lg border border-border p-2.5 text-xs"
             >
-              <div className="col-span-12 sm:col-span-6 space-y-1">
-                {idx === 0 ? (
-                  <Label className="text-[11px] text-muted-foreground">
-                    Description
-                  </Label>
-                ) : null}
+              <div className="col-span-12 sm:col-span-6">
                 <Input
                   placeholder="Deliverable description"
                   {...form.register(`lineItems.${idx}.description`)}
                 />
               </div>
-              <div className="col-span-4 sm:col-span-2 space-y-1">
-                {idx === 0 ? (
-                  <Label className="text-[11px] text-muted-foreground">
-                    Qty
-                  </Label>
-                ) : null}
+              <div className="col-span-5 sm:col-span-2">
                 <Input
                   type="number"
-                  min={1}
+                  placeholder="Qty"
                   {...form.register(`lineItems.${idx}.quantity`, {
                     valueAsNumber: true,
                   })}
                 />
               </div>
-              <div className="col-span-6 sm:col-span-3 space-y-1">
-                {idx === 0 ? (
-                  <Label className="text-[11px] text-muted-foreground">
-                    Unit Price
-                  </Label>
-                ) : null}
+              <div className="col-span-5 sm:col-span-3">
                 <Input
                   type="number"
-                  min={1}
+                  placeholder="Unit Price"
                   {...form.register(`lineItems.${idx}.unitPrice`, {
                     valueAsNumber: true,
                   })}
@@ -749,83 +834,83 @@ function CreateInvoiceForm({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
-                  disabled={fields.length <= 1}
+                  size="icon-xs"
+                  disabled={fields.length === 1}
                   onClick={() => remove(idx)}
-                  aria-label="Remove line item"
                 >
-                  <Trash2 className="size-4 text-muted-foreground" />
+                  <Trash2 className="size-3.5 text-destructive" />
                 </Button>
               </div>
             </div>
           ))}
         </div>
+        {form.formState.errors.lineItems ? (
+          <p className="text-xs text-destructive">
+            {form.formState.errors.lineItems.message}
+          </p>
+        ) : null}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="inv-tax">Tax (%)</Label>
-            <Input
-              id="inv-tax"
-              type="number"
-              min={0}
-              max={30}
-              {...form.register("taxRate", { valueAsNumber: true })}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="inv-discount">Discount</Label>
-            <Input
-              id="inv-discount"
-              type="number"
-              min={0}
-              {...form.register("discountAmount", { valueAsNumber: true })}
-            />
-          </div>
+      {/* Pricing adjustments */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="inv-tax">Tax Rate (%)</Label>
+          <Input
+            id="inv-tax"
+            type="number"
+            step="0.5"
+            {...form.register("taxRate", { valueAsNumber: true })}
+          />
         </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="inv-discount">Discount Amount ({watchCurrency})</Label>
+          <Input
+            id="inv-discount"
+            type="number"
+            {...form.register("discountAmount", { valueAsNumber: true })}
+          />
+        </div>
+      </div>
 
-        <div className="space-y-1 rounded-lg border border-border bg-muted/30 p-3 text-sm">
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span className="tabular-nums">
-              {formatCurrency(liveSubtotal, watchCurrency)}
-            </span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">
-              Tax ({watchTaxRate}%)
-            </span>
-            <span className="tabular-nums">
-              {formatCurrency(liveTaxAmount, watchCurrency)}
-            </span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Discount</span>
-            <span className="tabular-nums">
-              -{formatCurrency(watchDiscount, watchCurrency)}
-            </span>
-          </div>
-          <Separator className="my-1" />
-          <div className="flex justify-between font-bold">
-            <span>Live Total</span>
-            <span className="tabular-nums text-primary">
-              {formatUsdEquivalent(liveTotal, watchCurrency)}
-            </span>
-          </div>
+      {/* Real-time Calculation Box */}
+      <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm">
+        <div className="flex justify-between py-0.5 text-muted-foreground">
+          <span>Subtotal</span>
+          <span className="tabular-nums">
+            {formatCurrency(liveSubtotal, watchCurrency)}
+          </span>
+        </div>
+        <div className="flex justify-between py-0.5 text-muted-foreground">
+          <span>Tax ({watchTaxRate}%)</span>
+          <span className="tabular-nums">
+            {formatCurrency(liveTaxAmount, watchCurrency)}
+          </span>
+        </div>
+        <div className="flex justify-between py-0.5 text-emerald-600 dark:text-emerald-400">
+          <span>Discount</span>
+          <span className="tabular-nums">
+            -{formatCurrency(watchDiscount, watchCurrency)}
+          </span>
+        </div>
+        <Separator className="my-2" />
+        <div className="flex items-center justify-between text-base font-bold text-foreground">
+          <span>Calculated Total</span>
+          <span className="text-lg text-primary tabular-nums">
+            {formatCurrency(liveTotal, watchCurrency)}
+          </span>
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="inv-notes">Terms & Notes</Label>
+        <Label htmlFor="inv-notes">Payment Terms & Notes</Label>
         <Textarea id="inv-notes" rows={2} {...form.register("notes")} />
       </div>
 
-      <SheetFooter className="px-0">
+      <SheetFooter className="px-0 pt-2">
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit">Generate Invoice</Button>
+        <Button type="submit">Issue & Generate Payment Link</Button>
       </SheetFooter>
     </form>
   )
