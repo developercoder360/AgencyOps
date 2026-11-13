@@ -1,22 +1,47 @@
 # AgencyOps — Multi-Brand Agency CRM & ERP Prototype
 
-A frontend-only, high-fidelity agency operations dashboard prototype built with **Next.js 16 (App Router)**, **TypeScript (strict)**, **shadcn/ui (`radix-nova`)**, **TanStack Table v8**, **Tremor Raw (Recharts)**, **Tailwind CSS v4**, **react-hook-form + zod**, and **next-themes**.
+A frontend-only, high-fidelity agency operations platform built with **Next.js 16 (App Router)**, **TypeScript (strict)**, **shadcn/ui (`radix-nova`)**, **TanStack Table v8**, **Tremor Raw (Recharts)**, **Tailwind CSS v4**, **react-hook-form + zod**, and **next-themes**.
 
-> **Prototype Note:** All data is deterministic in-memory mock data (`/src/mocks/*.ts`) with zero backend APIs, database connections, or real payment charges.
+> **Client-Side Persistence Architecture:** AgencyOps starts fresh and empty by default. All creations, edits, and deletions are saved directly to your browser's `localStorage` (`agencyops:data:v1`) with zero backend APIs or server databases required. Demo datasets can be loaded or cleared anytime via **Settings → Data Management**.
 
 ---
 
-## Tremor Approach Decision
+## Data Store & Persistence Architecture
 
-During Phase 0 dependency verification, `@tremor/react@3.18.7` declared `peerDependencies: { react: '^18.0.0' }` and relies on Tailwind v3 config plugins, which conflicts with **React 19.3.0** and **Tailwind CSS v4.3.3**.
+The application state is managed by a centralized, typed client-side store under [`src/lib/store/`](src/lib/store/):
+- **Core Store (`StoreManager`):** Implements subscription listeners, reactive updates, and snapshot caching via `useSyncExternalStore`.
+- **Hydration Safety:** Avoids server/client hydration mismatches. Components display skeleton loading states during initial mount, synchronizing with localStorage post-mount.
+- **Persistence:** Serializes to browser `localStorage` under `agencyops:data:v1` with automatic schema version validation and corrupted state recovery.
+- **Data Management (Settings):**
+  - **Export Backup:** Downloads complete state as `agencyops-backup-YYYY-MM-DD.json`.
+  - **Import Backup:** Restores state from JSON file with validation.
+  - **Load Demo Data:** Re-populates the app with the full multi-brand agency dataset from [`src/demo-data/`](src/demo-data/).
+  - **Clear All Data:** Destructive reset requiring "DELETE" text confirmation.
+  - **Storage Usage Meter:** Displays real-time KB consumption against the ~5 MB browser quota.
 
-Instead of forcing `--legacy-peer-deps`, this project implements **Tremor Raw** copy-paste components under [`src/components/tremor/`](src/components/tremor/) powered by **Recharts `3.10.1`** and Tailwind v4 CSS design tokens:
-- `AreaChart`
-- `BarChart`
-- `DonutChart`
-- `ProgressBar`
-- `BadgeDelta`
-- `Tracker`
+---
+
+## Entity Relationship Rules (Block vs. Cascade)
+
+The relations layer ([`src/lib/store/relations.ts`](src/lib/store/relations.ts)) enforces relational integrity before executing deletions:
+
+### Deletion Block Rules (Referential Integrity)
+| Entity | Deletion Constraint |
+| --- | --- |
+| **Brand** | **BLOCKED** if linked to any Leads, Invoices, Marketing Spend records, or Projects. Reassign or delete related items first. |
+| **Team** | **BLOCKED** if referenced by active Staff Users. |
+| **City** | **BLOCKED** if referenced by active Staff Users or Leads. |
+| **User (Staff)** | **BLOCKED** if managing active Projects or assigned to incomplete Tasks. |
+| **Lead** | **BLOCKED** if referenced by any Invoices. |
+| **Shift Schedule** | **BLOCKED** if staff members are currently assigned to this shift. |
+| **Leave Type** | **BLOCKED** if leave requests exist under this policy. |
+
+### Cascade Deletion Rules
+| Entity | Cascade Behavior |
+| --- | --- |
+| **Project** | **CASCADES** to delete all associated Tasks, Subtasks, Activity comments, and Project files. |
+| **Invoice** | **CASCADES** to delete all associated Payment Transactions. |
+| **Chat Thread** | Deleting a project chat thread deletes all chat messages within that thread. |
 
 ---
 
@@ -26,33 +51,33 @@ Instead of forcing `--legacy-peer-deps`, this project implements **Tremor Raw** 
 | Route | Description |
 | --- | --- |
 | `/` | Redirects to `/dashboard` |
-| `/dashboard` | Executive KPIs, brand & date-range filters, target progress bar, Tremor charts, recent transactions, due tasks, dismissible celebration card |
-| `/brands` | Multi-brand directory + Create/Edit Sheet with live logo upload preview |
-| `/leads` | Lead pipeline `<DataTable>`, Create/Edit Sheets, Detail Sheet with assignment-history timeline |
-| `/sign-ups` | Website inquiry sign-ups `<DataTable>` + Detail Sheet with lead conversion action |
-| `/invoices` | Multi-currency invoices `<DataTable>`, Create Sheet (dynamic line-item editor, tax/discount, live total), Detail Sheet (gateway badge & attachments) |
-| `/invoice/[id]` | Standalone public hosted checkout page mockup (card form with success/decline simulation + bank transfer proof upload) |
-| `/transactions` | Multi-gateway settlements `<DataTable>` (including Refund Requested, Refunded, Chargeback) + event timeline Dialog |
+| `/dashboard` | Executive KPIs, Getting Started Onboarding Checklist, target attainment, Tremor charts, and recent activity |
+| `/brands` | Multi-brand directory + Create/Edit Sheet with logo preview + relation deletion checks |
+| `/leads` | Lead pipeline `<DataTable>`, Create/Edit Sheets, Detail Sheet with assignment timeline |
+| `/sign-ups` | Website inquiry sign-ups `<DataTable>` + Convert to Lead dialog |
+| `/invoices` | Multi-currency invoices `<DataTable>`, Create Sheet (dynamic line-item editor, tax/discount), Detail Sheet |
+| `/invoice/[id]` | Standalone public hosted checkout page mockup (tokenized simulation; never stores real card data) |
+| `/transactions` | Multi-gateway settlements `<DataTable>` + event timeline Dialog |
 | `/marketing-spendings` | Tremor `BarChart` + Brand × Channel daily spend matrix + spend ledger |
 
 ### Delivery
 | Route | Description |
 | --- | --- |
-| `/projects` | Projects `<DataTable>` with List/Card toggle, status filters, member avatars, and overdue deadline highlighting |
-| `/projects/[id]` | Project workspace with Overview, Tasks, Files (client-visibility toggle), and Comments & Activity tabs |
-| `/tasks` | 6-column Kanban board & `<DataTable>` toggle, subtasks, evidence upload, On Hold dialog, and QA Pass/Fail flow with red-flagging |
-| `/chats` | Two-pane project chat with unread badges, read receipts, and message edit dialog |
+| `/projects` | Projects `<DataTable>` with List/Card toggle, status filters, and member avatars |
+| `/projects/[id]` | Project workspace with Overview, Tasks, Files (client-visibility toggle), and Comments |
+| `/tasks` | 6-column Kanban board & `<DataTable>` toggle, subtasks, evidence upload, On Hold dialog, and QA Pass/Fail |
+| `/chats` | Two-pane project chat with unread badges, read receipts, and message edit |
 
 ### HR Management
 | Route | Description |
 | --- | --- |
-| `/hrm/dashboard` | HR KPIs, daily attendance `<Tracker>`, 7-day `<AreaChart>`, and pending leave Approve / Reject-with-remarks |
-| `/hrm/daily-attendance` | Daily attendance `<DataTable>`, manual-edit Dialog, and audit logs timeline Sheet |
-| `/hrm/monthly-attendance-report` | Month picker enforcing the **26th-to-25th payroll window** + pivot grid with per-day status chips |
+| `/hrm/dashboard` | HR KPIs, live daily roster `<Tracker>`, 7-day trend chart, and pending leave reviews |
+| `/hrm/daily-attendance` | Daily attendance ledger, manual override dialog with audit logs |
+| `/hrm/monthly-attendance-report` | Month picker enforcing the **26th-to-25th payroll window** + pivot grid with status chips |
 | `/hrm/leave-balances` | Staff PTO balances `<DataTable>` + quota adjustment Dialog |
 | `/hrm/leave-requests` | Leave requests `<DataTable>`, Apply Leave Sheet, and Approve/Reject actions |
-| `/hrm/leave-types` | Leave policy rules `<DataTable>` + Create Sheet |
-| `/hrm/shift-scheduling` | Shift schedules `<DataTable>` + Create Sheet |
+| `/hrm/leave-types` | Leave policy rules `<DataTable>` + Create Sheet + relation protection |
+| `/hrm/shift-scheduling` | Shift schedules `<DataTable>` + Create Sheet + relation protection |
 | `/hrm/holidays` | Regional & company holidays `<DataTable>` + Add Dialog |
 
 ### Admin, Exports, Settings & Auth UI
@@ -62,42 +87,36 @@ Instead of forcing `--legacy-peer-deps`, this project implements **Tremor Raw** 
 | `/users/[id]` | User 360° profile tabs (Attendance, Leads, Projects, Sales, Leave Balance) |
 | `/teams` | Delivery & revenue teams `<DataTable>` + Create Sheet |
 | `/cities` | Territory markets, billing currencies, and timezones `<DataTable>` + Add Dialog |
-| `/export-logs` | Async export jobs `<DataTable>` (`queued`, `processing`, `completed`, `failed`) + shared `<ExportDialog>` |
-| `/settings` | Company profile + organization logo upload preview |
+| `/export-logs` | Async export jobs `<DataTable>` + CSV/XLSX download action |
+| `/settings` | General settings + Client-Side Data Management (backup, import, load demo, wipe) |
 | `/settings/security` | 2FA setup UI with QR placeholder SVG, TOTP verification, and backup recovery codes |
 | `/login` | Standalone internal staff sign-in UI |
 | `/two-factor-authentication` | Standalone 2FA verification & recovery code UI |
 
 ---
 
-## Mock Data Approach
+## Adding a New Entity to Store & UI in Under 15 Lines
 
-- **Interfaces:** Defined in [`src/types/index.ts`](src/types/index.ts).
-- **Seeded Determinism:** [`src/mocks/seed.ts`](src/mocks/seed.ts) provides a Mulberry32 PRNG (`createSeededRandom`) and fixed reference date (`REFERENCE_DATE_ISO = "2026-11-11"`), preventing SSR/client hydration mismatches from `Math.random()` or `new Date()`.
-- **Datasets:** Realistic agency datasets (~40–52 rows per primary table) live in [`src/mocks/`](src/mocks/) across `brands.ts`, `users.ts`, `leads.ts`, `billing.ts`, `marketing.ts`, `projects.ts`, `tasks.ts`, `chats.ts`, `hrm.ts`, and `exports.ts`.
-- **Multi-Currency:** [`src/lib/currency.ts`](src/lib/currency.ts) normalizes `USD`, `GBP`, and `CAD` amounts into USD equivalents for dashboard KPIs, charts, and invoices.
-- **Role-Based Demo Navigation:** [`src/lib/permissions.ts`](src/lib/permissions.ts) powers the Demo Role Switcher in the top-right user menu (`Super Admin`, `Sales/Account Manager`, `Project Admin`, `Designer/Developer`, `QA Reviewer`, `HR Manager`).
+### 1. Register Action in Store
+```ts
+// In src/lib/store/types.ts & store.ts:
+createNote: (note: Omit<Note, "id" | "createdAt">) => storeManager.createEntity("notes", note)
+```
 
----
-
-## Adding a New DataTable Page in Under 10 Lines
-
+### 2. Consume in Component
 ```tsx
 "use client"
-import { DataTable, DataTableColumnHeader } from "@/components/data-table"
-import { PageHeader, StatusBadge } from "@/components/shared"
-import { MOCK_ITEMS } from "@/mocks/items"
+import { DataTable } from "@/components/data-table"
+import { PageHeader } from "@/components/shared"
+import { useStore } from "@/lib/store"
 
-const columns = [
-  { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
-  { accessorKey: "status", header: "Status", cell: ({ row }) => <StatusBadge status={row.original.status} /> },
-]
-
-export default function ExamplePage() {
+export default function NotesPage() {
+  const { notes, isLoaded } = useStore()
+  if (!isLoaded) return <div className="p-6">Loading...</div>
   return (
     <div className="space-y-6">
-      <PageHeader title="Example" description="Reusable table with search, filters, sorting, and export." />
-      <DataTable columns={columns} data={MOCK_ITEMS} exportModule="Example" />
+      <PageHeader title="Notes" description="Live entity connected to browser store." />
+      <DataTable columns={noteColumns} data={notes} exportModule="Notes" />
     </div>
   )
 }
@@ -105,10 +124,6 @@ export default function ExamplePage() {
 
 ---
 
-## Scripts
+## Hosted Invoices & Security Note
 
-```bash
-npm run dev    # Start local Next.js dev server
-npm run lint   # Run ESLint checks
-npm run build  # Type-check & build production bundle
-```
+The hosted checkout preview at `/invoice/[id]` simulates real payment gateway flows (Stripe Elements, PayPal, Bank Transfer proof upload). **No real cards, bank accounts, or credentials are ever transmitted, charged, or stored.** All transaction records are generated tokenized client-side and saved only in the local browser session.
