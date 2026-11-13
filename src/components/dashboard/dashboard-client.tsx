@@ -7,13 +7,20 @@ import type { DateRange } from "react-day-picker"
 import {
   AlertTriangle,
   ArrowRight,
+  Briefcase,
+  Building2,
   CalendarIcon,
+  CheckCircle2,
+  Circle,
+  CreditCard,
   DollarSign,
   FolderKanban,
   PartyPopper,
   Sparkles,
   Target,
+  UserCheck,
   UserPlus,
+  Users,
   X,
 } from "lucide-react"
 import { useAppState } from "@/components/providers/app-state-provider"
@@ -51,6 +58,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -60,14 +68,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { formatCurrency } from "@/lib/currency"
-import { MOCK_BRANDS } from "@/mocks/brands"
-import { MOCK_TRANSACTIONS } from "@/mocks/billing"
-import { MOCK_LEADS } from "@/mocks/leads"
-import { MOCK_MARKETING_SPENDS } from "@/mocks/marketing"
-import { MOCK_PROJECTS } from "@/mocks/projects"
-import { MOCK_TASKS } from "@/mocks/tasks"
-import { MOCK_USERS } from "@/mocks/users"
-import { REFERENCE_DATE_ISO } from "@/mocks/seed"
+import { useStore } from "@/lib/store"
+
+const REFERENCE_DATE_ISO = "2026-11-11"
 
 const PRESETS = [
   { id: "30d", label: "Last 30 Days", from: "2026-10-12", to: "2026-11-11", months: 1 },
@@ -87,8 +90,38 @@ function toIsoDate(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+function subscribeStorage(callback: () => void) {
+  window.addEventListener("storage", callback)
+  return () => window.removeEventListener("storage", callback)
+}
+
+function getDismissedSnapshot(): boolean {
+  try {
+    return localStorage.getItem("agencyops:getting-started:dismissed") === "true"
+  } catch {
+    return false
+  }
+}
+
+function getDismissedServerSnapshot(): boolean {
+  return true
+}
+
 export function DashboardClient() {
   const { celebrationDismissed, dismissCelebration } = useAppState()
+  const {
+    brands,
+    transactions,
+    leads,
+    marketingSpendings,
+    projects,
+    tasks,
+    users,
+    teams,
+    cities,
+    invoices,
+    isLoaded,
+  } = useStore()
 
   const [brandFilter, setBrandFilter] = React.useState<string>("all")
   const [presetId, setPresetId] = React.useState<string>("6m")
@@ -96,6 +129,33 @@ export function DashboardClient() {
     from: parseIsoDate("2026-05-15"),
     to: parseIsoDate("2026-11-11"),
   })
+
+  // Dismissible Getting Started Checklist
+  const isDismissedStored = React.useSyncExternalStore(
+    subscribeStorage,
+    getDismissedSnapshot,
+    getDismissedServerSnapshot
+  )
+  const [overrideDismissed, setOverrideDismissed] = React.useState<boolean | null>(null)
+  const checklistDismissed = overrideDismissed !== null ? overrideDismissed : isDismissedStored
+
+  function handleDismissChecklist() {
+    setOverrideDismissed(true)
+    try {
+      localStorage.setItem("agencyops:getting-started:dismissed", "true")
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleReopenChecklist() {
+    setOverrideDismissed(false)
+    try {
+      localStorage.removeItem("agencyops:getting-started:dismissed")
+    } catch {
+      // ignore
+    }
+  }
 
   const fromIso = dateRange?.from ? toIsoDate(dateRange.from) : "2026-05-15"
   const toIso = dateRange?.to
@@ -117,38 +177,38 @@ export function DashboardClient() {
   // Filtered datasets
   const filteredTransactions = React.useMemo(
     () =>
-      MOCK_TRANSACTIONS.filter((t) => {
+      transactions.filter((t) => {
         const matchBrand = brandFilter === "all" || t.brandId === brandFilter
         const matchDate = t.createdAt >= fromIso && t.createdAt <= toIso
         return matchBrand && matchDate
       }),
-    [brandFilter, fromIso, toIso]
+    [transactions, brandFilter, fromIso, toIso]
   )
 
   const filteredLeads = React.useMemo(
     () =>
-      MOCK_LEADS.filter((l) => {
+      leads.filter((l) => {
         const matchBrand = brandFilter === "all" || l.brandId === brandFilter
         const matchDate = l.createdAt >= fromIso && l.createdAt <= toIso
         return matchBrand && matchDate
       }),
-    [brandFilter, fromIso, toIso]
+    [leads, brandFilter, fromIso, toIso]
   )
 
   const filteredProjects = React.useMemo(
     () =>
-      MOCK_PROJECTS.filter(
+      projects.filter(
         (p) => brandFilter === "all" || p.brandId === brandFilter
       ),
-    [brandFilter]
+    [projects, brandFilter]
   )
 
   const filteredTasks = React.useMemo(
     () =>
-      MOCK_TASKS.filter(
+      tasks.filter(
         (t) => brandFilter === "all" || t.brandId === brandFilter
       ),
-    [brandFilter]
+    [tasks, brandFilter]
   )
 
   // KPI metrics
@@ -173,13 +233,13 @@ export function DashboardClient() {
     [filteredTasks]
   )
 
-  // Monthly target calculation (sum of active sales reps monthlyTargetUsd * monthsInRange)
+  // Monthly target calculation
   const monthlySalesTargetUsd = React.useMemo(() => {
-    const base = MOCK_USERS.reduce((sum, u) => sum + u.monthlyTargetUsd, 0)
-    if (brandFilter === "all") return base
-    const brandShare = 1 / MOCK_BRANDS.length
+    const base = users.reduce((sum, u) => sum + (u.monthlyTargetUsd || 0), 0)
+    if (brandFilter === "all" || brands.length === 0) return base
+    const brandShare = 1 / brands.length
     return Math.round(base * brandShare)
-  }, [brandFilter])
+  }, [users, brands, brandFilter])
 
   const periodTargetUsd = monthlySalesTargetUsd * monthsInRange
   const targetPercent =
@@ -191,12 +251,13 @@ export function DashboardClient() {
   const visibleBrands = React.useMemo(
     () =>
       brandFilter === "all"
-        ? MOCK_BRANDS
-        : MOCK_BRANDS.filter((b) => b.id === brandFilter),
-    [brandFilter]
+        ? brands
+        : brands.filter((b) => b.id === brandFilter),
+    [brands, brandFilter]
   )
 
   const revenueAreaData = React.useMemo(() => {
+    if (visibleBrands.length === 0) return []
     const monthKeys = ["2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11"]
     const monthLabels: Record<string, string> = {
       "2026-06": "Jun 2026",
@@ -209,18 +270,19 @@ export function DashboardClient() {
     return monthKeys.map((mk) => {
       const row: Record<string, string | number> = { month: monthLabels[mk] }
       for (const brand of visibleBrands) {
-        const sum = MOCK_TRANSACTIONS.filter(
-          (t) =>
-            t.brandId === brand.id &&
-            t.createdAt.startsWith(mk) &&
-            (t.status === "Success" || t.status === "Processing")
-        ).reduce((acc, t) => acc + t.amountUsd, 0)
-        // Add deterministic baseline from brand monthly revenue if sparse in a bucket
-        row[brand.name] = Math.round(sum || brand.monthlyRevenueUsd * 0.42)
+        const sum = transactions
+          .filter(
+            (t) =>
+              t.brandId === brand.id &&
+              t.createdAt.startsWith(mk) &&
+              (t.status === "Success" || t.status === "Processing")
+          )
+          .reduce((acc, t) => acc + t.amountUsd, 0)
+        row[brand.name] = sum
       }
       return row
     })
-  }, [visibleBrands])
+  }, [visibleBrands, transactions])
 
   // Leads by source DonutChart
   const leadsBySourceData = React.useMemo(() => {
@@ -237,19 +299,19 @@ export function DashboardClient() {
   const spendVsRevenueData = React.useMemo(
     () =>
       visibleBrands.map((b) => {
-        const spend = MOCK_MARKETING_SPENDS.filter(
-          (m) => m.brandId === b.id
-        ).reduce((acc, m) => acc + m.spendUsd, 0)
-        const rev = MOCK_MARKETING_SPENDS.filter(
-          (m) => m.brandId === b.id
-        ).reduce((acc, m) => acc + m.revenueAttributedUsd, 0)
+        const spend = marketingSpendings
+          .filter((m) => m.brandId === b.id)
+          .reduce((acc, m) => acc + m.spendUsd, 0)
+        const rev = marketingSpendings
+          .filter((m) => m.brandId === b.id)
+          .reduce((acc, m) => acc + m.revenueAttributedUsd, 0)
         return {
           brand: b.name.replace(" Studio", "").replace(" Digital", ""),
           "Ad Spend": spend,
           "Attributed Revenue": rev,
         }
       }),
-    [visibleBrands]
+    [visibleBrands, marketingSpendings]
   )
 
   const recentTransactions = React.useMemo(
@@ -270,6 +332,71 @@ export function DashboardClient() {
     [filteredTasks]
   )
 
+  // Checklist items
+  const checklist = React.useMemo(() => {
+    const hasBrand = brands.length > 0
+    const hasTeamOrCity = teams.length > 0 || cities.length > 0
+    const hasStaff = users.filter((u) => u.id !== "usr-admin").length > 0
+    const hasLead = leads.length > 0
+    const hasInvoice = invoices.length > 0
+    const hasProject = projects.length > 0
+
+    return [
+      {
+        id: "brand",
+        title: "Create your first agency brand",
+        description: "Set up brand storefronts and currency parameters.",
+        completed: hasBrand,
+        href: "/brands",
+        icon: Building2,
+      },
+      {
+        id: "team",
+        title: "Add a regional team or office city",
+        description: "Configure studio hubs and department pods.",
+        completed: hasTeamOrCity,
+        href: "/teams",
+        icon: Users,
+      },
+      {
+        id: "staff",
+        title: "Invite your team staff members",
+        description: "Add designers, sales reps, and PMs to roles.",
+        completed: hasStaff,
+        href: "/users",
+        icon: UserCheck,
+      },
+      {
+        id: "lead",
+        title: "Capture or import incoming leads",
+        description: "Track prospect pipeline across marketing sources.",
+        completed: hasLead,
+        href: "/leads",
+        icon: UserPlus,
+      },
+      {
+        id: "invoice",
+        title: "Issue a client invoice",
+        description: "Generate multi-gateway hosted payment links.",
+        completed: hasInvoice,
+        href: "/invoices",
+        icon: CreditCard,
+      },
+      {
+        id: "project",
+        title: "Kick off a client delivery project",
+        description: "Assign deliverables, tasks, and QA reviewers.",
+        completed: hasProject,
+        href: "/projects",
+        icon: Briefcase,
+      },
+    ]
+  }, [brands, teams, cities, users, leads, invoices, projects])
+
+  const completedChecklistCount = checklist.filter((item) => item.completed).length
+  const isAllChecklistDone = completedChecklistCount === checklist.length
+  const checklistProgressPercent = Math.round((completedChecklistCount / checklist.length) * 100)
+
   function applyPreset(id: string) {
     const preset = PRESETS.find((p) => p.id === id)
     if (!preset) return
@@ -278,6 +405,21 @@ export function DashboardClient() {
       from: parseIsoDate(preset.from),
       to: parseIsoDate(preset.to),
     })
+  }
+
+  if (!isLoaded) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-14 w-full" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+        <Skeleton className="h-96 w-full" />
+      </div>
+    )
   }
 
   return (
@@ -297,8 +439,10 @@ export function DashboardClient() {
                 <SelectValue placeholder="All Brands" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Brands ({MOCK_BRANDS.length})</SelectItem>
-                {MOCK_BRANDS.map((brand) => (
+                <SelectItem value="all">
+                  All Brands ({brands.length})
+                </SelectItem>
+                {brands.map((brand) => (
                   <SelectItem key={brand.id} value={brand.id}>
                     {brand.name}
                   </SelectItem>
@@ -357,8 +501,108 @@ export function DashboardClient() {
         }
       />
 
-      {/* Dismissible celebration banner */}
-      {!celebrationDismissed ? (
+      {/* Getting Started Onboarding Checklist Card */}
+      {!checklistDismissed && !isAllChecklistDone ? (
+        <Card className="border-primary/30 bg-gradient-to-r from-primary/5 via-background to-primary/10">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="default" className="text-xs">
+                    Getting Started
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {completedChecklistCount} of {checklist.length} completed ({checklistProgressPercent}%)
+                  </span>
+                </div>
+                <CardTitle className="mt-1 text-base">
+                  Welcome to AgencyOps — Operational Setup Checklist
+                </CardTitle>
+                <CardDescription>
+                  Complete these recommended initial steps to unlock your live agency pipeline.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleDismissChecklist}
+                  aria-label="Dismiss checklist"
+                >
+                  <X className="size-4 text-muted-foreground" />
+                </Button>
+              </div>
+            </div>
+            <div className="pt-2">
+              <ProgressBar value={checklistProgressPercent} color="blue" />
+            </div>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 pt-1">
+            {checklist.map((item) => {
+              const Icon = item.icon
+              return (
+                <div
+                  key={item.id}
+                  className={`flex flex-col justify-between rounded-lg border p-3 transition-colors ${
+                    item.completed
+                      ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-950 dark:text-emerald-100"
+                      : "border-border bg-card/70 hover:border-primary/50"
+                  }`}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Icon className="size-4 text-primary" />
+                        <span className="text-xs font-semibold">{item.title}</span>
+                      </div>
+                      {item.completed ? (
+                        <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      ) : (
+                        <Circle className="size-4 text-muted-foreground shrink-0" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {item.description}
+                    </p>
+                  </div>
+                  <div className="pt-3">
+                    <Button
+                      asChild
+                      variant={item.completed ? "outline" : "default"}
+                      size="xs"
+                      className="w-full text-xs"
+                    >
+                      <Link href={item.href}>
+                        {item.completed ? "Manage" : "Complete Step"}
+                        <ArrowRight className="ml-1 size-3" />
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+      ) : checklistDismissed && !isAllChecklistDone ? (
+        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">
+            Onboarding checklist: <strong>{completedChecklistCount}/{checklist.length}</strong> steps completed.
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={handleReopenChecklist}
+            className="text-xs text-primary"
+          >
+            Show Checklist
+          </Button>
+        </div>
+      ) : null}
+
+      {/* Dismissible celebration banner (only shown if users > 1) */}
+      {!celebrationDismissed && users.length > 1 ? (
         <Card className="border-amber-200 bg-gradient-to-r from-amber-50/90 via-background to-blue-50/70 py-3 dark:border-amber-500/30 dark:from-amber-950/30 dark:via-card dark:to-blue-950/30">
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
@@ -375,10 +619,7 @@ export function DashboardClient() {
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Happy Birthday to <strong className="text-foreground">Aria Chen</strong>{" "}
-                  (Lead Product Designer) and Happy Work Anniversary to{" "}
-                  <strong className="text-foreground">Elena Rostova</strong> (4 yrs) &{" "}
-                  <strong className="text-foreground">Maya Alvarez</strong> (3 yrs)!
+                  Happy Work Anniversary to team staff members! Keep up the great velocity.
                 </p>
               </div>
             </div>
@@ -476,38 +717,46 @@ export function DashboardClient() {
             )}`}
             color={targetPercent >= 75 ? "emerald" : "blue"}
           />
-          <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2 lg:grid-cols-5">
-            {MOCK_BRANDS.map((brand) => {
-              const actual = MOCK_TRANSACTIONS.filter(
-                (t) =>
-                  t.brandId === brand.id &&
-                  t.createdAt >= fromIso &&
-                  t.createdAt <= toIso &&
-                  t.status === "Success"
-              ).reduce((acc, t) => acc + t.amountUsd, 0)
-              const brandTarget = brand.monthlyRevenueUsd * monthsInRange
-              const pct = Math.min(
-                100,
-                Math.round((actual / Math.max(1, brandTarget)) * 100)
-              )
-              return (
-                <div
-                  key={brand.id}
-                  className="rounded-lg border border-border bg-muted/20 p-2.5"
-                >
-                  <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate font-medium text-foreground">
-                      {brand.name}
-                    </span>
-                    <span className="shrink-0 tabular-nums text-muted-foreground">
-                      {pct}%
-                    </span>
+          {brands.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2 lg:grid-cols-5">
+              {brands.map((brand) => {
+                const actual = transactions
+                  .filter(
+                    (t) =>
+                      t.brandId === brand.id &&
+                      t.createdAt >= fromIso &&
+                      t.createdAt <= toIso &&
+                      t.status === "Success"
+                  )
+                  .reduce((acc, t) => acc + t.amountUsd, 0)
+                const brandTarget = (brand.monthlyRevenueUsd || 10000) * monthsInRange
+                const pct = Math.min(
+                  100,
+                  Math.round((actual / Math.max(1, brandTarget)) * 100)
+                )
+                return (
+                  <div
+                    key={brand.id}
+                    className="rounded-lg border border-border bg-muted/20 p-2.5"
+                  >
+                    <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate font-medium text-foreground">
+                        {brand.name}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {pct}%
+                      </span>
+                    </div>
+                    <ProgressBar value={pct} color="blue" />
                   </div>
-                  <ProgressBar value={pct} color="blue" />
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+              Add brands to track brand-by-brand revenue performance targets.
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -521,13 +770,26 @@ export function DashboardClient() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <AreaChart
-              data={revenueAreaData}
-              index="month"
-              categories={visibleBrands.map((b) => b.name)}
-              colors={["blue", "emerald", "violet", "amber", "cyan"]}
-              valueFormatter={(v) => formatCurrency(v, "USD", true)}
-            />
+            {visibleBrands.length === 0 || filteredTransactions.length === 0 ? (
+              <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed border-border p-6 text-center">
+                <CreditCard className="size-8 text-muted-foreground/60 mb-2" />
+                <h4 className="font-semibold text-sm">No transaction volume recorded</h4>
+                <p className="text-xs text-muted-foreground max-w-xs mt-1 mb-3">
+                  Invoices and transactions generated for your brands will chart monthly cash flow here.
+                </p>
+                <Button asChild size="xs" variant="outline">
+                  <Link href="/invoices">Go to Invoices</Link>
+                </Button>
+              </div>
+            ) : (
+              <AreaChart
+                data={revenueAreaData}
+                index="month"
+                categories={visibleBrands.map((b) => b.name)}
+                colors={["blue", "emerald", "violet", "amber", "cyan"]}
+                valueFormatter={(v) => formatCurrency(v, "USD", true)}
+              />
+            )}
           </CardContent>
         </Card>
 
@@ -539,14 +801,27 @@ export function DashboardClient() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <DonutChart
-              data={leadsBySourceData}
-              category="count"
-              index="source"
-              colors={["blue", "emerald", "violet", "amber", "cyan", "rose", "slate"]}
-              valueFormatter={(v) => `${v}`}
-              label={`${filteredLeads.length}`}
-            />
+            {leadsBySourceData.length === 0 ? (
+              <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed border-border p-6 text-center">
+                <UserPlus className="size-8 text-muted-foreground/60 mb-2" />
+                <h4 className="font-semibold text-sm">No lead acquisitions</h4>
+                <p className="text-xs text-muted-foreground max-w-xs mt-1 mb-3">
+                  Capture inbound leads to view marketing acquisition source breakdown.
+                </p>
+                <Button asChild size="xs" variant="outline">
+                  <Link href="/leads">Add First Lead</Link>
+                </Button>
+              </div>
+            ) : (
+              <DonutChart
+                data={leadsBySourceData}
+                category="count"
+                index="source"
+                colors={["blue", "emerald", "violet", "amber", "cyan", "rose", "slate"]}
+                valueFormatter={(v) => `${v}`}
+                label={`${filteredLeads.length}`}
+              />
+            )}
           </CardContent>
         </Card>
       </div>
@@ -556,17 +831,30 @@ export function DashboardClient() {
         <CardHeader>
           <CardTitle>Marketing Spend vs Attributed Revenue by Brand</CardTitle>
           <CardDescription>
-            14-day paid & organic acquisition efficiency across agency brands
+            Paid & organic acquisition efficiency across agency brands
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <BarChart
-            data={spendVsRevenueData}
-            index="brand"
-            categories={["Ad Spend", "Attributed Revenue"]}
-            colors={["amber", "emerald"]}
-            valueFormatter={(v) => formatCurrency(v, "USD", true)}
-          />
+          {visibleBrands.length === 0 || marketingSpendings.length === 0 ? (
+            <div className="flex h-52 flex-col items-center justify-center rounded-lg border border-dashed border-border p-6 text-center">
+              <Sparkles className="size-8 text-muted-foreground/60 mb-2" />
+              <h4 className="font-semibold text-sm">No marketing spend records</h4>
+              <p className="text-xs text-muted-foreground max-w-xs mt-1 mb-3">
+                Log ad budgets and ROAS across platforms to analyze channel profitability.
+              </p>
+              <Button asChild size="xs" variant="outline">
+                <Link href="/marketing-spendings">Log Marketing Spend</Link>
+              </Button>
+            </div>
+          ) : (
+            <BarChart
+              data={spendVsRevenueData}
+              index="brand"
+              categories={["Ad Spend", "Attributed Revenue"]}
+              colors={["amber", "emerald"]}
+              valueFormatter={(v) => formatCurrency(v, "USD", true)}
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -607,7 +895,7 @@ export function DashboardClient() {
                         colSpan={5}
                         className="py-8 text-center text-sm text-muted-foreground"
                       >
-                        No transactions match the selected brand and date range.
+                        No transactions recorded for this brand and date selection.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -672,7 +960,7 @@ export function DashboardClient() {
               </p>
             ) : (
               tasksDueSoon.map((task) => {
-                const assignees = MOCK_USERS.filter((u) =>
+                const assignees = users.filter((u) =>
                   task.assigneeIds.includes(u.id)
                 )
                 return (
