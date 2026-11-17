@@ -573,7 +573,7 @@ export function TaskDetailPanel({
           className={cn(
             "flex flex-col gap-0 overflow-hidden p-0 transition-all duration-200",
             // Mobile: full-screen viewport height (100dvh)
-            "inset-0 h-dvh max-h-dvh w-full max-w-none border-0",
+            "inset-0 h-dvh max-h-dvh w-full max-w-none sm:max-w-none border-0",
             // Desktop: wide right panel (960px, max 90vw, full 100dvh) OR expanded centered modal
             isExpanded
               ? "md:inset-auto md:top-1/2 md:left-1/2 md:h-[90dvh] md:max-h-[90dvh] md:w-[92vw] md:max-w-[1140px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:border md:border-border md:shadow-2xl"
