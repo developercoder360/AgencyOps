@@ -59,19 +59,23 @@ import { getDemoDataset } from "@/demo-data"
 type Listener = () => void
 
 class StoreManager {
+  private readonly serverSnapshot: StoreData
   private data: StoreData
   private listeners: Set<Listener> = new Set()
   private isClient = false
 
   constructor() {
-    this.data = createInitialEmptyData()
+    this.serverSnapshot = createInitialEmptyData()
+    this.data = this.serverSnapshot
   }
 
-  public initClient(): void {
+  public initClient(shouldNotify = true): void {
     if (this.isClient || typeof window === "undefined") return
     this.isClient = true
     this.data = loadStoredData()
-    this.notify()
+    if (shouldNotify && this.listeners.size > 0) {
+      this.notify()
+    }
 
     window.addEventListener("storage", (e) => {
       if (e.key === "agencyops:data:v1") {
@@ -82,7 +86,7 @@ class StoreManager {
   }
 
   public subscribe = (listener: Listener): (() => void) => {
-    this.initClient()
+    this.initClient(false)
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
@@ -91,13 +95,13 @@ class StoreManager {
 
   public getSnapshot = (): StoreData => {
     if (!this.isClient && typeof window !== "undefined") {
-      this.initClient()
+      this.initClient(false)
     }
     return this.data
   }
 
   public getServerSnapshot = (): StoreData => {
-    return createInitialEmptyData()
+    return this.serverSnapshot
   }
 
   private notify(): void {
