@@ -217,7 +217,7 @@ export function TaskPropertiesGrid({
   return (
     <div
       aria-label="Task properties"
-      className="grid grid-cols-1 gap-x-6 gap-y-2.5 rounded-xl border border-border bg-muted/20 p-3.5 sm:grid-cols-2"
+      className="grid grid-cols-1 gap-x-6 gap-y-2.5 rounded-xl border border-border bg-muted/20 p-3.5 lg:grid-cols-2"
     >
       {/* 1. Status */}
       <div className="flex items-center justify-between gap-2 sm:justify-start">
@@ -724,7 +724,7 @@ export function TaskPropertiesGrid({
       </div>
 
       {/* 9. Tags (full width across both columns) */}
-      <div className="flex items-start gap-2 pt-1 sm:col-span-2">
+      <div className="flex items-start gap-2 pt-1 lg:col-span-2">
         <span className="mt-1 flex w-28 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
           <Tag className="size-3.5" />
           Tags

@@ -572,12 +572,12 @@ export function TaskDetailPanel({
           showCloseButton={false}
           className={cn(
             "flex flex-col gap-0 overflow-hidden p-0 transition-all duration-200",
-            // Mobile: full-screen (matching data-[side=right] specificity from SheetContent)
-            "data-[side=right]:inset-0 data-[side=right]:h-[100dvh] data-[side=right]:w-full data-[side=right]:max-w-none data-[side=right]:sm:max-w-none data-[side=right]:border-0",
-            // Desktop: wide right panel (960px, max 90vw) OR expanded centered modal
+            // Mobile: full-screen viewport height (100dvh)
+            "inset-0 h-dvh max-h-dvh w-full max-w-none border-0",
+            // Desktop: wide right panel (960px, max 90vw, full 100dvh) OR expanded centered modal
             isExpanded
-              ? "data-[side=right]:md:inset-auto data-[side=right]:md:top-1/2 data-[side=right]:md:left-1/2 data-[side=right]:md:h-[90vh] data-[side=right]:md:w-[92vw] data-[side=right]:md:max-w-[1140px] data-[side=right]:md:-translate-x-1/2 data-[side=right]:md:-translate-y-1/2 data-[side=right]:md:rounded-xl data-[side=right]:md:border data-[side=right]:md:border-border data-[side=right]:md:shadow-2xl"
-              : "data-[side=right]:md:inset-y-0 data-[side=right]:md:right-0 data-[side=right]:md:left-auto data-[side=right]:md:h-full data-[side=right]:md:w-[960px] data-[side=right]:md:max-w-[90vw] data-[side=right]:md:border-l data-[side=right]:md:border-border"
+              ? "md:inset-auto md:top-1/2 md:left-1/2 md:h-[90dvh] md:max-h-[90dvh] md:w-[92vw] md:max-w-[1140px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:border md:border-border md:shadow-2xl"
+              : "md:inset-y-0 md:top-0 md:right-0 md:bottom-0 md:left-auto md:h-dvh md:max-h-dvh md:w-[960px] md:max-w-[90vw] md:border-l md:border-border"
           )}
         >
           {/* Screen-reader accessible title & description for Radix Dialog semantics */}
@@ -953,10 +953,10 @@ export function TaskDetailPanel({
                   />
                 </div>
 
-                {/* RIGHT COLUMN: Activity & Comments (~340px fixed on desktop) */}
+                {/* RIGHT COLUMN: Activity & Comments (~280px tablet, 340px desktop) */}
                 <div
                   className={cn(
-                    "min-h-0 flex-col border-border md:w-[340px] md:shrink-0 md:border-l",
+                    "min-h-0 flex-col border-border md:w-[280px] md:shrink-0 md:border-l lg:w-[340px]",
                     mobileTab === "activity"
                       ? "flex w-full"
                       : "hidden md:flex"
