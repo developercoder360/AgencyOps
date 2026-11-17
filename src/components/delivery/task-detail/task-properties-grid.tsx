@@ -393,7 +393,7 @@ export function TaskPropertiesGrid({
                   type="button"
                   aria-label="Edit start and due dates"
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs tabular-nums transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "inline-flex flex-wrap items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs tabular-nums transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     overdue
                       ? "font-semibold text-rose-600 dark:text-rose-400"
                       : "text-foreground"
