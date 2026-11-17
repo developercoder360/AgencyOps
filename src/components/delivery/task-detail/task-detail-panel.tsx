@@ -159,23 +159,28 @@ export function TaskDetailPanel({
 
   // Navigation index in orderedTaskIds
   const currentIndex = taskId ? orderedTaskIds.indexOf(taskId) : -1
-  const hasPrev = Boolean(onSelectTask) && currentIndex > 0
-  const hasNext =
-    Boolean(onSelectTask) &&
+  const prevTaskId =
+    onSelectTask && currentIndex > 0 ? orderedTaskIds[currentIndex - 1] : null
+  const nextTaskId =
+    onSelectTask &&
     currentIndex >= 0 &&
     currentIndex < orderedTaskIds.length - 1
+      ? orderedTaskIds[currentIndex + 1]
+      : null
+  const hasPrev = Boolean(prevTaskId)
+  const hasNext = Boolean(nextTaskId)
 
-  const navigatePrev = React.useCallback(() => {
-    if (!hasPrev || !onSelectTask) return
+  function navigatePrev() {
+    if (!prevTaskId || !onSelectTask) return
     setEditingTitle(false)
-    onSelectTask(orderedTaskIds[currentIndex - 1])
-  }, [hasPrev, onSelectTask, orderedTaskIds, currentIndex])
+    onSelectTask(prevTaskId)
+  }
 
-  const navigateNext = React.useCallback(() => {
-    if (!hasNext || !onSelectTask) return
+  function navigateNext() {
+    if (!nextTaskId || !onSelectTask) return
     setEditingTitle(false)
-    onSelectTask(orderedTaskIds[currentIndex + 1])
-  }, [hasNext, onSelectTask, orderedTaskIds, currentIndex])
+    onSelectTask(nextTaskId)
+  }
 
   // Keyboard shortcut: Alt+J / Alt+ArrowDown (next), Alt+K / Alt+ArrowUp (prev)
   React.useEffect(() => {
@@ -183,21 +188,23 @@ export function TaskDetailPanel({
     function onKeyDown(e: KeyboardEvent) {
       if (!e.altKey) return
       const key = e.key.toLowerCase()
-      if (key === "j" || e.key === "ArrowDown") {
-        if (hasNext) {
-          e.preventDefault()
-          navigateNext()
-        }
-      } else if (key === "k" || e.key === "ArrowUp") {
-        if (hasPrev) {
-          e.preventDefault()
-          navigatePrev()
-        }
+      if ((key === "j" || e.key === "ArrowDown") && nextTaskId && onSelectTask) {
+        e.preventDefault()
+        setEditingTitle(false)
+        onSelectTask(nextTaskId)
+      } else if (
+        (key === "k" || e.key === "ArrowUp") &&
+        prevTaskId &&
+        onSelectTask
+      ) {
+        e.preventDefault()
+        setEditingTitle(false)
+        onSelectTask(prevTaskId)
       }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [open, hasNext, hasPrev, navigateNext, navigatePrev])
+  }, [open, nextTaskId, prevTaskId, onSelectTask])
 
   const currentActorUser = React.useMemo(
     () =>

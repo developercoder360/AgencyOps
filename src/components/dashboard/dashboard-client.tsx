@@ -69,6 +69,10 @@ import {
 } from "@/components/ui/table"
 import { formatCurrency } from "@/lib/currency"
 import { useStore } from "@/lib/store"
+import {
+  TaskDetailPanel,
+  useTaskDeepLink,
+} from "@/components/delivery/task-detail"
 
 const REFERENCE_DATE_ISO = "2026-11-11"
 
@@ -122,6 +126,8 @@ export function DashboardClient() {
     invoices,
     isLoaded,
   } = useStore()
+
+  const { activeTaskId, openTask, closeTask } = useTaskDeepLink()
 
   const [brandFilter, setBrandFilter] = React.useState<string>("all")
   const [presetId, setPresetId] = React.useState<string>("6m")
@@ -964,10 +970,11 @@ export function DashboardClient() {
                   task.assigneeIds.includes(u.id)
                 )
                 return (
-                  <Link
+                  <button
                     key={task.id}
-                    href="/tasks"
-                    className="flex items-start justify-between gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted/50"
+                    type="button"
+                    onClick={() => openTask(task.id)}
+                    className="flex w-full items-start justify-between gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -990,13 +997,20 @@ export function DashboardClient() {
                       </div>
                     </div>
                     <AvatarGroup people={assignees} max={2} />
-                  </Link>
+                  </button>
                 )
               })
             )}
           </CardContent>
         </Card>
       </div>
+
+      <TaskDetailPanel
+        taskId={activeTaskId}
+        onClose={closeTask}
+        onSelectTask={openTask}
+        orderedTaskIds={tasksDueSoon.map((t) => t.id)}
+      />
     </div>
   )
 }

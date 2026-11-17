@@ -8,28 +8,33 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
 import {
-  AlertTriangle,
-  CheckCircle2,
   Clock,
-  FileCheck2,
   Flag,
   Kanban,
+  List,
   ListTodo,
   MessageSquare,
-  PauseCircle,
+  Paperclip,
   Plus,
-  Send,
-  ShieldAlert,
-  ShieldCheck,
   Table2,
   Trash2,
-  Upload,
 } from "lucide-react"
 import {
   DataTable,
   DataTableColumnHeader,
   type FacetedFilterConfig,
 } from "@/components/data-table"
+import {
+  getTodayIsoFromNow,
+  PRIORITY_META,
+  TASK_PRIORITIES,
+  TASK_STATUSES,
+  TaskDetailPanel,
+  useClientNow,
+  useTaskDeepLink,
+} from "@/components/delivery/task-detail"
+import { TaskGroupedList } from "@/components/delivery/task-grouped-list"
+import { useAppState } from "@/components/providers/app-state-provider"
 import {
   AvatarGroup,
   ConfirmDeleteDialog,
@@ -38,15 +43,6 @@ import {
 } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -56,7 +52,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
   SheetContent,
@@ -65,39 +60,40 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
+import { getTaskPermissions } from "@/lib/permissions"
 import { useStore } from "@/lib/store"
-import type { Task, TaskPriority, TaskStatus } from "@/types"
+import type { Task, TaskStatus } from "@/types"
 import { cn } from "cn"
 
-const KANBAN_COLUMNS: TaskStatus[] = [
-  "Open",
-  "Progress",
-  "QA Review",
-  "On Hold",
-  "Re-Draw",
-  "Complete",
-]
+type TasksViewMode = "board" | "list" | "table"
 
-const PRIORITIES: TaskPriority[] = ["Regular", "High", "Urgent"]
+const VIEW_STORAGE_KEY = "agencyops:tasks:view"
+const VALID_VIEWS = new Set<TasksViewMode>(["board", "list", "table"])
 
-const QA_FAIL_CATEGORIES = [
-  "Responsive / Layout",
-  "Brand & Copy",
-  "Accessibility / Contrast",
-  "Functional Bug",
-  "Missing Asset",
-]
+function subscribeView(cb: () => void) {
+  window.addEventListener("storage", cb)
+  window.addEventListener("agencyops-tasks-view-change", cb)
+  return () => {
+    window.removeEventListener("storage", cb)
+    window.removeEventListener("agencyops-tasks-view-change", cb)
+  }
+}
 
-const onHoldSchema = z.object({
-  reason: z.string().min(5, "Provide a brief reason for putting this task on hold"),
-})
+function getClientViewSnapshot(): TasksViewMode {
+  try {
+    const raw = window.localStorage.getItem(VIEW_STORAGE_KEY) as TasksViewMode | null
+    if (raw && VALID_VIEWS.has(raw)) return raw
+  } catch {
+    // ignore storage errors
+  }
+  return "board"
+}
 
-const qaFailSchema = z.object({
-  category: z.string().min(1, "Select a QA category"),
-  reason: z.string().min(6, "Describe what failed QA verification"),
-  evidenceName: z.string().min(2, "Provide an evidence screenshot/file name"),
-})
+function getServerViewSnapshot(): TasksViewMode {
+  return "board"
+}
 
 const createTaskSchema = z.object({
   title: z.string().min(3, "Task title required"),
@@ -109,32 +105,34 @@ const createTaskSchema = z.object({
   description: z.string().optional(),
 })
 
-export default function TasksPage() {
-  const {
-    tasks,
-    projects,
-    brands,
-    users,
-    createTask,
-    updateTask: storeUpdateTask,
-    deleteTask,
-    toggleSubtask: storeToggleSubtask,
-    addTaskComment: storeAddTaskComment,
-    recordQAReview,
-    setTaskOnHold,
-  } = useStore()
+function TasksPageContent() {
+  const { role } = useAppState()
+  const permissions = React.useMemo(() => getTaskPermissions(role), [role])
 
-  const [viewMode, setViewMode] = React.useState<"kanban" | "table">("kanban")
+  const { tasks, projects, brands, users, createTask, deleteTask } = useStore()
+  const { activeTaskId, openTask, closeTask } = useTaskDeepLink()
+
+  const viewMode = React.useSyncExternalStore(
+    subscribeView,
+    getClientViewSnapshot,
+    getServerViewSnapshot
+  )
+
+  const setViewMode = React.useCallback((next: TasksViewMode) => {
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next)
+      window.dispatchEvent(new Event("agencyops-tasks-view-change"))
+    } catch {
+      // ignore storage errors
+    }
+  }, [])
+
   const [brandFilter, setBrandFilter] = React.useState("all")
-  const [selectedTask, setSelectedTask] = React.useState<Task | null>(null)
-  const [commentText, setCommentText] = React.useState("")
-  const [holdDialogOpen, setHoldDialogOpen] = React.useState(false)
-  const [qaFailDialogOpen, setQaFailDialogOpen] = React.useState(false)
-  const [redFlagUsers, setRedFlagUsers] = React.useState<string[]>([])
   const [createOpen, setCreateOpen] = React.useState(false)
-
-  // Delete dialog state
   const [deleteTarget, setDeleteTarget] = React.useState<Task | null>(null)
+
+  const nowMs = useClientNow()
+  const todayIso = getTodayIsoFromNow(nowMs)
 
   const promptDelete = React.useCallback((task: Task) => {
     setDeleteTarget(task)
@@ -144,25 +142,11 @@ export default function TasksPage() {
     if (!deleteTarget) return
     deleteTask(deleteTarget.id)
     toast.success(`Removed task ${deleteTarget.code}`)
-    if (selectedTask?.id === deleteTarget.id) {
-      setSelectedTask(null)
+    if (activeTaskId === deleteTarget.id) {
+      closeTask()
     }
     setDeleteTarget(null)
   }
-
-  const holdForm = useForm<z.infer<typeof onHoldSchema>>({
-    resolver: zodResolver(onHoldSchema),
-    defaultValues: { reason: "" },
-  })
-
-  const qaFailForm = useForm<z.infer<typeof qaFailSchema>>({
-    resolver: zodResolver(qaFailSchema),
-    defaultValues: {
-      category: QA_FAIL_CATEGORIES[0],
-      reason: "",
-      evidenceName: "qa-failure-screenshot.png",
-    },
-  })
 
   const createForm = useForm<z.infer<typeof createTaskSchema>>({
     resolver: zodResolver(createTaskSchema),
@@ -177,7 +161,7 @@ export default function TasksPage() {
     },
   })
 
-  const kanbanTasks = React.useMemo(
+  const filteredTasks = React.useMemo(
     () =>
       brandFilter === "all"
         ? tasks
@@ -185,160 +169,19 @@ export default function TasksPage() {
     [tasks, brandFilter]
   )
 
-  function updateTask(updated: Task) {
-    storeUpdateTask(updated.id, updated)
-    setSelectedTask(updated)
-  }
-
-  function handleToggleSubtask(task: Task, subtaskId: string) {
-    const target = task.subtasks.find((st) => st.id === subtaskId)
-    const nextCompleted = !target?.completed
-    storeToggleSubtask(task.id, subtaskId, nextCompleted)
-    const updatedSubtasks = task.subtasks.map((st) =>
-      st.id === subtaskId ? { ...st, completed: nextCompleted } : st
-    )
-    setSelectedTask({ ...task, subtasks: updatedSubtasks })
-  }
-
-  function handleAddTaskComment(e: React.FormEvent) {
-    e.preventDefault()
-    if (!selectedTask || !commentText.trim()) return
-    storeAddTaskComment(selectedTask.id, commentText.trim(), "usr-admin")
-    const newComment = {
-      id: `tc-${crypto.randomUUID().slice(0, 8)}`,
-      authorId: "usr-admin",
-      authorName: users.find((u) => u.id === "usr-admin")?.name ?? "Administrator",
-      content: commentText.trim(),
-      createdAt: new Date().toISOString().replace("T", " ").slice(0, 16),
+  // Ordered IDs for Alt+J/K navigation matching the active view grouping
+  const orderedTaskIds = React.useMemo(() => {
+    if (viewMode === "table") {
+      return tasks.map((t) => t.id)
     }
-    setSelectedTask({
-      ...selectedTask,
-      comments: [...selectedTask.comments, newComment],
-    })
-    setCommentText("")
-    toast.success("Comment added to task")
-  }
-
-  function handleUploadEvidence(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!selectedTask) return
-    const file = e.target.files?.[0]
-    if (!file) return
-    const today = new Date().toISOString().slice(0, 10)
-    const newFile = {
-      id: `ev-${crypto.randomUUID().slice(0, 8)}`,
-      name: file.name,
-      size: `${Math.max(90, Math.round(file.size / 1024))} KB`,
-      type: file.type || "image/png",
-      uploadedBy: "Current User",
-      uploadedAt: today,
+    const ordered: string[] = []
+    for (const status of TASK_STATUSES) {
+      for (const t of filteredTasks) {
+        if (t.status === status) ordered.push(t.id)
+      }
     }
-    const updated: Task = {
-      ...selectedTask,
-      evidenceFiles: [...selectedTask.evidenceFiles, newFile],
-    }
-    updateTask(updated)
-    toast.success(`Attached evidence: ${file.name}`)
-  }
-
-  function onHoldSubmit(values: z.infer<typeof onHoldSchema>) {
-    if (!selectedTask) return
-    setTaskOnHold(selectedTask.id, values.reason)
-    const updated: Task = {
-      ...selectedTask,
-      status: "On Hold",
-      onHoldReason: values.reason,
-    }
-    setSelectedTask(updated)
-    holdForm.reset()
-    setHoldDialogOpen(false)
-    toast.warning(`${selectedTask.code} placed On Hold`)
-  }
-
-  function handleQaPass(task: Task) {
-    const today = new Date().toISOString().replace("T", " ").slice(0, 16)
-    recordQAReview(task.id, {
-      outcome: "Pass",
-      reviewerName: "Current Reviewer",
-      evidenceNames: task.evidenceFiles.map((f) => f.name),
-      redFlagUserIds: [],
-    })
-    const updated: Task = {
-      ...task,
-      status: "Complete",
-      qaHistory: [
-        ...task.qaHistory,
-        {
-          id: `qa-pass-${crypto.randomUUID().slice(0, 8)}`,
-          outcome: "Pass",
-          reviewerName: "Current Reviewer",
-          evidenceNames: task.evidenceFiles.map((f) => f.name),
-          redFlagUserIds: [],
-          timestamp: today,
-        },
-      ],
-    }
-    setSelectedTask(updated)
-    toast.success(`${task.code} passed QA and moved to Complete`)
-  }
-
-  function openQaFailDialog(task: Task) {
-    setRedFlagUsers([...task.assigneeIds])
-    qaFailForm.reset({
-      category: QA_FAIL_CATEGORIES[0],
-      reason: "",
-      evidenceName: `${task.code.toLowerCase()}-qa-issue.png`,
-    })
-    setQaFailDialogOpen(true)
-  }
-
-  function onQaFailSubmit(values: z.infer<typeof qaFailSchema>) {
-    if (!selectedTask) return
-    const today = new Date().toISOString().replace("T", " ").slice(0, 16)
-    recordQAReview(selectedTask.id, {
-      outcome: "Fail",
-      reviewerName: "Current Reviewer",
-      category: values.category,
-      reason: values.reason,
-      evidenceNames: [values.evidenceName],
-      redFlagUserIds: redFlagUsers,
-    })
-    const updated: Task = {
-      ...selectedTask,
-      status: "Re-Draw",
-      redFlaggedUserIds: Array.from(
-        new Set([...selectedTask.redFlaggedUserIds, ...redFlagUsers])
-      ),
-      evidenceFiles: [
-        ...selectedTask.evidenceFiles,
-        {
-          id: `ev-fail-${crypto.randomUUID().slice(0, 8)}`,
-          name: values.evidenceName,
-          size: "640 KB",
-          type: "image/png",
-          uploadedBy: "Reviewer",
-          uploadedAt: today.slice(0, 10),
-        },
-      ],
-      qaHistory: [
-        ...selectedTask.qaHistory,
-        {
-          id: `qa-fail-${crypto.randomUUID().slice(0, 8)}`,
-          outcome: "Fail",
-          reviewerName: "Current Reviewer",
-          category: values.category,
-          reason: values.reason,
-          evidenceNames: [values.evidenceName],
-          redFlagUserIds: redFlagUsers,
-          timestamp: today,
-        },
-      ],
-    }
-    setSelectedTask(updated)
-    setQaFailDialogOpen(false)
-    toast.error(
-      `${selectedTask.code} failed QA (${values.category}) → moved to Re-Draw`
-    )
-  }
+    return ordered
+  }, [viewMode, tasks, filteredTasks])
 
   function onCreateTask(values: z.infer<typeof createTaskSchema>) {
     const project =
@@ -370,6 +213,8 @@ export default function TasksPage() {
           id: `st-${crypto.randomUUID().slice(0, 8)}`,
           title: "Review specifications & brief",
           completed: false,
+          status: "Open",
+          dueDate: values.dueDate,
           assigneeId: values.assigneeId,
         },
       ],
@@ -381,9 +226,44 @@ export default function TasksPage() {
     toast.success(`Created task ${created.code}`)
     createForm.reset()
     setCreateOpen(false)
+    openTask(created.id)
   }
 
-  const todayIso = new Date().toISOString().slice(0, 10)
+  function handleQuickAddTask(status: TaskStatus, title: string) {
+    const preferredProject =
+      (brandFilter !== "all"
+        ? projects.find((p) => p.brandId === brandFilter)
+        : undefined) ?? projects[0]
+    if (!preferredProject) {
+      toast.error("Create a project first before quick-adding tasks.")
+      return
+    }
+    const defaultAssigneeId =
+      users.find((u) => u.role === "Designer/Developer")?.id ??
+      users[0]?.id ??
+      "usr-admin"
+    const dueDate = new Date(Date.now() + 5 * 86400000)
+      .toISOString()
+      .slice(0, 10)
+    const code = `TSK-${String(tasks.length + 161).padStart(4, "0")}`
+    const created = createTask({
+      code,
+      title,
+      description: "",
+      projectId: preferredProject.id,
+      projectName: preferredProject.name,
+      brandId: preferredProject.brandId,
+      brandName: preferredProject.brandName,
+      status,
+      priority: "Regular",
+      assigneeIds: [defaultAssigneeId],
+      reviewerId: "usr-admin",
+      dueDate,
+      estimatedHours: 4,
+      loggedHours: 0,
+    })
+    toast.success(`Created ${created.code} in ${status}`)
+  }
 
   const columns = React.useMemo<ColumnDef<Task>[]>(
     () => [
@@ -430,7 +310,15 @@ export default function TasksPage() {
         accessorKey: "priority",
         header: "Priority",
         cell: ({ row }) => (
-          <StatusBadge status={row.original.priority} showDot={false} />
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium">
+            <Flag
+              className={cn(
+                "size-3.5",
+                PRIORITY_META[row.original.priority].flagClass
+              )}
+            />
+            {row.original.priority}
+          </span>
         ),
       },
       {
@@ -486,25 +374,28 @@ export default function TasksPage() {
               type="button"
               variant="ghost"
               size="xs"
-              onClick={() => setSelectedTask(row.original)}
+              onClick={() => openTask(row.original.id)}
             >
               Details
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => promptDelete(row.original)}
-              className="text-destructive hover:bg-destructive/10"
-              title="Delete task"
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
+            {permissions.canDeleteOrMove ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => promptDelete(row.original)}
+                className="text-destructive hover:bg-destructive/10"
+                aria-label={`Delete ${row.original.code}`}
+                title="Delete task"
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            ) : null}
           </div>
         ),
       },
     ],
-    [users, promptDelete, todayIso]
+    [users, promptDelete, todayIso, openTask, permissions.canDeleteOrMove]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -512,12 +403,12 @@ export default function TasksPage() {
       {
         columnId: "status",
         title: "Status",
-        options: KANBAN_COLUMNS.map((s) => ({ label: s, value: s })),
+        options: TASK_STATUSES.map((s) => ({ label: s, value: s })),
       },
       {
         columnId: "priority",
         title: "Priority",
-        options: PRIORITIES.map((p) => ({ label: p, value: p })),
+        options: TASK_PRIORITIES.map((p) => ({ label: p, value: p })),
       },
       {
         columnId: "brandName",
@@ -536,9 +427,12 @@ export default function TasksPage() {
         badge={<Badge variant="secondary">{tasks.length} tasks</Badge>}
         actions={
           <>
-            {viewMode === "kanban" ? (
+            {viewMode !== "table" ? (
               <Select value={brandFilter} onValueChange={setBrandFilter}>
-                <SelectTrigger className="h-8 w-[170px] text-xs">
+                <SelectTrigger
+                  aria-label="Filter tasks by brand"
+                  className="h-8 w-[160px] text-xs"
+                >
                   <SelectValue placeholder="All Brands" />
                 </SelectTrigger>
                 <SelectContent>
@@ -551,46 +445,79 @@ export default function TasksPage() {
                 </SelectContent>
               </Select>
             ) : null}
-            <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
+
+            {/* View Switcher: Board / List / Table */}
+            <div
+              role="group"
+              aria-label="Task view mode"
+              className="flex items-center rounded-lg border border-border bg-background p-0.5"
+            >
               <Button
                 type="button"
                 size="xs"
-                variant={viewMode === "kanban" ? "default" : "ghost"}
-                onClick={() => setViewMode("kanban")}
+                variant={viewMode === "board" ? "default" : "ghost"}
+                onClick={() => setViewMode("board")}
+                aria-pressed={viewMode === "board"}
                 className="gap-1"
               >
                 <Kanban className="size-3.5" />
-                Kanban
+                Board
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant={viewMode === "list" ? "default" : "ghost"}
+                onClick={() => setViewMode("list")}
+                aria-pressed={viewMode === "list"}
+                className="gap-1"
+              >
+                <List className="size-3.5" />
+                List
               </Button>
               <Button
                 type="button"
                 size="xs"
                 variant={viewMode === "table" ? "default" : "ghost"}
                 onClick={() => setViewMode("table")}
+                aria-pressed={viewMode === "table"}
                 className="gap-1"
               >
                 <Table2 className="size-3.5" />
                 Table
               </Button>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => setCreateOpen(true)}
-              className="gap-1.5"
-            >
-              <Plus className="size-4" />
-              New Task
-            </Button>
+
+            {permissions.canCreateTask ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  createForm.reset({
+                    title: "",
+                    projectId: projects[0]?.id ?? "",
+                    priority: "High",
+                    assigneeId: users[0]?.id ?? "usr-admin",
+                    dueDate: "2026-11-20",
+                    estimatedHours: 8,
+                    description: "",
+                  })
+                  setCreateOpen(true)
+                }}
+                className="gap-1.5"
+              >
+                <Plus className="size-4" />
+                New Task
+              </Button>
+            ) : null}
           </>
         }
       />
 
-      {viewMode === "kanban" ? (
+      {viewMode === "board" ? (
         <div className="overflow-x-auto pb-2">
           <div className="grid min-w-[1520px] grid-cols-6 gap-3.5">
-            {KANBAN_COLUMNS.map((colStatus) => {
-              const colTasks = kanbanTasks.filter(
+            {TASK_STATUSES.map((colStatus) => {
+              const colTasks = filteredTasks.filter(
                 (t) => t.status === colStatus
               )
               return (
@@ -605,8 +532,8 @@ export default function TasksPage() {
                     </span>
                   </div>
 
-                  <div className="max-h-[580px] overflow-y-auto pr-1">
-                    <div className="space-y-2.5">
+                  <div className="max-h-[600px] overflow-y-auto pr-1">
+                    <div className="space-y-2">
                       {colTasks.map((task) => {
                         const assignees = users.filter((u) =>
                           task.assigneeIds.includes(u.id)
@@ -615,45 +542,71 @@ export default function TasksPage() {
                           (s) => s.completed
                         ).length
                         const overdue =
-                          task.status !== "Complete" &&
-                          task.dueDate < todayIso
+                          task.status !== "Complete" && task.dueDate < todayIso
+                        const pMeta = PRIORITY_META[task.priority]
 
                         return (
                           <button
                             key={task.id}
                             type="button"
-                            onClick={() => setSelectedTask(task)}
-                            className="w-full space-y-2.5 rounded-lg border border-border bg-card p-3 text-left shadow-2xs transition-all hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={() => openTask(task.id)}
+                            className="w-full space-y-2 rounded-lg border border-border bg-card p-2.5 text-left shadow-2xs transition-all hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <div className="flex items-center justify-between gap-1.5">
                               <span className="font-mono text-[11px] font-semibold text-primary">
                                 {task.code}
                               </span>
-                              <StatusBadge
-                                status={task.priority}
-                                showDot={false}
-                              />
+                              <span
+                                title={`${task.priority} priority`}
+                                className={cn(
+                                  "inline-flex items-center gap-1 text-[10px] font-medium",
+                                  pMeta.flagClass
+                                )}
+                              >
+                                <Flag className="size-3" />
+                                <span>{task.priority}</span>
+                              </span>
                             </div>
+
                             <div className="line-clamp-2 text-xs font-semibold leading-snug text-foreground">
                               {task.title}
                             </div>
-                            <div className="truncate text-[11px] text-muted-foreground">
-                              {task.brandName}
+
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="truncate text-[11px] text-muted-foreground">
+                                {task.brandName}
+                              </span>
+                              {task.redFlaggedUserIds.length > 0 ? (
+                                <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
+                                  <Flag className="size-2.5" />
+                                  Flag
+                                </span>
+                              ) : null}
                             </div>
 
-                            {task.redFlaggedUserIds.length > 0 ? (
-                              <div className="inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
-                                <Flag className="size-3" />
-                                Red-Flagged
-                              </div>
-                            ) : null}
-
-                            <div className="flex items-center justify-between gap-2 pt-1">
+                            <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-2">
                               <AvatarGroup people={assignees} max={2} />
                               <div className="flex shrink-0 items-center gap-2 text-[11px] whitespace-nowrap text-muted-foreground">
-                                <span className="inline-flex items-center gap-0.5">
+                                <span
+                                  title="Subtasks"
+                                  className="inline-flex items-center gap-0.5 tabular-nums"
+                                >
                                   <ListTodo className="size-3 shrink-0" />
                                   {doneSubtasks}/{task.subtasks.length}
+                                </span>
+                                <span
+                                  title="Comments"
+                                  className="inline-flex items-center gap-0.5 tabular-nums"
+                                >
+                                  <MessageSquare className="size-3 shrink-0" />
+                                  {task.comments.length}
+                                </span>
+                                <span
+                                  title="Attachments"
+                                  className="inline-flex items-center gap-0.5 tabular-nums"
+                                >
+                                  <Paperclip className="size-3 shrink-0" />
+                                  {task.evidenceFiles.length}
                                 </span>
                                 <span
                                   className={cn(
@@ -677,6 +630,16 @@ export default function TasksPage() {
             })}
           </div>
         </div>
+      ) : viewMode === "list" ? (
+        <TaskGroupedList
+          tasks={filteredTasks}
+          users={users}
+          todayIso={todayIso}
+          canQuickAdd={permissions.canCreateTask}
+          hasProjects={projects.length > 0}
+          onSelectTask={openTask}
+          onQuickAddTask={handleQuickAddTask}
+        />
       ) : (
         <DataTable
           columns={columns}
@@ -685,514 +648,17 @@ export default function TasksPage() {
           facetedFilters={facetedFilters}
           dateField="dueDate"
           exportModule="Tasks"
-          onRowClick={setSelectedTask}
+          onRowClick={(task) => openTask(task.id)}
         />
       )}
 
-      {/* Task Detail Sheet */}
-      <Sheet
-        open={Boolean(selectedTask)}
-        onOpenChange={(open) => !open && setSelectedTask(null)}
-      >
-        <SheetContent side="right" className="overflow-y-auto sm:max-w-xl">
-          {selectedTask ? (
-            <>
-              <SheetHeader className="border-b border-border pb-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className="font-mono">
-                    {selectedTask.code}
-                  </Badge>
-                  <StatusBadge status={selectedTask.status} />
-                  <StatusBadge status={selectedTask.priority} showDot={false} />
-                </div>
-                <SheetTitle className="mt-1 text-lg">
-                  {selectedTask.title}
-                </SheetTitle>
-                <SheetDescription>
-                  {selectedTask.projectName} • {selectedTask.brandName} • Due{" "}
-                  {selectedTask.dueDate}
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="space-y-5 p-4">
-                {/* On Hold Banner */}
-                {selectedTask.status === "On Hold" &&
-                selectedTask.onHoldReason ? (
-                  <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200">
-                    <PauseCircle className="mt-0.5 size-4 shrink-0" />
-                    <div>
-                      <div className="font-semibold">Task On Hold</div>
-                      <p className="mt-0.5">{selectedTask.onHoldReason}</p>
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Quick Status & Priority controls */}
-                <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/20 p-3">
-                  <div className="space-y-1">
-                    <Label className="text-[11px] text-muted-foreground">
-                      Status
-                    </Label>
-                    <Select
-                      value={selectedTask.status}
-                      onValueChange={(v) => {
-                        const next = v as TaskStatus
-                        updateTask({ ...selectedTask, status: next })
-                        toast.success(`${selectedTask.code} moved to ${next}`)
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {KANBAN_COLUMNS.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px] text-muted-foreground">
-                      Priority
-                    </Label>
-                    <Select
-                      value={selectedTask.priority}
-                      onValueChange={(v) => {
-                        const next = v as TaskPriority
-                        updateTask({ ...selectedTask, priority: next })
-                        toast.success(`Priority set to ${next}`)
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PRIORITIES.map((p) => (
-                          <SelectItem key={p} value={p}>
-                            {p}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Assignees & Red Flags */}
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Assignees & QA Reviewer
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {users
-                      .filter((u) => selectedTask.assigneeIds.includes(u.id))
-                      .map((u) => {
-                        const flagged =
-                          selectedTask.redFlaggedUserIds.includes(u.id)
-                        return (
-                          <div
-                            key={u.id}
-                            className={cn(
-                              "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs",
-                              flagged
-                               ? "border-rose-300 bg-rose-50/70 dark:border-rose-500/40 dark:bg-rose-500/15"
-                                : "border-border"
-                            )}
-                          >
-                            <span
-                              className={`flex size-6 items-center justify-center rounded-full text-[10px] font-bold text-white ${u.avatarColor}`}
-                            >
-                              {u.avatarInitials}
-                            </span>
-                            <span className="font-medium">{u.name}</span>
-                            {flagged ? (
-                              <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">
-                                <Flag className="mr-0.5 size-2.5" />
-                                Red Flag
-                              </Badge>
-                            ) : null}
-                          </div>
-                        )
-                      })}
-                  </div>
-                </div>
-
-                {/* Subtasks Checklist */}
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Subtasks (
-                    {selectedTask.subtasks.filter((s) => s.completed).length}/
-                    {selectedTask.subtasks.length})
-                  </div>
-                  <div className="space-y-2 rounded-lg border border-border p-3">
-                    {selectedTask.subtasks.length === 0 ? (
-                      <div className="text-xs text-muted-foreground">No subtasks yet.</div>
-                    ) : (
-                      selectedTask.subtasks.map((st) => (
-                        <label
-                          key={st.id}
-                          className="flex cursor-pointer items-center gap-2.5 text-sm"
-                        >
-                          <Checkbox
-                            checked={st.completed}
-                            onCheckedChange={() =>
-                              handleToggleSubtask(selectedTask, st.id)
-                            }
-                          />
-                          <span
-                            className={cn(
-                              st.completed && "text-muted-foreground line-through"
-                            )}
-                          >
-                            {st.title}
-                          </span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Evidence Files */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Evidence Files ({selectedTask.evidenceFiles.length})
-                    </span>
-                    <label className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-primary hover:underline">
-                      <Upload className="size-3.5" />
-                      Attach Evidence
-                      <input
-                        type="file"
-                        className="sr-only"
-                        onChange={handleUploadEvidence}
-                      />
-                    </label>
-                  </div>
-                  <div className="space-y-1.5">
-                    {selectedTask.evidenceFiles.map((file) => (
-                      <div
-                        key={file.id}
-                        className="flex items-center justify-between rounded-lg border border-border p-2.5 text-xs"
-                      >
-                        <span className="flex items-center gap-2 truncate font-medium">
-                          <FileCheck2 className="size-4 shrink-0 text-primary" />
-                          <span className="truncate">{file.name}</span>
-                        </span>
-                        <span className="shrink-0 text-muted-foreground">
-                          {file.size}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* QA History */}
-                {selectedTask.qaHistory.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      QA Review History
-                    </div>
-                    <div className="space-y-2">
-                      {selectedTask.qaHistory.map((qa) => (
-                        <div
-                          key={qa.id}
-                          className={cn(
-                            "rounded-lg border p-3 text-xs",
-                            qa.outcome === "Pass"
-                              ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-500/30 dark:bg-emerald-500/10"
-                              : "border-rose-200 bg-rose-50/50 dark:border-rose-500/30 dark:bg-rose-500/10"
-                          )}
-                        >
-                          <div className="flex items-center justify-between font-medium">
-                            <span className="flex items-center gap-1.5">
-                              {qa.outcome === "Pass" ? (
-                                <CheckCircle2 className="size-3.5 text-emerald-600" />
-                              ) : (
-                                <AlertTriangle className="size-3.5 text-rose-600" />
-                              )}
-                              QA {qa.outcome} by {qa.reviewerName}
-                            </span>
-                            <span className="font-mono text-[11px] text-muted-foreground">
-                              {qa.timestamp}
-                            </span>
-                          </div>
-                          {qa.category ? (
-                            <div className="mt-1 font-medium">
-                              Category: {qa.category}
-                            </div>
-                          ) : null}
-                          {qa.reason ? (
-                            <p className="mt-1 text-muted-foreground">
-                              {qa.reason}
-                            </p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <Separator />
-
-                {/* Comments */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    <MessageSquare className="size-3.5" />
-                    Comments ({selectedTask.comments.length})
-                  </div>
-                  <div className="space-y-2">
-                    {selectedTask.comments.map((c) => (
-                      <div
-                        key={c.id}
-                        className="rounded-lg border border-border bg-muted/20 p-2.5 text-xs"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{c.authorName}</span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {c.createdAt}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-muted-foreground">
-                          {c.content}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <form onSubmit={handleAddTaskComment} className="flex gap-2">
-                    <Input
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      placeholder="Add task comment..."
-                      className="h-8 text-xs"
-                    />
-                    <Button type="submit" size="sm" className="gap-1">
-                      <Send className="size-3.5" />
-                      Post
-                    </Button>
-                  </form>
-                </div>
-              </div>
-
-              {/* Action bar: On Hold + QA Pass / Fail + Delete */}
-              <SheetFooter className="border-t border-border sm:flex-row sm:justify-between">
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:bg-destructive/10"
-                    onClick={() => promptDelete(selectedTask)}
-                  >
-                    <Trash2 className="mr-1.5 size-4" />
-                    Delete
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      holdForm.reset({ reason: selectedTask.onHoldReason ?? "" })
-                      setHoldDialogOpen(true)
-                    }}
-                    className="gap-1.5"
-                  >
-                    <PauseCircle className="size-4 text-amber-600" />
-                    Put On Hold
-                  </Button>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => openQaFailDialog(selectedTask)}
-                    className="gap-1.5"
-                  >
-                    <ShieldAlert className="size-4" />
-                    QA Fail
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => handleQaPass(selectedTask)}
-                    className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
-                  >
-                    <ShieldCheck className="size-4" />
-                    QA Pass
-                  </Button>
-                </div>
-              </SheetFooter>
-            </>
-          ) : null}
-        </SheetContent>
-      </Sheet>
-
-      {/* On Hold Dialog */}
-      <Dialog open={holdDialogOpen} onOpenChange={setHoldDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <PauseCircle className="size-4 text-amber-600" />
-              Place Task On Hold
-            </DialogTitle>
-            <DialogDescription>
-              Specify the blocker dependency for {selectedTask?.code}.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            onSubmit={holdForm.handleSubmit(onHoldSubmit)}
-            className="space-y-4"
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="hold-reason">Blocker Reason</Label>
-              <Textarea
-                id="hold-reason"
-                rows={3}
-                placeholder="e.g., Waiting on client copy sign-off and brand imagery..."
-                {...holdForm.register("reason")}
-              />
-              {holdForm.formState.errors.reason ? (
-                <p className="text-xs text-destructive">
-                  {holdForm.formState.errors.reason.message}
-                </p>
-              ) : null}
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setHoldDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">Confirm On Hold</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* QA Fail Dialog */}
-      <Dialog open={qaFailDialogOpen} onOpenChange={setQaFailDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <ShieldAlert className="size-4" />
-              QA Fail & Red-Flag Review ({selectedTask?.code})
-            </DialogTitle>
-            <DialogDescription>
-              Document the failure category, reason, evidence, and any team
-              members receiving a QA red flag. Task moves to Re-Draw.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form
-            onSubmit={qaFailForm.handleSubmit(onQaFailSubmit)}
-            className="space-y-4"
-          >
-            <div className="space-y-1.5">
-              <Label>Failure Category</Label>
-              <Controller
-                control={qaFailForm.control}
-                name="category"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {QA_FAIL_CATEGORIES.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="qa-fail-reason">Failure Details</Label>
-              <Textarea
-                id="qa-fail-reason"
-                rows={3}
-                placeholder="Describe exact viewport, visual, or functional issues..."
-                {...qaFailForm.register("reason")}
-              />
-              {qaFailForm.formState.errors.reason ? (
-                <p className="text-xs text-destructive">
-                  {qaFailForm.formState.errors.reason.message}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="qa-fail-evidence">Evidence File / Screenshot</Label>
-              <Input
-                id="qa-fail-evidence"
-                {...qaFailForm.register("evidenceName")}
-              />
-              {qaFailForm.formState.errors.evidenceName ? (
-                <p className="text-xs text-destructive">
-                  {qaFailForm.formState.errors.evidenceName.message}
-                </p>
-              ) : null}
-            </div>
-
-            {selectedTask ? (
-              <div className="space-y-2">
-                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Red-Flag Assignees
-                </Label>
-                <div className="space-y-1.5 rounded-lg border border-border p-3">
-                  {users
-                    .filter((u) => selectedTask.assigneeIds.includes(u.id))
-                    .map((u) => {
-                      const checked = redFlagUsers.includes(u.id)
-                      return (
-                        <label
-                          key={u.id}
-                          className="flex cursor-pointer items-center justify-between text-sm"
-                        >
-                          <span className="flex items-center gap-2">
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={() =>
-                                setRedFlagUsers((prev) =>
-                                  prev.includes(u.id)
-                                    ? prev.filter((id) => id !== u.id)
-                                    : [...prev, u.id]
-                                )
-                              }
-                            />
-                            <span>{u.name}</span>
-                          </span>
-                          <Badge variant="outline" className="text-[10px]">
-                            {u.role}
-                          </Badge>
-                        </label>
-                      )
-                    })}
-                </div>
-              </div>
-            ) : null}
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setQaFailDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" variant="destructive">
-                Submit QA Fail → Re-Draw
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Shared ClickUp-Style Task Detail Panel */}
+      <TaskDetailPanel
+        taskId={activeTaskId}
+        onClose={closeTask}
+        onSelectTask={openTask}
+        orderedTaskIds={orderedTaskIds}
+      />
 
       {/* Create Task Sheet */}
       <Sheet open={createOpen} onOpenChange={setCreateOpen}>
@@ -1209,7 +675,11 @@ export default function TasksPage() {
           >
             <div className="space-y-1.5">
               <Label htmlFor="tsk-title">Task Title</Label>
-              <Input id="tsk-title" placeholder="Implement mobile navigation" {...createForm.register("title")} />
+              <Input
+                id="tsk-title"
+                placeholder="Implement mobile navigation"
+                {...createForm.register("title")}
+              />
               {createForm.formState.errors.title ? (
                 <p className="text-xs text-destructive">
                   {createForm.formState.errors.title.message}
@@ -1262,7 +732,7 @@ export default function TasksPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {PRIORITIES.map((p) => (
+                        {TASK_PRIORITIES.map((p) => (
                           <SelectItem key={p} value={p}>
                             {p}
                           </SelectItem>
@@ -1344,5 +814,20 @@ export default function TasksPage() {
         onConfirm={handleConfirmDelete}
       />
     </div>
+  )
+}
+
+export default function TasksPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="space-y-6">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-[540px] w-full rounded-xl" />
+        </div>
+      }
+    >
+      <TasksPageContent />
+    </React.Suspense>
   )
 }

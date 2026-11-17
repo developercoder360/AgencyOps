@@ -6,18 +6,30 @@ import { toast } from "sonner"
 import {
   ArrowLeft,
   Calendar,
+  Clock,
   Eye,
   EyeOff,
   FileText,
+  Flag,
+  ListTodo,
   MessageSquare,
+  Paperclip,
   Send,
   Upload,
 } from "lucide-react"
+import {
+  getTodayIsoFromNow,
+  PRIORITY_META,
+  TaskDetailPanel,
+  useClientNow,
+  useTaskDeepLink,
+} from "@/components/delivery/task-detail"
 import {
   AvatarGroup,
   PageHeader,
   StatusBadge,
 } from "@/components/shared"
+import { cn } from "cn"
 import { ProgressBar } from "@/components/tremor"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -52,6 +64,8 @@ export function ProjectDetailClient({
 
   const project = getProjectById(initialProject.id) ?? initialProject
   const [newComment, setNewComment] = React.useState("")
+  const { activeTaskId, openTask, closeTask } = useTaskDeepLink()
+  const todayIso = getTodayIsoFromNow(useClientNow())
 
   const files = project.files
   const comments = project.comments
@@ -297,29 +311,74 @@ export function ProjectDetailClient({
                   const assignees = users.filter((u) =>
                     task.assigneeIds.includes(u.id)
                   )
+                  const doneSubtasks = task.subtasks.filter(
+                    (s) => s.completed
+                  ).length
+                  const overdue =
+                    task.status !== "Complete" && task.dueDate < todayIso
+                  const pMeta = PRIORITY_META[task.priority]
+
                   return (
-                    <div
+                    <button
                       key={task.id}
-                      className="flex flex-col gap-3 rounded-lg border border-border p-3.5 sm:flex-row sm:items-center sm:justify-between"
+                      type="button"
+                      onClick={() => openTask(task.id)}
+                      className="flex w-full flex-col gap-3 rounded-lg border border-border bg-card p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div className="space-y-1">
+                      <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-mono text-xs font-semibold text-primary">
                             {task.code}
                           </span>
                           <StatusBadge status={task.status} />
-                          <StatusBadge status={task.priority} showDot={false} />
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 text-[11px] font-medium",
+                              pMeta.flagClass
+                            )}
+                          >
+                            <Flag className="size-3" />
+                            {task.priority}
+                          </span>
+                          {task.redFlaggedUserIds.length > 0 ? (
+                            <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">
+                              Red Flag
+                            </Badge>
+                          ) : null}
                         </div>
-                        <div className="font-medium text-foreground">
+                        <div className="truncate font-medium text-foreground">
                           {task.title}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          Due {task.dueDate} • {task.loggedHours}/
-                          {task.estimatedHours} hrs logged
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 tabular-nums",
+                              overdue &&
+                                "font-semibold text-rose-600 dark:text-rose-400"
+                            )}
+                          >
+                            <Clock className="size-3" />
+                            Due {task.dueDate}
+                          </span>
+                          <span className="tabular-nums">
+                            {task.loggedHours}/{task.estimatedHours}h
+                          </span>
+                          <span className="inline-flex items-center gap-1 tabular-nums">
+                            <ListTodo className="size-3" />
+                            {doneSubtasks}/{task.subtasks.length}
+                          </span>
+                          <span className="inline-flex items-center gap-1 tabular-nums">
+                            <MessageSquare className="size-3" />
+                            {task.comments.length}
+                          </span>
+                          <span className="inline-flex items-center gap-1 tabular-nums">
+                            <Paperclip className="size-3" />
+                            {task.evidenceFiles.length}
+                          </span>
                         </div>
                       </div>
                       <AvatarGroup people={assignees} max={3} />
-                    </div>
+                    </button>
                   )
                 })
               )}
@@ -463,6 +522,13 @@ export function ProjectDetailClient({
           </Card>
         </TabsContent>
       </Tabs>
+
+      <TaskDetailPanel
+        taskId={activeTaskId}
+        onClose={closeTask}
+        onSelectTask={openTask}
+        orderedTaskIds={projectTasks.map((t) => t.id)}
+      />
     </div>
   )
 }

@@ -35,7 +35,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
 import type { TaskRolePermissions } from "@/lib/permissions"
 import type {
@@ -139,7 +138,7 @@ export function TaskPropertiesGrid({
   }, [users, assigneeSearch])
 
   const overdue = task.status !== "Complete" && task.dueDate < todayIso
-  const taskTags = task.tags ?? []
+  const taskTags = React.useMemo(() => task.tags ?? [], [task.tags])
 
   const availableTags = React.useMemo(() => {
     const map = new Map<string, TaskTag>()

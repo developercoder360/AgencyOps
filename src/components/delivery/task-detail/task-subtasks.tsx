@@ -17,7 +17,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
 import type { StaffUser, Subtask, TaskStatus } from "@/types"
 import { cn } from "cn"
