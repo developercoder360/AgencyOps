@@ -1,7 +1,22 @@
-import type { Task, TaskPriority, TaskStatus } from "@/types"
+import type {
+  Task,
+  TaskActivityEvent,
+  TaskPriority,
+  TaskStatus,
+  TaskTag,
+} from "@/types"
 import { MOCK_PROJECTS } from "./projects"
 import { MOCK_USERS } from "./users"
 import { createSeededRandom, intBetween, pickFrom } from "./seed"
+
+const DEMO_TAGS: TaskTag[] = [
+  { id: "tag-ui", label: "UI/UX", color: "blue" },
+  { id: "tag-qa", label: "QA Ready", color: "violet" },
+  { id: "tag-perf", label: "Performance", color: "emerald" },
+  { id: "tag-client", label: "Client Review", color: "amber" },
+  { id: "tag-a11y", label: "A11y", color: "cyan" },
+  { id: "tag-copy", label: "Copy", color: "slate" },
+]
 
 const TASK_STATUSES: TaskStatus[] = [
   "Open",
@@ -69,21 +84,83 @@ function generateTasks(): Task[] {
         id: `st-${i}-1`,
         title: "Review client brief & design tokens",
         completed: status !== "Open",
+        status: (status !== "Open" ? "Complete" : "Open") as TaskStatus,
+        dueDate: makeDateOffset(Math.max(dueOffset - 3, -10)),
         assigneeId: dev1.id,
       },
       {
         id: `st-${i}-2`,
         title: "Implement responsive breakpoints (375px / 768px / 1280px)",
         completed: ["QA Review", "Re-Draw", "Complete"].includes(status),
+        status: (["QA Review", "Re-Draw", "Complete"].includes(status)
+          ? "Complete"
+          : status === "Progress"
+            ? "Progress"
+            : "Open") as TaskStatus,
+        dueDate: makeDateOffset(Math.max(dueOffset - 1, -8)),
         assigneeId: dev1.id,
       },
       {
         id: `st-${i}-3`,
         title: "Run accessibility & QA checklist verification",
         completed: status === "Complete",
+        status: (status === "Complete" ? "Complete" : "Open") as TaskStatus,
+        dueDate,
         assigneeId: reviewer.id,
       },
     ]
+
+    const checklist = [
+      {
+        id: `chk-${i}-1`,
+        title: "Verify dark & light contrast ratios ≥ 4.5:1",
+        completed: ["QA Review", "Complete"].includes(status),
+      },
+      {
+        id: `chk-${i}-2`,
+        title: "Attach staging screenshot before handoff",
+        completed: status === "Complete",
+      },
+    ]
+
+    const tags = [
+      DEMO_TAGS[i % DEMO_TAGS.length],
+      DEMO_TAGS[(i + 2) % DEMO_TAGS.length],
+    ]
+
+    const activity: TaskActivityEvent[] = [
+      {
+        id: `act-${i}-1`,
+        type: "system",
+        actorId: "usr-admin",
+        actorName: "Marcus Vance",
+        action: "created this task",
+        timestamp: `${createdAt}T09:15:00.000Z`,
+      },
+      {
+        id: `act-${i}-2`,
+        type: "system",
+        actorId: "usr-admin",
+        actorName: "Devon Brooks",
+        action: "assigned",
+        field: "Assignees",
+        toValue: dev2 ? `${dev1.name}, ${dev2.name}` : dev1.name,
+        timestamp: `${createdAt}T09:45:00.000Z`,
+      },
+    ]
+    if (status !== "Open") {
+      activity.push({
+        id: `act-${i}-3`,
+        type: "system",
+        actorId: dev1.id,
+        actorName: dev1.name,
+        action: "changed status",
+        field: "Status",
+        fromValue: "Open",
+        toValue: status,
+        timestamp: `${makeDateOffset(Math.min(-1, dueOffset - 2))}T13:10:00.000Z`,
+      })
+    }
 
     const qaHistory =
       status === "Re-Draw"
@@ -126,11 +203,14 @@ function generateTasks(): Task[] {
       priority,
       assigneeIds: dev2 ? [dev1.id, dev2.id] : [dev1.id],
       reviewerId: reviewer.id,
+      startDate: createdAt,
       dueDate,
       estimatedHours: intBetween(rng, 4, 24),
       loggedHours:
         status === "Open" ? 0 : intBetween(rng, 2, 18),
+      tags,
       subtasks,
+      checklist,
       comments: [
         {
           id: `tc-${i}-1`,
@@ -138,8 +218,22 @@ function generateTasks(): Task[] {
           authorName: dev1.name,
           content:
             "Started implementation against approved Figma frame. Will tag QA once staging preview builds.",
-          createdAt: `${createdAt} 11:30`,
+          createdAt: `${createdAt}T11:30:00.000Z`,
         },
+        ...(status === "Re-Draw"
+          ? [
+              {
+                id: `tc-${i}-2`,
+                authorId: reviewer.id,
+                authorName: reviewer.name,
+                content:
+                  "Flagged mobile CTA overflow at 375px and dark-mode subtitle contrast. Please verify fix and re-submit.",
+                createdAt: `${makeDateOffset(-1)}T14:25:00.000Z`,
+                isQaRelated: true,
+                resolved: false,
+              },
+            ]
+          : []),
       ],
       evidenceFiles: [
         {
@@ -157,6 +251,8 @@ function generateTasks(): Task[] {
           : undefined,
       qaHistory,
       redFlaggedUserIds: status === "Re-Draw" ? [dev1.id] : [],
+      activity,
+      watchers: [dev1.id, reviewer.id],
       createdAt,
     })
   }

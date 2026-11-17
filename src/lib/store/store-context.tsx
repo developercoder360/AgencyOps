@@ -17,6 +17,7 @@ import {
 import type {
   ActivityComment,
   AppNotification,
+  AttachmentFile,
   AttendanceRecord,
   Brand,
   ChatMessage,
@@ -38,6 +39,7 @@ import type {
   StaffUser,
   Subtask,
   Task,
+  TaskActivityEvent,
   TaskComment,
   Transaction,
 } from "@/types"
@@ -200,12 +202,66 @@ export interface StoreContextValue {
       redFlaggedUserIds?: string[]
     }
   ) => Task
-  updateTask: (id: string, updates: Partial<Task>) => void
+  appendTaskActivity: (
+    taskId: string,
+    event: Omit<TaskActivityEvent, "id" | "timestamp"> & { timestamp?: string }
+  ) => void
+  updateTask: (
+    id: string,
+    updates: Partial<Task>,
+    activityEvent?: Omit<TaskActivityEvent, "id" | "timestamp">
+  ) => void
   deleteTask: (id: string) => void
-  addSubtask: (taskId: string, title: string, assigneeId: string) => void
-  toggleSubtask: (taskId: string, subtaskId: string, completed: boolean) => void
-  deleteSubtask: (taskId: string, subtaskId: string) => void
-  addTaskComment: (taskId: string, content: string, authorId?: string) => void
+  duplicateTask: (taskId: string, actorName?: string) => Task | null
+  moveTaskToProject: (taskId: string, projectId: string, actorName?: string) => void
+  addSubtask: (
+    taskId: string,
+    title: string,
+    assigneeId: string,
+    options?: { dueDate?: string; status?: Task["status"]; actorName?: string }
+  ) => void
+  updateSubtask: (
+    taskId: string,
+    subtaskId: string,
+    updates: Partial<Subtask>,
+    actorName?: string
+  ) => void
+  toggleSubtask: (
+    taskId: string,
+    subtaskId: string,
+    completed: boolean,
+    actorName?: string
+  ) => void
+  deleteSubtask: (taskId: string, subtaskId: string, actorName?: string) => void
+  addChecklistItem: (taskId: string, title: string, actorName?: string) => void
+  toggleChecklistItem: (
+    taskId: string,
+    itemId: string,
+    completed: boolean,
+    actorName?: string
+  ) => void
+  deleteChecklistItem: (taskId: string, itemId: string) => void
+  addTaskComment: (
+    taskId: string,
+    content: string,
+    authorId?: string,
+    options?: {
+      authorName?: string
+      mentions?: string[]
+      attachments?: AttachmentFile[]
+      isQaRelated?: boolean
+    }
+  ) => void
+  editTaskComment: (taskId: string, commentId: string, content: string) => void
+  deleteTaskComment: (taskId: string, commentId: string) => void
+  toggleCommentResolved: (taskId: string, commentId: string, actorName?: string) => void
+  addTaskEvidence: (
+    taskId: string,
+    file: Omit<AttachmentFile, "id" | "uploadedAt"> & { id?: string; uploadedAt?: string },
+    actorName?: string
+  ) => AttachmentFile
+  removeTaskEvidence: (taskId: string, fileId: string, actorName?: string) => void
+  toggleTaskWatcher: (taskId: string, watcherId: string, actorName?: string) => boolean
   recordQAReview: (
     taskId: string,
     review: {
@@ -217,7 +273,7 @@ export interface StoreContextValue {
       redFlagUserIds?: string[]
     }
   ) => void
-  setTaskOnHold: (taskId: string, reason: string) => void
+  setTaskOnHold: (taskId: string, reason: string, actorName?: string) => void
 
   createChatThread: (
     thread: Omit<ChatThread, "id" | "messages" | "unreadCount"> & {
@@ -405,12 +461,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addProjectComment: storeManager.addProjectComment.bind(storeManager),
 
       createTask: storeManager.createTask.bind(storeManager),
+      appendTaskActivity: storeManager.appendTaskActivity.bind(storeManager),
       updateTask: storeManager.updateTask.bind(storeManager),
       deleteTask: storeManager.deleteTask.bind(storeManager),
+      duplicateTask: storeManager.duplicateTask.bind(storeManager),
+      moveTaskToProject: storeManager.moveTaskToProject.bind(storeManager),
       addSubtask: storeManager.addSubtask.bind(storeManager),
+      updateSubtask: storeManager.updateSubtask.bind(storeManager),
       toggleSubtask: storeManager.toggleSubtask.bind(storeManager),
       deleteSubtask: storeManager.deleteSubtask.bind(storeManager),
+      addChecklistItem: storeManager.addChecklistItem.bind(storeManager),
+      toggleChecklistItem: storeManager.toggleChecklistItem.bind(storeManager),
+      deleteChecklistItem: storeManager.deleteChecklistItem.bind(storeManager),
       addTaskComment: storeManager.addTaskComment.bind(storeManager),
+      editTaskComment: storeManager.editTaskComment.bind(storeManager),
+      deleteTaskComment: storeManager.deleteTaskComment.bind(storeManager),
+      toggleCommentResolved: storeManager.toggleCommentResolved.bind(storeManager),
+      addTaskEvidence: storeManager.addTaskEvidence.bind(storeManager),
+      removeTaskEvidence: storeManager.removeTaskEvidence.bind(storeManager),
+      toggleTaskWatcher: storeManager.toggleTaskWatcher.bind(storeManager),
       recordQAReview: storeManager.recordQAReview.bind(storeManager),
       setTaskOnHold: storeManager.setTaskOnHold.bind(storeManager),
 

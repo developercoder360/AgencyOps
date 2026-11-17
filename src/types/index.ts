@@ -217,6 +217,7 @@ export interface AttachmentFile {
   type: string
   uploadedBy: string
   uploadedAt: string
+  previewUrl?: string
 }
 
 export interface InvoiceLineItem {
@@ -337,11 +338,47 @@ export interface Project {
   comments: ActivityComment[]
 }
 
+export type TaskTagColor =
+  | "blue"
+  | "emerald"
+  | "amber"
+  | "rose"
+  | "violet"
+  | "cyan"
+  | "slate"
+
+export interface TaskTag {
+  id: string
+  label: string
+  color: TaskTagColor
+}
+
+export interface ChecklistItem {
+  id: string
+  title: string
+  completed: boolean
+}
+
+export interface TaskActivityEvent {
+  id: string
+  type: "system" | "qa"
+  actorId: string
+  actorName: string
+  action: string
+  field?: string
+  fromValue?: string
+  toValue?: string
+  detail?: string
+  timestamp: string
+}
+
 export interface Subtask {
   id: string
   title: string
   completed: boolean
   assigneeId: string
+  dueDate?: string
+  status?: TaskStatus
 }
 
 export interface TaskComment {
@@ -350,6 +387,11 @@ export interface TaskComment {
   authorName: string
   content: string
   createdAt: string
+  editedAt?: string
+  mentions?: string[]
+  attachments?: AttachmentFile[]
+  isQaRelated?: boolean
+  resolved?: boolean
 }
 
 export interface QAReviewEvent {
@@ -376,15 +418,21 @@ export interface Task {
   priority: TaskPriority
   assigneeIds: string[]
   reviewerId: string
+  startDate?: string
   dueDate: string
   estimatedHours: number
   loggedHours: number
+  trackedSeconds?: number
+  tags?: TaskTag[]
   subtasks: Subtask[]
+  checklist?: ChecklistItem[]
   comments: TaskComment[]
   evidenceFiles: AttachmentFile[]
   onHoldReason?: string
   qaHistory: QAReviewEvent[]
   redFlaggedUserIds: string[]
+  activity?: TaskActivityEvent[]
+  watchers?: string[]
   createdAt: string
 }
 

@@ -108,6 +108,94 @@ export function canAccessModule(role: Role, mod: PermissionModule): boolean {
   return ROLE_MODULE_ACCESS[role].includes(mod)
 }
 
+export interface TaskRolePermissions {
+  isReadOnly: boolean
+  canEditDetails: boolean
+  canEditStatus: boolean
+  canEditAssignees: boolean
+  canDeleteOrMove: boolean
+  canDuplicate: boolean
+  canComment: boolean
+  canUploadEvidence: boolean
+  canPutOnHold: boolean
+  canSendToQa: boolean
+  canQaReview: boolean
+  canResolveQaComment: boolean
+  canCreateTask: boolean
+}
+
+export function getTaskPermissions(role: Role): TaskRolePermissions {
+  switch (role) {
+    case "Super Admin":
+    case "Project Admin":
+      return {
+        isReadOnly: false,
+        canEditDetails: true,
+        canEditStatus: true,
+        canEditAssignees: true,
+        canDeleteOrMove: true,
+        canDuplicate: true,
+        canComment: true,
+        canUploadEvidence: true,
+        canPutOnHold: true,
+        canSendToQa: true,
+        canQaReview: true,
+        canResolveQaComment: true,
+        canCreateTask: true,
+      }
+    case "Designer/Developer":
+      return {
+        isReadOnly: false,
+        canEditDetails: true,
+        canEditStatus: true,
+        canEditAssignees: false,
+        canDeleteOrMove: false,
+        canDuplicate: true,
+        canComment: true,
+        canUploadEvidence: true,
+        canPutOnHold: true,
+        canSendToQa: true,
+        canQaReview: false,
+        canResolveQaComment: false,
+        canCreateTask: true,
+      }
+    case "QA Reviewer":
+      return {
+        isReadOnly: false,
+        canEditDetails: false,
+        canEditStatus: false,
+        canEditAssignees: false,
+        canDeleteOrMove: false,
+        canDuplicate: false,
+        canComment: true,
+        canUploadEvidence: true,
+        canPutOnHold: true,
+        canSendToQa: false,
+        canQaReview: true,
+        canResolveQaComment: true,
+        canCreateTask: false,
+      }
+    case "Sales/Account Manager":
+    case "HR Manager":
+    default:
+      return {
+        isReadOnly: true,
+        canEditDetails: false,
+        canEditStatus: false,
+        canEditAssignees: false,
+        canDeleteOrMove: false,
+        canDuplicate: false,
+        canComment: false,
+        canUploadEvidence: false,
+        canPutOnHold: false,
+        canSendToQa: false,
+        canQaReview: false,
+        canResolveQaComment: false,
+        canCreateTask: false,
+      }
+  }
+}
+
 export function getModuleForPathname(
   pathname: string
 ): PermissionModule | null {

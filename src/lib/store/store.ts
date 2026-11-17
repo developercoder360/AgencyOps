@@ -26,10 +26,12 @@ import {
 import type {
   ActivityComment,
   AppNotification,
+  AttachmentFile,
   AttendanceRecord,
   Brand,
   ChatMessage,
   ChatThread,
+  ChecklistItem,
   City,
   ExportLog,
   Holiday,
@@ -47,6 +49,7 @@ import type {
   StaffUser,
   Subtask,
   Task,
+  TaskActivityEvent,
   TaskComment,
   Transaction,
 } from "@/types"
@@ -663,15 +666,29 @@ class StoreManager {
       redFlaggedUserIds?: string[]
     }
   ): Task {
+    const nowIso = new Date().toISOString()
+    const createdEvent: TaskActivityEvent = {
+      id: `act-${crypto.randomUUID().slice(0, 8)}`,
+      type: "system",
+      actorId: "usr-admin",
+      actorName: "System",
+      action: "created this task",
+      timestamp: nowIso,
+    }
     const newTask: Task = {
       ...task,
       id: task.id || `tsk-${crypto.randomUUID().slice(0, 8)}`,
-      createdAt: task.createdAt || new Date().toISOString().slice(0, 10),
+      createdAt: task.createdAt || nowIso.slice(0, 10),
+      startDate: task.startDate || nowIso.slice(0, 10),
+      tags: task.tags || [],
+      checklist: task.checklist || [],
       subtasks: task.subtasks || [],
       comments: task.comments || [],
       evidenceFiles: task.evidenceFiles || [],
       qaHistory: task.qaHistory || [],
       redFlaggedUserIds: task.redFlaggedUserIds || [],
+      activity: task.activity && task.activity.length > 0 ? task.activity : [createdEvent],
+      watchers: task.watchers || [],
     }
     this.setAndPersist((s) => ({
       ...s,
@@ -680,10 +697,48 @@ class StoreManager {
     return newTask
   }
 
-  public updateTask(id: string, updates: Partial<Task>): void {
+  public appendTaskActivity(
+    taskId: string,
+    event: Omit<TaskActivityEvent, "id" | "timestamp"> & { timestamp?: string }
+  ): void {
+    const entry: TaskActivityEvent = {
+      ...event,
+      id: `act-${crypto.randomUUID().slice(0, 8)}`,
+      timestamp: event.timestamp || new Date().toISOString(),
+    }
     this.setAndPersist((s) => ({
       ...s,
-      tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+      tasks: s.tasks.map((t) =>
+        t.id === taskId ? { ...t, activity: [...(t.activity ?? []), entry] } : t
+      ),
+    }))
+  }
+
+  public updateTask(
+    id: string,
+    updates: Partial<Task>,
+    activityEvent?: Omit<TaskActivityEvent, "id" | "timestamp">
+  ): void {
+    const entry: TaskActivityEvent | null = activityEvent
+      ? {
+          ...activityEvent,
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          timestamp: new Date().toISOString(),
+        }
+      : null
+
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== id) return t
+        return {
+          ...t,
+          ...updates,
+          activity: entry
+            ? [...(updates.activity ?? t.activity ?? []), entry]
+            : updates.activity ?? t.activity,
+        }
+      }),
     }))
   }
 
@@ -694,64 +749,318 @@ class StoreManager {
     }))
   }
 
-  public addSubtask(taskId: string, title: string, assigneeId: string): void {
+  public duplicateTask(taskId: string, actorName = "Current User"): Task | null {
+    const source = this.data.tasks.find((t) => t.id === taskId)
+    if (!source) return null
+    const nextNum = this.data.tasks.length + 161
+    const code = `TSK-${String(nextNum).padStart(4, "0")}`
+    const nowIso = new Date().toISOString()
+    const cloned: Task = {
+      ...source,
+      id: `tsk-${crypto.randomUUID().slice(0, 8)}`,
+      code,
+      title: `${source.title} (Copy)`,
+      status: "Open",
+      loggedHours: 0,
+      trackedSeconds: 0,
+      onHoldReason: undefined,
+      qaHistory: [],
+      redFlaggedUserIds: [],
+      comments: [],
+      subtasks: source.subtasks.map((st) => ({
+        ...st,
+        id: `sub-${crypto.randomUUID().slice(0, 8)}`,
+        completed: false,
+        status: "Open",
+      })),
+      checklist: (source.checklist ?? []).map((item) => ({
+        ...item,
+        id: `chk-${crypto.randomUUID().slice(0, 8)}`,
+        completed: false,
+      })),
+      evidenceFiles: source.evidenceFiles.map((f) => ({
+        ...f,
+        id: `ev-${crypto.randomUUID().slice(0, 8)}`,
+      })),
+      activity: [
+        {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: "usr-actor",
+          actorName,
+          action: `duplicated from ${source.code}`,
+          timestamp: nowIso,
+        },
+      ],
+      createdAt: nowIso.slice(0, 10),
+    }
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: [cloned, ...s.tasks],
+    }))
+    return cloned
+  }
+
+  public moveTaskToProject(taskId: string, projectId: string, actorName = "Current User"): void {
+    const project = this.data.projects.find((p) => p.id === projectId)
+    const task = this.data.tasks.find((t) => t.id === taskId)
+    if (!project || !task || task.projectId === projectId) return
+
+    const entry: TaskActivityEvent = {
+      id: `act-${crypto.randomUUID().slice(0, 8)}`,
+      type: "system",
+      actorId: "usr-actor",
+      actorName,
+      action: "moved task to another project",
+      field: "Project",
+      fromValue: task.projectName,
+      toValue: project.name,
+      timestamp: new Date().toISOString(),
+    }
+
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              projectId: project.id,
+              projectName: project.name,
+              brandId: project.brandId,
+              brandName: project.brandName,
+              activity: [...(t.activity ?? []), entry],
+            }
+          : t
+      ),
+    }))
+  }
+
+  public addSubtask(
+    taskId: string,
+    title: string,
+    assigneeId: string,
+    options?: { dueDate?: string; status?: Task["status"]; actorName?: string }
+  ): void {
     const newSubtask: Subtask = {
       id: `sub-${crypto.randomUUID().slice(0, 8)}`,
       title,
-      completed: false,
+      completed: options?.status === "Complete",
       assigneeId,
+      dueDate: options?.dueDate,
+      status: options?.status ?? "Open",
+    }
+    const entry: TaskActivityEvent = {
+      id: `act-${crypto.randomUUID().slice(0, 8)}`,
+      type: "system",
+      actorId: "usr-actor",
+      actorName: options?.actorName || "Current User",
+      action: "added subtask",
+      detail: title,
+      timestamp: new Date().toISOString(),
     }
     this.setAndPersist((s) => ({
       ...s,
       tasks: s.tasks.map((t) =>
-        t.id === taskId ? { ...t, subtasks: [...t.subtasks, newSubtask] } : t
-      ),
-    }))
-  }
-
-  public toggleSubtask(taskId: string, subtaskId: string, completed: boolean): void {
-    this.setAndPersist((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) =>
         t.id === taskId
           ? {
               ...t,
-              subtasks: t.subtasks.map((st) =>
-                st.id === subtaskId ? { ...st, completed } : st
-              ),
+              subtasks: [...t.subtasks, newSubtask],
+              activity: [...(t.activity ?? []), entry],
             }
           : t
       ),
     }))
   }
 
-  public deleteSubtask(taskId: string, subtaskId: string): void {
+  public updateSubtask(
+    taskId: string,
+    subtaskId: string,
+    updates: Partial<Subtask>,
+    actorName = "Current User"
+  ): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+        const existing = t.subtasks.find((st) => st.id === subtaskId)
+        const nextSubtasks = t.subtasks.map((st) => {
+          if (st.id !== subtaskId) return st
+          const merged = { ...st, ...updates }
+          if (updates.status !== undefined) {
+            merged.completed = updates.status === "Complete"
+          } else if (updates.completed !== undefined) {
+            merged.status = updates.completed ? "Complete" : "Open"
+          }
+          return merged
+        })
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: "usr-actor",
+          actorName,
+          action: "updated subtask",
+          detail: updates.title ?? existing?.title ?? "Subtask",
+          timestamp: new Date().toISOString(),
+        }
+        return {
+          ...t,
+          subtasks: nextSubtasks,
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+  }
+
+  public toggleSubtask(
+    taskId: string,
+    subtaskId: string,
+    completed: boolean,
+    actorName = "Current User"
+  ): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+        const target = t.subtasks.find((st) => st.id === subtaskId)
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: "usr-actor",
+          actorName,
+          action: completed ? "completed subtask" : "reopened subtask",
+          detail: target?.title,
+          timestamp: new Date().toISOString(),
+        }
+        return {
+          ...t,
+          subtasks: t.subtasks.map((st) =>
+            st.id === subtaskId
+              ? { ...st, completed, status: completed ? "Complete" : "Open" }
+              : st
+          ),
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+  }
+
+  public deleteSubtask(taskId: string, subtaskId: string, actorName = "Current User"): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+        const target = t.subtasks.find((st) => st.id === subtaskId)
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: "usr-actor",
+          actorName,
+          action: "removed subtask",
+          detail: target?.title,
+          timestamp: new Date().toISOString(),
+        }
+        return {
+          ...t,
+          subtasks: t.subtasks.filter((st) => st.id !== subtaskId),
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+  }
+
+  public addChecklistItem(taskId: string, title: string, actorName = "Current User"): void {
+    const item: ChecklistItem = {
+      id: `chk-${crypto.randomUUID().slice(0, 8)}`,
+      title,
+      completed: false,
+    }
+    const entry: TaskActivityEvent = {
+      id: `act-${crypto.randomUUID().slice(0, 8)}`,
+      type: "system",
+      actorId: "usr-actor",
+      actorName,
+      action: "added checklist item",
+      detail: title,
+      timestamp: new Date().toISOString(),
+    }
     this.setAndPersist((s) => ({
       ...s,
       tasks: s.tasks.map((t) =>
         t.id === taskId
           ? {
               ...t,
-              subtasks: t.subtasks.filter((st) => st.id !== subtaskId),
+              checklist: [...(t.checklist ?? []), item],
+              activity: [...(t.activity ?? []), entry],
             }
           : t
       ),
     }))
   }
 
-  public addTaskComment(taskId: string, content: string, authorId?: string): void {
-    const author =
-      this.data.users.find((u) => u.id === authorId) ?? this.data.users[0] ?? {
-        id: "usr-admin",
-        name: "Admin User",
-      }
+  public toggleChecklistItem(taskId: string, itemId: string, completed: boolean, actorName = "Current User"): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+        const target = (t.checklist ?? []).find((c) => c.id === itemId)
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: "usr-actor",
+          actorName,
+          action: completed ? "checked off item" : "unchecked item",
+          detail: target?.title,
+          timestamp: new Date().toISOString(),
+        }
+        return {
+          ...t,
+          checklist: (t.checklist ?? []).map((c) =>
+            c.id === itemId ? { ...c, completed } : c
+          ),
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+  }
+
+  public deleteChecklistItem(taskId: string, itemId: string): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, checklist: (t.checklist ?? []).filter((c) => c.id !== itemId) }
+          : t
+      ),
+    }))
+  }
+
+  public addTaskComment(
+    taskId: string,
+    content: string,
+    authorId?: string,
+    options?: {
+      authorName?: string
+      mentions?: string[]
+      attachments?: AttachmentFile[]
+      isQaRelated?: boolean
+    }
+  ): void {
+    const matched = this.data.users.find((u) => u.id === authorId)
+    const fallback = this.data.users[0] ?? {
+      id: "usr-admin",
+      name: "Admin User",
+    }
 
     const newComment: TaskComment = {
       id: `tc-${crypto.randomUUID().slice(0, 8)}`,
-      authorId: author.id,
-      authorName: author.name,
+      authorId: authorId || matched?.id || fallback.id,
+      authorName: options?.authorName || matched?.name || fallback.name,
       content,
-      createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
+      createdAt: new Date().toISOString(),
+      mentions: options?.mentions,
+      attachments: options?.attachments,
+      isQaRelated: options?.isQaRelated,
+      resolved: false,
     }
 
     this.setAndPersist((s) => ({
@@ -760,6 +1069,150 @@ class StoreManager {
         t.id === taskId ? { ...t, comments: [...t.comments, newComment] } : t
       ),
     }))
+  }
+
+  public editTaskComment(taskId: string, commentId: string, content: string): void {
+    const editedAt = new Date().toISOString()
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              comments: t.comments.map((c) =>
+                c.id === commentId ? { ...c, content, editedAt } : c
+              ),
+            }
+          : t
+      ),
+    }))
+  }
+
+  public deleteTaskComment(taskId: string, commentId: string): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, comments: t.comments.filter((c) => c.id !== commentId) }
+          : t
+      ),
+    }))
+  }
+
+  public toggleCommentResolved(taskId: string, commentId: string, actorName = "Current User"): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+        const target = t.comments.find((c) => c.id === commentId)
+        const nextResolved = !target?.resolved
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "qa",
+          actorId: "usr-actor",
+          actorName,
+          action: nextResolved ? "resolved QA comment" : "reopened QA comment",
+          detail: target?.content.slice(0, 60),
+          timestamp: new Date().toISOString(),
+        }
+        return {
+          ...t,
+          comments: t.comments.map((c) =>
+            c.id === commentId ? { ...c, resolved: nextResolved } : c
+          ),
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+  }
+
+  public addTaskEvidence(
+    taskId: string,
+    file: Omit<AttachmentFile, "id" | "uploadedAt"> & { id?: string; uploadedAt?: string },
+    actorName = "Current User"
+  ): AttachmentFile {
+    const nowIso = new Date().toISOString()
+    const created: AttachmentFile = {
+      ...file,
+      id: file.id || `ev-${crypto.randomUUID().slice(0, 8)}`,
+      uploadedAt: file.uploadedAt || nowIso.slice(0, 10),
+    }
+    const entry: TaskActivityEvent = {
+      id: `act-${crypto.randomUUID().slice(0, 8)}`,
+      type: "system",
+      actorId: "usr-actor",
+      actorName,
+      action: "attached file",
+      detail: created.name,
+      timestamp: nowIso,
+    }
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              evidenceFiles: [...t.evidenceFiles, created],
+              activity: [...(t.activity ?? []), entry],
+            }
+          : t
+      ),
+    }))
+    return created
+  }
+
+  public removeTaskEvidence(taskId: string, fileId: string, actorName = "Current User"): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+        const target = t.evidenceFiles.find((f) => f.id === fileId)
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: "usr-actor",
+          actorName,
+          action: "removed attachment",
+          detail: target?.name,
+          timestamp: new Date().toISOString(),
+        }
+        return {
+          ...t,
+          evidenceFiles: t.evidenceFiles.filter((f) => f.id !== fileId),
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+  }
+
+  public toggleTaskWatcher(taskId: string, watcherId: string, actorName = "Current User"): boolean {
+    let isNowWatching = false
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+        const existing = t.watchers ?? []
+        const has = existing.includes(watcherId)
+        isNowWatching = !has
+        const nextWatchers = has
+          ? existing.filter((w) => w !== watcherId)
+          : [...existing, watcherId]
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: watcherId,
+          actorName,
+          action: isNowWatching ? "started watching this task" : "stopped watching this task",
+          timestamp: new Date().toISOString(),
+        }
+        return {
+          ...t,
+          watchers: nextWatchers,
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+    return isNowWatching
   }
 
   public recordQAReview(
@@ -773,6 +1226,7 @@ class StoreManager {
       redFlagUserIds?: string[]
     }
   ): void {
+    const nowIso = new Date().toISOString()
     const event: QAReviewEvent = {
       id: `qa-${crypto.randomUUID().slice(0, 8)}`,
       outcome: review.outcome,
@@ -781,32 +1235,93 @@ class StoreManager {
       reason: review.reason,
       evidenceNames: review.evidenceNames || [],
       redFlagUserIds: review.redFlagUserIds || [],
-      timestamp: new Date().toISOString().slice(0, 16).replace("T", " "),
+      timestamp: nowIso.slice(0, 16).replace("T", " "),
     }
 
     this.setAndPersist((s) => ({
       ...s,
       tasks: s.tasks.map((t) => {
         if (t.id !== taskId) return t
+        const nextStatus = review.outcome === "Pass" ? "Complete" : "Re-Draw"
+        const newEvidence: AttachmentFile[] =
+          review.outcome === "Fail" && review.evidenceNames?.length
+            ? review.evidenceNames
+                .filter((name) => !t.evidenceFiles.some((f) => f.name === name))
+                .map((name) => ({
+                  id: `ev-qa-${crypto.randomUUID().slice(0, 8)}`,
+                  name,
+                  size: "640 KB",
+                  type: "image/png",
+                  uploadedBy: review.reviewerName,
+                  uploadedAt: nowIso.slice(0, 10),
+                }))
+            : []
+
+        const redFlagNames = (review.redFlagUserIds ?? [])
+          .map((uid) => s.users.find((u) => u.id === uid)?.name)
+          .filter(Boolean)
+
+        const activityEntry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "qa",
+          actorId: "usr-qa",
+          actorName: review.reviewerName,
+          action:
+            review.outcome === "Pass"
+              ? "passed QA review"
+              : `failed QA review (${review.category || "Quality"})`,
+          field: "Status",
+          fromValue: t.status,
+          toValue: nextStatus,
+          detail: [
+            review.reason,
+            redFlagNames.length > 0 ? `Red-flagged: ${redFlagNames.join(", ")}` : "",
+          ]
+            .filter(Boolean)
+            .join(" • "),
+          timestamp: nowIso,
+        }
+
         return {
           ...t,
-          status: review.outcome === "Pass" ? "Complete" : "Re-Draw",
+          status: nextStatus,
           qaHistory: [event, ...t.qaHistory],
+          evidenceFiles: [...t.evidenceFiles, ...newEvidence],
           redFlaggedUserIds:
             review.outcome === "Fail" && review.redFlagUserIds?.length
               ? Array.from(new Set([...t.redFlaggedUserIds, ...review.redFlagUserIds]))
               : t.redFlaggedUserIds,
+          activity: [...(t.activity ?? []), activityEntry],
         }
       }),
     }))
   }
 
-  public setTaskOnHold(taskId: string, reason: string): void {
+  public setTaskOnHold(taskId: string, reason: string, actorName = "Current User"): void {
+    const nowIso = new Date().toISOString()
     this.setAndPersist((s) => ({
       ...s,
-      tasks: s.tasks.map((t) =>
-        t.id === taskId ? { ...t, status: "On Hold", onHoldReason: reason } : t
-      ),
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: "usr-actor",
+          actorName,
+          action: "placed task On Hold",
+          field: "Status",
+          fromValue: t.status,
+          toValue: "On Hold",
+          detail: reason,
+          timestamp: nowIso,
+        }
+        return {
+          ...t,
+          status: "On Hold",
+          onHoldReason: reason,
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
     }))
   }
 
