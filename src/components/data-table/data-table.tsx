@@ -507,9 +507,9 @@ export function DataTable<TData, TValue>({
         </div>
       </div>
 
-      {/* Table container: sticky header + mobile horizontal scroll on single scroll box */}
+      {/* Table container: horizontal scroll on narrow screens; single vertical document scroll */}
       <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="relative max-h-[600px] w-full overflow-auto">
+        <div className="relative w-full overflow-x-auto">
           <table className="w-full min-w-full caption-bottom text-sm">
             <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-xs">
               {table.getHeaderGroups().map((headerGroup) => (

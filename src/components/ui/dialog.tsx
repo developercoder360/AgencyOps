@@ -8,9 +8,37 @@ import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
 function Dialog({
+  open,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  React.useEffect(() => {
+    if (!open || !onOpenChange) return
+    const openedPath = window.location.pathname
+
+    const closeIfPathChanged = () => {
+      if (window.location.pathname !== openedPath) {
+        onOpenChange(false)
+      }
+    }
+
+    window.addEventListener("agencyops:route-change", closeIfPathChanged)
+    window.addEventListener("popstate", closeIfPathChanged)
+
+    return () => {
+      window.removeEventListener("agencyops:route-change", closeIfPathChanged)
+      window.removeEventListener("popstate", closeIfPathChanged)
+    }
+  }, [open, onOpenChange])
+
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      open={open}
+      onOpenChange={onOpenChange}
+      {...props}
+    />
+  )
 }
 
 function DialogTrigger({

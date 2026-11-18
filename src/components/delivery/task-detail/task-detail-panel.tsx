@@ -107,7 +107,12 @@ export function TaskDetailPanel({
     setTaskOnHold,
   } = useStore()
 
-  const open = Boolean(taskId)
+  const [closingTaskId, setClosingTaskId] = React.useState<string | null>(null)
+  if (!taskId && closingTaskId !== null) {
+    setClosingTaskId(null)
+  }
+
+  const open = Boolean(taskId) && taskId !== closingTaskId
   const task = taskId ? getTaskById(taskId) : undefined
   const nowMs = useClientNow()
   const todayIso = getTodayIsoFromNow(nowMs)
@@ -123,6 +128,12 @@ export function TaskDetailPanel({
   const [moveDialogOpen, setMoveDialogOpen] = React.useState(false)
   const [moveTargetProjectId, setMoveTargetProjectId] = React.useState("")
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+
+  function handleClose() {
+    setEditingTitle(false)
+    if (taskId) setClosingTaskId(taskId)
+    onClose()
+  }
 
   // Live timer state (keyed to task id)
   const [timerState, setTimerState] = React.useState<{
@@ -562,8 +573,7 @@ export function TaskDetailPanel({
         open={open}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
-            setEditingTitle(false)
-            onClose()
+            handleClose()
           }
         }}
       >
@@ -656,7 +666,7 @@ export function TaskDetailPanel({
                 onRequestDelete={() => setDeleteDialogOpen(true)}
                 onToggleExpand={() => setIsExpanded((v) => !v)}
                 onStopTimer={handleToggleTimer}
-                onClose={onClose}
+                onClose={handleClose}
               />
 
               {/* Mobile Tabs (<768px): Details | Activity */}

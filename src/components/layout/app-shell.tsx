@@ -26,15 +26,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { role } = useAppState()
 
+  React.useEffect(() => {
+    window.dispatchEvent(new Event("agencyops:route-change"))
+  }, [pathname])
+
   const requiredModule = getModuleForPathname(pathname)
   const hasAccess = !requiredModule || canAccessModule(role, requiredModule)
 
   return (
-    <div className="flex min-h-screen w-full bg-muted/30">
+    <div className="flex min-h-dvh w-full bg-muted/30">
       {/* Desktop collapsible sidebar */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 border-r border-border/40 transition-all duration-200 lg:block",
+          "sticky top-0 hidden h-dvh shrink-0 border-r border-border/40 transition-all duration-200 lg:block",
           collapsed ? "w-[68px]" : "w-64"
         )}
       >

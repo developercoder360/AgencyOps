@@ -508,7 +508,10 @@ export default function InvoicesPage() {
                     Copy Link
                   </Button>
                   <Button asChild className="gap-1.5">
-                    <Link href={`/invoice/${selectedInvoice.id}`}>
+                    <Link
+                      href={`/invoice/${selectedInvoice.id}`}
+                      onClick={() => setSelectedInvoice(null)}
+                    >
                       Checkout
                       <ExternalLink className="size-4" />
                     </Link>

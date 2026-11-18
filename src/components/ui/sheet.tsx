@@ -7,8 +7,38 @@ import { Dialog as SheetPrimitive } from "radix-ui"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({
+  open,
+  onOpenChange,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  React.useEffect(() => {
+    if (!open || !onOpenChange) return
+    const openedPath = window.location.pathname
+
+    const closeIfPathChanged = () => {
+      if (window.location.pathname !== openedPath) {
+        onOpenChange(false)
+      }
+    }
+
+    window.addEventListener("agencyops:route-change", closeIfPathChanged)
+    window.addEventListener("popstate", closeIfPathChanged)
+
+    return () => {
+      window.removeEventListener("agencyops:route-change", closeIfPathChanged)
+      window.removeEventListener("popstate", closeIfPathChanged)
+    }
+  }, [open, onOpenChange])
+
+  return (
+    <SheetPrimitive.Root
+      data-slot="sheet"
+      open={open}
+      onOpenChange={onOpenChange}
+      {...props}
+    />
+  )
 }
 
 function SheetTrigger({

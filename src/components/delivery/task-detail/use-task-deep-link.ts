@@ -18,6 +18,12 @@ export function useTaskDeepLink() {
 
   const setTaskId = React.useCallback(
     (nextId: string | null) => {
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname !== pathname
+      ) {
+        return
+      }
       const params = new URLSearchParams(searchParams.toString())
       if (nextId) {
         params.set("task", nextId)

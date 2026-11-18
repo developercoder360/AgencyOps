@@ -532,7 +532,7 @@ function TasksPageContent() {
                     </span>
                   </div>
 
-                  <div className="max-h-[600px] overflow-y-auto pr-1">
+                  <div className="pr-1">
                     <div className="space-y-2">
                       {colTasks.map((task) => {
                         const assignees = users.filter((u) =>

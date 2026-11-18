@@ -112,7 +112,6 @@ export function TaskHeader({
       >
         <Link
           href="/brands"
-          onClick={onClose}
           className="hidden max-w-[130px] truncate rounded px-1.5 py-0.5 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-block"
         >
           {task.brandName}
@@ -120,7 +119,6 @@ export function TaskHeader({
         <ChevronRight className="hidden size-3.5 shrink-0 opacity-60 sm:inline-block" />
         <Link
           href={`/projects/${task.projectId}`}
-          onClick={onClose}
           className="max-w-[140px] truncate rounded px-1.5 py-0.5 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-[180px]"
         >
           {task.projectName}
