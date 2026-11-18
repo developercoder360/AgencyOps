@@ -110,7 +110,8 @@ export function TaskActivitySidebar({
   )
   const [editDraft, setEditDraft] = React.useState("")
 
-  const scrollEndRef = React.useRef<HTMLDivElement | null>(null)
+  const feedScrollRef = React.useRef<HTMLDivElement | null>(null)
+  const isNearBottomRef = React.useRef(true)
   const composerRef = React.useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
@@ -147,13 +148,30 @@ export function TaskActivitySidebar({
   const historyCount = (task.activity ?? []).length
   const commentCount = task.comments.length
 
-  const prevCountRef = React.useRef(allItems.length)
+  const prevFeedRef = React.useRef({
+    taskId: task.id,
+    count: allItems.length,
+  })
   React.useEffect(() => {
-    if (allItems.length > prevCountRef.current) {
-      scrollEndRef.current?.scrollIntoView({ behavior: "smooth" })
-    }
-    prevCountRef.current = allItems.length
-  }, [allItems.length])
+    const prev = prevFeedRef.current
+    const appendedOnSameTask =
+      prev.taskId === task.id && allItems.length > prev.count
+    prevFeedRef.current = { taskId: task.id, count: allItems.length }
+
+    if (!appendedOnSameTask) return
+    const container = feedScrollRef.current
+    if (!container || container.clientHeight === 0) return
+    if (!isNearBottomRef.current) return
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
+  }, [task.id, allItems.length])
+
+  function handleFeedScroll() {
+    const container = feedScrollRef.current
+    if (!container) return
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight
+    isNearBottomRef.current = distanceFromBottom <= 80
+  }
 
   const filteredStaff = React.useMemo(() => {
     const q = mentionQuery.trim().toLowerCase()
@@ -195,7 +213,7 @@ export function TaskActivitySidebar({
     setMentionOpen(false)
     setMentionQuery("")
     requestAnimationFrame(() => {
-      composerRef.current?.focus()
+      composerRef.current?.focus({ preventScroll: true })
     })
   }
 
@@ -309,7 +327,11 @@ export function TaskActivitySidebar({
       </div>
 
       {/* Timeline feed (own scroll) */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
+      <div
+        ref={feedScrollRef}
+        onScroll={handleFeedScroll}
+        className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3"
+      >
         {visibleItems.length === 0 ? (
           <div className="flex h-full min-h-[180px] flex-col items-center justify-center gap-2 text-center">
             {filter === "comments" ? (
@@ -327,7 +349,7 @@ export function TaskActivitySidebar({
                 type="button"
                 variant="outline"
                 size="xs"
-                onClick={() => composerRef.current?.focus()}
+                onClick={() => composerRef.current?.focus({ preventScroll: true })}
               >
                 Write first comment
               </Button>
@@ -560,7 +582,6 @@ export function TaskActivitySidebar({
                 </div>
               )
             })}
-            <div ref={scrollEndRef} />
           </div>
         )}
       </div>

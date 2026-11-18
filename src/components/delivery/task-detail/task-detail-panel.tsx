@@ -581,7 +581,7 @@ export function TaskDetailPanel({
           side="right"
           showCloseButton={false}
           className={cn(
-            "flex flex-col gap-0 overflow-hidden p-0 transition-all duration-200",
+            "flex flex-col gap-0 overflow-clip p-0 transition-all duration-200",
             // Mobile: full-screen viewport height (100dvh)
             "inset-0 h-dvh max-h-dvh w-full sm:w-full max-w-none sm:max-w-none border-0",
             // Desktop: wide right panel (960px, max 90vw, full 100dvh) OR expanded centered modal
@@ -706,7 +706,7 @@ export function TaskDetailPanel({
               </div>
 
               {/* Main 2-column Body */}
-              <div className="flex min-h-0 flex-1 overflow-hidden">
+              <div className="flex min-h-0 flex-1 overflow-clip">
                 {/* LEFT COLUMN: Details + Sticky Workflow Bar */}
                 <div
                   className={cn(

@@ -123,8 +123,10 @@
   }
   body {
     @apply bg-background text-foreground;
+    overflow-anchor: none;
   }
   html {
     @apply font-sans;
+    overflow-anchor: none;
   }
 }

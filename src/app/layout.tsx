@@ -26,9 +26,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} antialiased [overflow-anchor:none]`}
     >
-      <body className="min-h-dvh bg-background text-foreground">
+      <body className="min-h-dvh bg-background text-foreground [overflow-anchor:none]">
         <ThemeProvider>
           <StoreProvider>
             <AppStateProvider>{children}</AppStateProvider>
