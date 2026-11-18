@@ -57,7 +57,7 @@ function SheetContent({
 }) {
   const sideClasses =
     side === "right"
-      ? "inset-y-0 top-0 right-0 bottom-0 h-dvh max-h-dvh w-3/4 border-l sm:max-w-sm data-open:slide-in-from-right-10 data-closed:slide-out-to-right-10"
+      ? "inset-y-0 top-0 right-0 bottom-0 h-dvh max-h-dvh w-full sm:w-3/4 border-l sm:max-w-sm data-open:slide-in-from-right-10 data-closed:slide-out-to-right-10"
       : side === "left"
         ? "inset-y-0 top-0 left-0 bottom-0 h-dvh max-h-dvh w-3/4 border-r sm:max-w-sm data-open:slide-in-from-left-10 data-closed:slide-out-to-left-10"
         : side === "top"
@@ -99,7 +99,7 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sheet-header"
-      className={cn("flex flex-col gap-0.5 p-4", className)}
+      className={cn("flex flex-col gap-0.5 p-4 pr-12", className)}
       {...props}
     />
   )
