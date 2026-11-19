@@ -34,7 +34,6 @@ import {
   useTaskDeepLink,
 } from "@/components/delivery/task-detail"
 import { TaskGroupedList } from "@/components/delivery/task-grouped-list"
-import { useAppState } from "@/components/providers/app-state-provider"
 import {
   AvatarGroup,
   ConfirmDeleteDialog,
@@ -62,7 +61,7 @@ import {
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
-import { getTaskPermissions } from "@/lib/permissions"
+import { ALL_TASK_PERMISSIONS } from "@/lib/permissions"
 import { useStore } from "@/lib/store"
 import type { Task, TaskStatus } from "@/types"
 import { cn } from "cn"
@@ -106,8 +105,7 @@ const createTaskSchema = z.object({
 })
 
 function TasksPageContent() {
-  const { role } = useAppState()
-  const permissions = React.useMemo(() => getTaskPermissions(role), [role])
+  const permissions = ALL_TASK_PERMISSIONS
 
   const { tasks, projects, brands, users, createTask, deleteTask } = useStore()
   const { activeTaskId, openTask, closeTask } = useTaskDeepLink()

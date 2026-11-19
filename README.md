@@ -83,7 +83,7 @@ The relations layer ([`src/lib/store/relations.ts`](src/lib/store/relations.ts))
 ### Admin, Exports, Settings & Auth UI
 | Route | Description |
 | --- | --- |
-| `/users` | Staff directory `<DataTable>`, Invite User Sheet, and grouped module Permissions Sheet |
+| `/users` | Staff directory `<DataTable>` and Invite User Sheet |
 | `/users/[id]` | User 360° profile tabs (Attendance, Leads, Projects, Sales, Leave Balance) |
 | `/teams` | Delivery & revenue teams `<DataTable>` + Create Sheet |
 | `/cities` | Territory markets, billing currencies, and timezones `<DataTable>` + Add Dialog |

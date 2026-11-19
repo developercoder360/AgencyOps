@@ -10,7 +10,6 @@ import {
   FolderInput,
   PauseCircle,
 } from "lucide-react"
-import { useAppState } from "@/components/providers/app-state-provider"
 import { ConfirmDeleteDialog } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -38,7 +37,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getTaskPermissions, ROLE_PERSONA_SUMMARY } from "@/lib/permissions"
+import { ALL_TASK_PERMISSIONS, CURRENT_USER } from "@/lib/permissions"
 import { useStore } from "@/lib/store"
 import type {
   AttachmentFile,
@@ -75,9 +74,8 @@ export function TaskDetailPanel({
   onSelectTask,
   orderedTaskIds = [],
 }: TaskDetailPanelProps) {
-  const { role } = useAppState()
-  const permissions = React.useMemo(() => getTaskPermissions(role), [role])
-  const persona = ROLE_PERSONA_SUMMARY[role]
+  const permissions = ALL_TASK_PERMISSIONS
+  const persona = CURRENT_USER
 
   const {
     isLoaded,
@@ -218,13 +216,10 @@ export function TaskDetailPanel({
   }, [open, nextTaskId, prevTaskId, onSelectTask])
 
   const currentActorUser = React.useMemo(
-    () =>
-      users.find((u) => u.name === persona.name) ??
-      users.find((u) => u.role === role) ??
-      users[0],
-    [users, persona.name, role]
+    () => users.find((u) => u.name === persona.name) ?? users[0],
+    [users, persona.name]
   )
-  const actorId = currentActorUser?.id ?? `role-${role}`
+  const actorId = currentActorUser?.id ?? "usr-admin"
   const actorName = persona.name
 
   const watchers = task?.watchers ?? []
@@ -977,7 +972,7 @@ export function TaskDetailPanel({
                     users={users}
                     currentActorName={actorName}
                     currentActorInitials={persona.initials}
-                    currentRole={role}
+                    currentRole="Super Admin"
                     permissions={permissions}
                     nowMs={nowMs}
                     onAddComment={({

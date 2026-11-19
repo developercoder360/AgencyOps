@@ -132,15 +132,6 @@ export function TaskHeader({
         >
           {task.code}
         </button>
-
-        {permissions.isReadOnly ? (
-          <Badge
-            variant="secondary"
-            className="ml-1.5 hidden text-[10px] font-medium sm:inline-flex"
-          >
-            View only
-          </Badge>
-        ) : null}
       </nav>
 
       {/* Right actions */}

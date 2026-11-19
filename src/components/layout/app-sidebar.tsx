@@ -34,7 +34,7 @@ import {
 } from "lucide-react"
 import { cn } from "cn"
 import { useAppState } from "@/components/providers/app-state-provider"
-import { canAccessModule, SIDEBAR_GROUPS } from "@/lib/permissions"
+import { SIDEBAR_GROUPS } from "@/lib/permissions"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Tooltip,
@@ -82,16 +82,9 @@ export function SidebarContent({
   onNavigate,
 }: SidebarContentProps) {
   const pathname = usePathname()
-  const { role, unreadMessagesCount } = useAppState()
+  const { unreadMessagesCount } = useAppState()
 
-  const visibleGroups = React.useMemo(
-    () =>
-      SIDEBAR_GROUPS.map((group) => ({
-        ...group,
-        items: group.items.filter((item) => canAccessModule(role, item.module)),
-      })).filter((group) => group.items.length > 0),
-    [role]
-  )
+  const visibleGroups = SIDEBAR_GROUPS
 
   return (
     <div className="flex h-full flex-col bg-gradient-to-b from-[#1F63C8] to-[#0B3266] text-white select-none">
@@ -224,33 +217,6 @@ export function SidebarContent({
           ))}
         </nav>
       </ScrollArea>
-
-      {/* Active role footer */}
-      <div className="shrink-0 border-t border-white/15 p-3">
-        {!collapsed ? (
-          <div className="rounded-lg bg-white/10 px-2.5 py-2 text-xs">
-            <div className="text-[10px] uppercase tracking-wider text-white/60">
-              Active Demo Role
-            </div>
-            <div className="truncate font-medium text-white">{role}</div>
-          </div>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="mx-auto flex size-8 items-center justify-center rounded-lg bg-white/10 text-[10px] font-bold">
-                {role
-                  .split(/[\s/]+/)
-                  .map((w) => w[0])
-                  .join("")
-                  .slice(0, 2)}
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">
-              Role: {role}
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
     </div>
   )
 }

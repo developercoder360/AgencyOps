@@ -1,22 +1,10 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ArrowLeft, ShieldAlert } from "lucide-react"
 import { SidebarContent } from "./app-sidebar"
 import { AppTopbar } from "./app-topbar"
 import { AppBreadcrumbs } from "./app-breadcrumbs"
-import { useAppState } from "@/components/providers/app-state-provider"
-import { canAccessModule, getModuleForPathname } from "@/lib/permissions"
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "cn"
 
@@ -24,14 +12,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = React.useState(false)
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const pathname = usePathname()
-  const { role } = useAppState()
 
   React.useEffect(() => {
     window.dispatchEvent(new Event("agencyops:route-change"))
   }, [pathname])
-
-  const requiredModule = getModuleForPathname(pathname)
-  const hasAccess = !requiredModule || canAccessModule(role, requiredModule)
 
   return (
     <div className="flex min-h-dvh w-full bg-muted/30">
@@ -66,39 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 min-w-0 px-3 py-5 sm:px-6">
           <div className="mx-auto w-full max-w-[1440px]">
             <AppBreadcrumbs />
-            {hasAccess ? (
-              children
-            ) : (
-              <Card className="mx-auto mt-8 max-w-lg text-center">
-                <CardHeader className="justify-items-center text-center">
-                  <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400">
-                    <ShieldAlert className="size-6" />
-                  </div>
-                  <CardTitle className="text-xl">No access</CardTitle>
-                  <CardDescription>
-                    Your active demo role (
-                    <span className="font-medium text-foreground">{role}</span>)
-                    does not have permission to view{" "}
-                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-                      {pathname}
-                    </code>
-                    .
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-xs text-muted-foreground">
-                    Switch back to Super Admin or another authorized role via the
-                    Demo Role Switcher in the top-right user menu.
-                  </p>
-                  <Button asChild size="sm" className="gap-1.5">
-                    <Link href="/dashboard">
-                      <ArrowLeft className="size-4" />
-                      Back to Dashboard
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+            {children}
           </div>
         </main>
       </div>

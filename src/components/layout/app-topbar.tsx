@@ -10,7 +10,6 @@ import { toast } from "sonner"
 import {
   Bell,
   CheckCheck,
-  Clock,
   Copy,
   KeyRound,
   Landmark,
@@ -19,13 +18,11 @@ import {
   MessageSquare,
   Moon,
   Settings,
-  ShieldCheck,
   Sun,
   User,
 } from "lucide-react"
 import { useAppState } from "@/components/providers/app-state-provider"
-import { DEMO_ROLES, ROLE_PERSONA_SUMMARY } from "@/lib/permissions"
-import type { Role } from "@/types"
+import { CURRENT_USER } from "@/lib/permissions"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -58,26 +55,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "cn"
-
-const TIMEZONES = [
-  { value: "America/New_York", label: "EST (New York)" },
-  { value: "America/Chicago", label: "CST (Chicago)" },
-  { value: "America/Los_Angeles", label: "PST (San Francisco)" },
-  { value: "America/Toronto", label: "EST (Toronto)" },
-  { value: "Europe/London", label: "GMT (London)" },
-  { value: "UTC", label: "UTC" },
-]
 
 const BANK_ACCOUNTS = [
   {
@@ -126,10 +107,6 @@ interface AppTopbarProps {
 export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
   const { setTheme, resolvedTheme } = useTheme()
   const {
-    role,
-    setRole,
-    timezone,
-    setTimezone,
     notifications,
     unreadNotificationsCount,
     markAllNotificationsRead,
@@ -141,7 +118,7 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
   const [notifOpen, setNotifOpen] = React.useState(false)
   const [passwordOpen, setPasswordOpen] = React.useState(false)
 
-  const persona = ROLE_PERSONA_SUMMARY[role]
+  const persona = CURRENT_USER
 
   const form = useForm<PasswordFormValues>({
     resolver: zodResolver(passwordSchema),
@@ -151,12 +128,6 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
       confirmPassword: "",
     },
   })
-
-  function handleRoleChange(nextRole: string) {
-    const typed = nextRole as Role
-    setRole(typed)
-    toast.success(`Switched demo view to ${typed}`)
-  }
 
   function copyBankField(label: string, value: string) {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -197,14 +168,6 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
               AgencyOps
             </span>
           </Link>
-
-          <div className="hidden items-center gap-2 sm:flex">
-            <Badge variant="outline" className="gap-1.5 font-normal">
-              <ShieldCheck className="size-3.5 text-primary" />
-              <span>Role:</span>
-              <span className="font-medium text-foreground">{role}</span>
-            </Badge>
-          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
@@ -219,26 +182,6 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
             <Landmark className="size-4 text-primary" />
             <span className="hidden md:inline">Banking</span>
           </Button>
-
-          {/* Timezone picker */}
-          <div className="hidden xl:block">
-            <Select value={timezone} onValueChange={setTimezone}>
-              <SelectTrigger
-                aria-label="Select timezone"
-                className="h-8 w-[170px] text-xs"
-              >
-                <Clock className="mr-1.5 size-3.5 text-muted-foreground" />
-                <SelectValue placeholder="Timezone" />
-              </SelectTrigger>
-              <SelectContent>
-                {TIMEZONES.map((tz) => (
-                  <SelectItem key={tz.value} value={tz.value}>
-                    {tz.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
 
           {/* Messages link */}
           <Button
@@ -320,32 +263,6 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
                   {persona.email}
                 </div>
               </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-
-              {/* Demo Role Switcher */}
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <ShieldCheck className="mr-2 size-4 text-primary" />
-                  <span>Demo Role Switcher</span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-56">
-                  <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    Preview sidebar permissions
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuRadioGroup
-                    value={role}
-                    onValueChange={handleRoleChange}
-                  >
-                    {DEMO_ROLES.map((r) => (
-                      <DropdownMenuRadioItem key={r} value={r}>
-                        {r}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuItem asChild>

@@ -12,7 +12,6 @@ import {
   ExternalLink,
   Flag,
   Plus,
-  ShieldCheck,
   Trash2,
   Users as UsersIcon,
 } from "lucide-react"
@@ -25,7 +24,6 @@ import { ConfirmDeleteDialog, PageHeader, StatusBadge } from "@/components/share
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -46,63 +44,11 @@ import {
 import { DEMO_ROLES } from "@/lib/permissions"
 import { buildPermissions, useStore } from "@/lib/store"
 import type {
-  ModulePermissions,
-  PermissionModule,
   Role,
   StaffUser,
 } from "@/types"
 
 type UserStatus = StaffUser["status"]
-
-const PERMISSION_GROUPS: {
-  group: string
-  modules: { id: PermissionModule; label: string }[]
-}[] = [
-  {
-    group: "Inquiry & Sales",
-    modules: [
-      { id: "dashboard", label: "Dashboard" },
-      { id: "brands", label: "Brands" },
-      { id: "leads", label: "Leads" },
-      { id: "signups", label: "Sign Ups" },
-    ],
-  },
-  {
-    group: "Billing & Marketing",
-    modules: [
-      { id: "invoices", label: "Invoices" },
-      { id: "transactions", label: "Transactions" },
-      { id: "marketing", label: "Marketing Spendings" },
-    ],
-  },
-  {
-    group: "Delivery",
-    modules: [
-      { id: "projects", label: "Projects" },
-      { id: "tasks", label: "Tasks & QA" },
-      { id: "chats", label: "Project Chats" },
-    ],
-  },
-  {
-    group: "HR & Administration",
-    modules: [
-      { id: "hrm", label: "HR Management" },
-      { id: "users", label: "Users" },
-      { id: "teams", label: "Teams" },
-      { id: "cities", label: "Cities" },
-      { id: "exports", label: "Export Logs" },
-      { id: "settings", label: "Settings & Security" },
-    ],
-  },
-]
-
-const ACTIONS: (keyof ModulePermissions)[] = [
-  "view",
-  "create",
-  "edit",
-  "delete",
-  "export",
-]
 
 const userFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -133,11 +79,6 @@ export default function UsersPage() {
     deleteUser,
     checkUserDeletion,
   } = useStore()
-
-  const [permUser, setPermUser] = React.useState<StaffUser | null>(null)
-  const [draftPerms, setDraftPerms] = React.useState<
-    Record<PermissionModule, ModulePermissions> | null
-  >(null)
 
   const [formOpen, setFormOpen] = React.useState(false)
   const [editingUser, setEditingUser] = React.useState<StaffUser | null>(null)
@@ -215,31 +156,6 @@ export default function UsersPage() {
       }
     }
     setDeleteTarget(null)
-  }
-
-  function openPermissionsSheet(user: StaffUser) {
-    setPermUser(user)
-    setDraftPerms(JSON.parse(JSON.stringify(user.permissions)))
-  }
-
-  function togglePerm(mod: PermissionModule, action: keyof ModulePermissions) {
-    setDraftPerms((prev) => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        [mod]: {
-          ...prev[mod],
-          [action]: !prev[mod][action],
-        },
-      }
-    })
-  }
-
-  function savePermissions() {
-    if (!permUser || !draftPerms) return
-    updateUser(permUser.id, { permissions: draftPerms })
-    toast.success(`Saved module permissions for ${permUser.name}`)
-    setPermUser(null)
   }
 
   function onFormSubmit(values: UserFormValues) {
@@ -369,16 +285,6 @@ export default function UsersPage() {
             <Button
               type="button"
               variant="ghost"
-              size="xs"
-              onClick={() => openPermissionsSheet(row.original)}
-              className="gap-1"
-            >
-              <ShieldCheck className="size-3.5 text-primary" />
-              Perms
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
               size="icon-xs"
               onClick={() => openEdit(row.original)}
               title="Edit staff details"
@@ -433,8 +339,8 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Staff Directory & Permissions"
-        description="Manage internal users, role assignments, granular module permissions, and User 360 profiles."
+        title="Staff Directory"
+        description="Manage internal users, team assignments, contact details, and User 360 profiles."
         badge={<Badge variant="secondary">{users.length} members</Badge>}
         actions={
           <Button
@@ -454,104 +360,8 @@ export default function UsersPage() {
         searchPlaceholder="Search staff by name, email, role, city..."
         facetedFilters={facetedFilters}
         exportModule="Users Directory"
-        onRowClick={openPermissionsSheet}
+        onRowClick={openEdit}
       />
-
-      {/* Permissions Assignment Sheet */}
-      <Sheet
-        open={Boolean(permUser)}
-        onOpenChange={(open) => !open && setPermUser(null)}
-      >
-        <SheetContent side="right" className="overflow-y-auto sm:max-w-2xl">
-          {permUser && draftPerms ? (
-            <>
-              <SheetHeader className="border-b border-border pb-4">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="size-4 text-primary" />
-                  <Badge variant="outline">{permUser.role}</Badge>
-                </div>
-                <SheetTitle className="mt-1">
-                  Module Permissions — {permUser.name}
-                </SheetTitle>
-                <SheetDescription>
-                  Toggle View, Create, Edit, Delete, and Export access grouped
-                  by platform module.
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="space-y-5 p-4">
-                {PERMISSION_GROUPS.map((grp) => (
-                  <div
-                    key={grp.group}
-                    className="overflow-hidden rounded-lg border border-border"
-                  >
-                    <div className="border-b border-border bg-muted/50 px-3.5 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {grp.group}
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-border text-muted-foreground">
-                            <th className="px-3.5 py-2 text-left font-medium">
-                              Module
-                            </th>
-                            {ACTIONS.map((a) => (
-                              <th
-                                key={a}
-                                className="px-2.5 py-2 text-center font-medium capitalize"
-                              >
-                                {a}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {grp.modules.map((mod) => (
-                            <tr key={mod.id} className="hover:bg-muted/20">
-                              <td className="px-3.5 py-2.5 font-medium text-foreground">
-                                {mod.label}
-                              </td>
-                              {ACTIONS.map((act) => (
-                                <td key={act} className="px-2.5 py-2 text-center">
-                                  <Checkbox
-                                    checked={draftPerms[mod.id]?.[act] ?? false}
-                                    onCheckedChange={() =>
-                                      togglePerm(mod.id, act)
-                                    }
-                                    aria-label={`${mod.label} ${act}`}
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <SheetFooter className="border-t border-border sm:flex-row sm:justify-between">
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/users/${permUser.id}`}>Open User 360°</Link>
-                </Button>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setPermUser(null)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="button" onClick={savePermissions}>
-                    Save Permissions
-                  </Button>
-                </div>
-              </SheetFooter>
-            </>
-          ) : null}
-        </SheetContent>
-      </Sheet>
 
       {/* Invite / Edit User Sheet */}
       <Sheet open={formOpen} onOpenChange={setFormOpen}>

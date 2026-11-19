@@ -104,7 +104,7 @@ export function TaskActivitySidebar({
   const [pendingMentions, setPendingMentions] = React.useState<string[]>([])
   const [mentionOpen, setMentionOpen] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState("")
-  const [isQaNote, setIsQaNote] = React.useState(currentRole === "QA Reviewer")
+  const [isQaNote, setIsQaNote] = React.useState(false)
   const [editingCommentId, setEditingCommentId] = React.useState<string | null>(
     null
   )
@@ -587,11 +587,10 @@ export function TaskActivitySidebar({
       </div>
 
       {/* Pinned Comment Composer */}
-      {permissions.canComment ? (
-        <form
-          onSubmit={handleSubmit}
-          className="shrink-0 border-t border-border bg-card p-3"
-        >
+      <form
+        onSubmit={handleSubmit}
+        className="shrink-0 border-t border-border bg-card p-3"
+      >
           {pendingAttachments.length > 0 ? (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {pendingAttachments.map((att) => (
@@ -749,11 +748,6 @@ export function TaskActivitySidebar({
             </div>
           </div>
         </form>
-      ) : (
-        <div className="shrink-0 border-t border-border bg-card px-3.5 py-2.5 text-center text-xs text-muted-foreground">
-          Read-only access — commenting disabled for {currentRole}.
-        </div>
-      )}
     </aside>
   )
 }

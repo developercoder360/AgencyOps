@@ -1,5 +1,12 @@
 import type { PermissionModule, Role } from "@/types"
 
+export const CURRENT_USER = {
+  name: "Marcus Vance",
+  initials: "MV",
+  email: "marcus.vance@agencyops.io",
+  title: "Managing Director",
+}
+
 export const DEMO_ROLES: Role[] = [
   "Super Admin",
   "Sales/Account Manager",
@@ -13,12 +20,7 @@ export const ROLE_PERSONA_SUMMARY: Record<
   Role,
   { name: string; initials: string; email: string; title: string }
 > = {
-  "Super Admin": {
-    name: "Marcus Vance",
-    initials: "MV",
-    email: "marcus.vance@agencyops.io",
-    title: "Managing Director",
-  },
+  "Super Admin": CURRENT_USER,
   "Sales/Account Manager": {
     name: "Elena Rostova",
     initials: "ER",
@@ -51,61 +53,36 @@ export const ROLE_PERSONA_SUMMARY: Record<
   },
 }
 
+export const ALL_MODULES: PermissionModule[] = [
+  "dashboard",
+  "brands",
+  "leads",
+  "signups",
+  "invoices",
+  "transactions",
+  "marketing",
+  "projects",
+  "tasks",
+  "chats",
+  "hrm",
+  "users",
+  "teams",
+  "cities",
+  "exports",
+  "settings",
+]
+
 export const ROLE_MODULE_ACCESS: Record<Role, PermissionModule[]> = {
-  "Super Admin": [
-    "dashboard",
-    "brands",
-    "leads",
-    "signups",
-    "invoices",
-    "transactions",
-    "marketing",
-    "projects",
-    "tasks",
-    "chats",
-    "hrm",
-    "users",
-    "teams",
-    "cities",
-    "exports",
-    "settings",
-  ],
-  "Sales/Account Manager": [
-    "dashboard",
-    "brands",
-    "leads",
-    "signups",
-    "invoices",
-    "transactions",
-    "marketing",
-    "projects",
-    "chats",
-    "exports",
-  ],
-  "Project Admin": [
-    "dashboard",
-    "leads",
-    "projects",
-    "tasks",
-    "chats",
-    "teams",
-    "exports",
-  ],
-  "Designer/Developer": ["dashboard", "projects", "tasks", "chats"],
-  "QA Reviewer": ["dashboard", "projects", "tasks", "chats", "exports"],
-  "HR Manager": [
-    "dashboard",
-    "hrm",
-    "users",
-    "teams",
-    "cities",
-    "exports",
-    "settings",
-  ],
+  "Super Admin": ALL_MODULES,
+  "Sales/Account Manager": ALL_MODULES,
+  "Project Admin": ALL_MODULES,
+  "Designer/Developer": ALL_MODULES,
+  "QA Reviewer": ALL_MODULES,
+  "HR Manager": ALL_MODULES,
 }
 
-export function canAccessModule(role: Role, mod: PermissionModule): boolean {
-  return ROLE_MODULE_ACCESS[role].includes(mod)
+export function canAccessModule(_role?: Role, _mod?: PermissionModule): boolean {
+  return true
 }
 
 export interface TaskRolePermissions {
@@ -124,76 +101,24 @@ export interface TaskRolePermissions {
   canCreateTask: boolean
 }
 
-export function getTaskPermissions(role: Role): TaskRolePermissions {
-  switch (role) {
-    case "Super Admin":
-    case "Project Admin":
-      return {
-        isReadOnly: false,
-        canEditDetails: true,
-        canEditStatus: true,
-        canEditAssignees: true,
-        canDeleteOrMove: true,
-        canDuplicate: true,
-        canComment: true,
-        canUploadEvidence: true,
-        canPutOnHold: true,
-        canSendToQa: true,
-        canQaReview: true,
-        canResolveQaComment: true,
-        canCreateTask: true,
-      }
-    case "Designer/Developer":
-      return {
-        isReadOnly: false,
-        canEditDetails: true,
-        canEditStatus: true,
-        canEditAssignees: false,
-        canDeleteOrMove: false,
-        canDuplicate: true,
-        canComment: true,
-        canUploadEvidence: true,
-        canPutOnHold: true,
-        canSendToQa: true,
-        canQaReview: false,
-        canResolveQaComment: false,
-        canCreateTask: true,
-      }
-    case "QA Reviewer":
-      return {
-        isReadOnly: false,
-        canEditDetails: false,
-        canEditStatus: false,
-        canEditAssignees: false,
-        canDeleteOrMove: false,
-        canDuplicate: false,
-        canComment: true,
-        canUploadEvidence: true,
-        canPutOnHold: true,
-        canSendToQa: false,
-        canQaReview: true,
-        canResolveQaComment: true,
-        canCreateTask: false,
-      }
-    case "Sales/Account Manager":
-    case "HR Manager":
-    default:
-      return {
-        isReadOnly: true,
-        canEditDetails: false,
-        canEditStatus: false,
-        canEditAssignees: false,
-        canDeleteOrMove: false,
-        canDuplicate: false,
-        canComment: false,
-        canUploadEvidence: false,
-        canPutOnHold: false,
-        canSendToQa: false,
-        canQaReview: false,
-        canResolveQaComment: false,
-        canCreateTask: false,
-      }
-  }
+export const ALL_TASK_PERMISSIONS: TaskRolePermissions = {
+  isReadOnly: false,
+  canEditDetails: true,
+  canEditStatus: true,
+  canEditAssignees: true,
+  canDeleteOrMove: true,
+  canDuplicate: true,
+  canComment: true,
+  canUploadEvidence: true,
+  canPutOnHold: true,
+  canSendToQa: true,
+  canQaReview: true,
+  canResolveQaComment: true,
+  canCreateTask: true,
+}
+
+export function getTaskPermissions(_role?: Role): TaskRolePermissions {
+  return ALL_TASK_PERMISSIONS
 }
 
 export function getModuleForPathname(
