@@ -39,9 +39,22 @@ The relations layer ([`src/lib/store/relations.ts`](src/lib/store/relations.ts))
 ### Cascade Deletion Rules
 | Entity | Cascade Behavior |
 | --- | --- |
-| **Project** | **CASCADES** to delete all associated Tasks, Subtasks, Activity comments, and Project files. |
+| **Project** | **CASCADES** to delete all associated Tasks, Revisions, Activity comments, and Project files. |
 | **Invoice** | **CASCADES** to delete all associated Payment Transactions. |
 | **Chat Thread** | Deleting a project chat thread deletes all chat messages within that thread. |
+
+---
+
+## Task Revisions Permission Matrix
+
+| Role | Add Revisions | Edit Revisions | Delete Revisions | Approve / Reject | Update Progress (Assigned) |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| **Super Admin** | Yes | Yes | Yes | Yes | Yes |
+| **Sales/Account Manager** | Yes | Yes | Yes | Yes | Yes |
+| **Project Admin** | Yes | Yes | Yes | Yes | Yes |
+| **QA Reviewer** | No | No | No | Yes (submitted) | No |
+| **Designer/Developer** | No | No | No | No | Yes (In Progress / Submitted) |
+| **HR Manager / Other** | No | No | No | No | No |
 
 ---
 
@@ -51,7 +64,7 @@ The relations layer ([`src/lib/store/relations.ts`](src/lib/store/relations.ts))
 | Route | Description |
 | --- | --- |
 | `/` | Redirects to `/dashboard` |
-| `/dashboard` | Executive KPIs, Getting Started Onboarding Checklist, target attainment, Tremor charts, and recent activity |
+| `/dashboard` | Executive KPIs, Getting Started Onboarding Guide, target attainment, Tremor charts, and recent activity |
 | `/brands` | Multi-brand directory + Create/Edit Sheet with logo preview + relation deletion checks |
 | `/leads` | Lead pipeline `<DataTable>`, Create/Edit Sheets, Detail Sheet with assignment timeline |
 | `/sign-ups` | Website inquiry sign-ups `<DataTable>` + Convert to Lead dialog |
@@ -65,7 +78,7 @@ The relations layer ([`src/lib/store/relations.ts`](src/lib/store/relations.ts))
 | --- | --- |
 | `/projects` | Projects `<DataTable>` with List/Card toggle, status filters, and member avatars |
 | `/projects/[id]` | Project workspace with Overview, Tasks, Files (client-visibility toggle), and Comments |
-| `/tasks` | 6-column Kanban board & `<DataTable>` toggle, subtasks, evidence upload, On Hold dialog, and QA Pass/Fail |
+| `/tasks` | 6-column Kanban board & `<DataTable>` toggle, revisions, evidence upload, On Hold dialog, and QA Pass/Fail |
 | `/chats` | Two-pane project chat with unread badges, read receipts, and message edit |
 
 ### HR Management

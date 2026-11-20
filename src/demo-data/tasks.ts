@@ -1,13 +1,38 @@
 import type {
+  RevisionStatus,
   Task,
   TaskActivityEvent,
   TaskPriority,
+  TaskRevision,
   TaskStatus,
   TaskTag,
 } from "@/types"
 import { MOCK_PROJECTS } from "./projects"
 import { MOCK_USERS } from "./users"
 import { createSeededRandom, intBetween, pickFrom } from "./seed"
+
+const DEMO_REVISION_PRESETS = [
+  {
+    title: "Logo colour tweak",
+    details: "Adjust primary brand cyan tint to meet WCAG AA contrast against slate-900 background.",
+  },
+  {
+    title: "Change header image",
+    details: "Replace stock hero graphic with hi-res product mock render from deliverables folder.",
+  },
+  {
+    title: "Resize for print",
+    details: "Add 3mm bleeds and convert spot colors for offset CMYK vector output.",
+  },
+  {
+    title: "Update CTA typography",
+    details: "Increase font weight to 600 and adjust letter-spacing for mobile readability.",
+  },
+  {
+    title: "Fix responsive spacing",
+    details: "Refine padding on 375px viewport to eliminate bottom gap and horizontal scroll.",
+  },
+]
 
 const DEMO_TAGS: TaskTag[] = [
   { id: "tag-ui", label: "UI/UX", color: "blue" },
@@ -79,49 +104,51 @@ function generateTasks(): Task[] {
     const createdAt = makeDateOffset(dueOffset - intBetween(rng, 5, 16))
     const code = `TSK-${101 + i}`
 
-    const subtasks = [
-      {
-        id: `st-${i}-1`,
-        title: "Review client brief & design tokens",
-        completed: status !== "Open",
-        status: (status !== "Open" ? "Complete" : "Open") as TaskStatus,
-        dueDate: makeDateOffset(Math.max(dueOffset - 3, -10)),
-        assigneeId: dev1.id,
-      },
-      {
-        id: `st-${i}-2`,
-        title: "Implement responsive breakpoints (375px / 768px / 1280px)",
-        completed: ["QA Review", "Re-Draw", "Complete"].includes(status),
-        status: (["QA Review", "Re-Draw", "Complete"].includes(status)
-          ? "Complete"
-          : status === "Progress"
-            ? "Progress"
-            : "Open") as TaskStatus,
-        dueDate: makeDateOffset(Math.max(dueOffset - 1, -8)),
-        assigneeId: dev1.id,
-      },
-      {
-        id: `st-${i}-3`,
-        title: "Run accessibility & QA checklist verification",
-        completed: status === "Complete",
-        status: (status === "Complete" ? "Complete" : "Open") as TaskStatus,
-        dueDate,
-        assigneeId: reviewer.id,
-      },
-    ]
+    const revCount = status === "Re-Draw" ? Math.max(1, i % 4) : i % 4
+    const revisions: TaskRevision[] = []
 
-    const checklist = [
-      {
-        id: `chk-${i}-1`,
-        title: "Verify dark & light contrast ratios ≥ 4.5:1",
-        completed: ["QA Review", "Complete"].includes(status),
-      },
-      {
-        id: `chk-${i}-2`,
-        title: "Attach staging screenshot before handoff",
-        completed: status === "Complete",
-      },
-    ]
+    for (let rIdx = 0; rIdx < revCount; rIdx++) {
+      const preset = DEMO_REVISION_PRESETS[(i + rIdx) % DEMO_REVISION_PRESETS.length]
+      let revStatus: RevisionStatus = "requested"
+      if (status === "Complete") {
+        revStatus = "approved"
+      } else if (status === "Re-Draw") {
+        revStatus = rIdx === 0 ? "in_progress" : "requested"
+      } else if (status === "QA Review") {
+        revStatus = "submitted"
+      } else {
+        const statuses: RevisionStatus[] = ["requested", "in_progress", "submitted", "approved", "rejected"]
+        revStatus = statuses[(i + rIdx) % statuses.length]
+      }
+
+      const revCreated = makeDateOffset(Math.max(dueOffset - 4 + rIdx, -10))
+      revisions.push({
+        id: `rev-${i}-${rIdx + 1}`,
+        number: rIdx + 1,
+        title: preset.title,
+        details: preset.details,
+        assigneeId: dev1.id,
+        dueDate: makeDateOffset(Math.max(dueOffset - 1 + rIdx, -5)),
+        status: revStatus,
+        files:
+          rIdx === 0
+            ? [
+                {
+                  id: `rf-${i}-1`,
+                  name: `${preset.title.toLowerCase().replace(/\s+/g, "-")}-spec.pdf`,
+                  previewUrl: "/placeholder-spec.pdf",
+                  size: "1.4 MB",
+                  type: "application/pdf",
+                  uploadedAt: `${revCreated}T10:00:00.000Z`,
+                  uploadedBy: "Elena Rostova",
+                },
+              ]
+            : [],
+        createdAt: `${revCreated}T10:00:00.000Z`,
+        updatedAt: `${revCreated}T16:30:00.000Z`,
+        createdById: "usr-admin",
+      })
+    }
 
     const tags = [
       DEMO_TAGS[i % DEMO_TAGS.length],
@@ -209,8 +236,8 @@ function generateTasks(): Task[] {
       loggedHours:
         status === "Open" ? 0 : intBetween(rng, 2, 18),
       tags,
-      subtasks,
-      checklist,
+      revisions,
+      nextRevisionNumber: revCount + 1,
       comments: [
         {
           id: `tc-${i}-1`,

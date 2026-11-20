@@ -1,3 +1,4 @@
+import type { Task, TaskRevision } from "@/types"
 import {
   createInitialEmptyData,
   STORE_STORAGE_KEY,
@@ -9,6 +10,53 @@ export interface StorageEstimate {
   usedBytes: number
   usedKb: number
   percent: number // % of 5MB
+}
+
+interface LegacyTaskRaw {
+  subtasks?: unknown[]
+  checklist?: unknown[]
+  revisions?: TaskRevision[]
+  legacy?: {
+    subtasks?: unknown[]
+    checklist?: unknown[]
+  }
+  [key: string]: unknown
+}
+
+export function migrateTask(rawTask: unknown): Task {
+  if (!rawTask || typeof rawTask !== "object") {
+    return rawTask as Task
+  }
+  const task = { ...(rawTask as LegacyTaskRaw) }
+
+  // Ensure revisions array is present and strip legacy requestedBy from revisions
+  if (!Array.isArray(task.revisions)) {
+    task.revisions = []
+  } else {
+    task.revisions = task.revisions.map((rev) => {
+      if (rev && typeof rev === "object") {
+        const rawRev = { ...(rev as unknown as Record<string, unknown>) }
+        if ("requestedBy" in rawRev) {
+          delete rawRev.requestedBy
+        }
+        return rawRev as unknown as TaskRevision
+      }
+      return rev
+    })
+  }
+
+  // If old subtasks or checklist arrays exist, move to legacy and remove old keys
+  if (task.subtasks !== undefined || task.checklist !== undefined) {
+    task.legacy = {
+      ...(task.legacy || {}),
+      ...(task.subtasks !== undefined ? { subtasks: task.subtasks } : {}),
+      ...(task.checklist !== undefined ? { checklist: task.checklist } : {}),
+    }
+    delete task.subtasks
+    delete task.checklist
+  }
+
+  return task as unknown as Task
 }
 
 export function loadStoredData(): StoreData {
@@ -23,14 +71,16 @@ export function loadStoredData(): StoreData {
     }
 
     const parsed = JSON.parse(raw) as Partial<StoreData>
-    if (!parsed || typeof parsed !== "object" || parsed.version !== STORE_VERSION) {
-      // Incompatible version or corrupt data; fall back safely
+    if (!parsed || typeof parsed !== "object") {
       return createInitialEmptyData()
     }
 
     // Ensure all required array fields are present
     const base = createInitialEmptyData()
-    return {
+    const rawTasks = Array.isArray(parsed.tasks) ? parsed.tasks : base.tasks
+    const migratedTasks = rawTasks.map(migrateTask)
+
+    const result: StoreData = {
       version: STORE_VERSION,
       brands: Array.isArray(parsed.brands) ? parsed.brands : base.brands,
       cities: Array.isArray(parsed.cities) ? parsed.cities : base.cities,
@@ -42,7 +92,7 @@ export function loadStoredData(): StoreData {
       transactions: Array.isArray(parsed.transactions) ? parsed.transactions : base.transactions,
       marketingSpendings: Array.isArray(parsed.marketingSpendings) ? parsed.marketingSpendings : base.marketingSpendings,
       projects: Array.isArray(parsed.projects) ? parsed.projects : base.projects,
-      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : base.tasks,
+      tasks: migratedTasks,
       chatThreads: Array.isArray(parsed.chatThreads) ? parsed.chatThreads : base.chatThreads,
       notifications: Array.isArray(parsed.notifications) ? parsed.notifications : base.notifications,
       attendanceRecords: Array.isArray(parsed.attendanceRecords) ? parsed.attendanceRecords : base.attendanceRecords,
@@ -53,6 +103,13 @@ export function loadStoredData(): StoreData {
       holidays: Array.isArray(parsed.holidays) ? parsed.holidays : base.holidays,
       exportLogs: Array.isArray(parsed.exportLogs) ? parsed.exportLogs : base.exportLogs,
     }
+
+    // Persist migrated schema if it was upgraded from older version
+    if (parsed.version !== STORE_VERSION) {
+      saveStoredData(result)
+    }
+
+    return result
   } catch (err) {
     console.warn("Failed to load AgencyOps data from localStorage:", err)
     return createInitialEmptyData()
@@ -61,7 +118,7 @@ export function loadStoredData(): StoreData {
 
 export function saveStoredData(data: StoreData): { success: boolean; error?: string } {
   if (typeof window === "undefined") {
-    return { success: false, error: "Window is undefined" }
+    return { success: true }
   }
 
   try {

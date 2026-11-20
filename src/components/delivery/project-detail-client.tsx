@@ -11,7 +11,7 @@ import {
   EyeOff,
   FileText,
   Flag,
-  ListTodo,
+  RotateCcw,
   MessageSquare,
   Paperclip,
   Send,
@@ -311,8 +311,9 @@ export function ProjectDetailClient({
                   const assignees = users.filter((u) =>
                     task.assigneeIds.includes(u.id)
                   )
-                  const doneSubtasks = task.subtasks.filter(
-                    (s) => s.completed
+                  const revs = task.revisions || []
+                  const openRevisions = revs.filter(
+                    (r) => r.status !== "approved" && r.status !== "rejected"
                   ).length
                   const overdue =
                     task.status !== "Complete" && task.dueDate < todayIso
@@ -363,9 +364,19 @@ export function ProjectDetailClient({
                           <span className="tabular-nums">
                             {task.loggedHours}/{task.estimatedHours}h
                           </span>
-                          <span className="inline-flex items-center gap-1 tabular-nums">
-                            <ListTodo className="size-3" />
-                            {doneSubtasks}/{task.subtasks.length}
+                          <span
+                            title={`${revs.length} revisions (${openRevisions} open)`}
+                            className={cn(
+                              "inline-flex items-center gap-1 tabular-nums",
+                              openRevisions > 0
+                                ? "font-medium text-amber-600 dark:text-amber-400"
+                                : ""
+                            )}
+                          >
+                            <RotateCcw className="size-3" />
+                            {openRevisions > 0
+                              ? `${openRevisions} open / ${revs.length}`
+                              : `${revs.length}`}
                           </span>
                           <span className="inline-flex items-center gap-1 tabular-nums">
                             <MessageSquare className="size-3" />

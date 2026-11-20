@@ -23,6 +23,7 @@ import {
   checkUserDeletion,
   type DeletionCheckResult,
 } from "./relations"
+import { migrateTask } from "./storage"
 import type {
   ActivityComment,
   AppNotification,
@@ -31,7 +32,6 @@ import type {
   Brand,
   ChatMessage,
   ChatThread,
-  ChecklistItem,
   City,
   ExportLog,
   Holiday,
@@ -44,13 +44,15 @@ import type {
   Project,
   ProjectFile,
   QAReviewEvent,
+  RevisionStatus,
   ShiftSchedule,
   SignUp,
   StaffUser,
-  Subtask,
   Task,
   TaskActivityEvent,
   TaskComment,
+  TaskFile,
+  TaskRevision,
   Transaction,
 } from "@/types"
 import { toast } from "sonner"
@@ -58,7 +60,7 @@ import { getDemoDataset } from "@/demo-data"
 
 type Listener = () => void
 
-class StoreManager {
+export class StoreManager {
   private readonly serverSnapshot: StoreData
   private data: StoreData
   private listeners: Set<Listener> = new Set()
@@ -660,14 +662,24 @@ class StoreManager {
 
   // --- Task Actions ---
   public createTask(
-    task: Omit<Task, "id" | "createdAt" | "subtasks" | "comments" | "evidenceFiles" | "qaHistory" | "redFlaggedUserIds"> & {
+    task: Omit<
+      Task,
+      | "id"
+      | "createdAt"
+      | "revisions"
+      | "comments"
+      | "evidenceFiles"
+      | "qaHistory"
+      | "redFlaggedUserIds"
+    > & {
       id?: string
       createdAt?: string
-      subtasks?: Subtask[]
+      revisions?: TaskRevision[]
       comments?: TaskComment[]
       evidenceFiles?: Task["evidenceFiles"]
       qaHistory?: QAReviewEvent[]
       redFlaggedUserIds?: string[]
+      legacy?: { subtasks?: unknown[]; checklist?: unknown[] }
     }
   ): Task {
     const nowIso = new Date().toISOString()
@@ -685,8 +697,7 @@ class StoreManager {
       createdAt: task.createdAt || nowIso.slice(0, 10),
       startDate: task.startDate || nowIso.slice(0, 10),
       tags: task.tags || [],
-      checklist: task.checklist || [],
-      subtasks: task.subtasks || [],
+      revisions: task.revisions || [],
       comments: task.comments || [],
       evidenceFiles: task.evidenceFiles || [],
       qaHistory: task.qaHistory || [],
@@ -771,16 +782,9 @@ class StoreManager {
       qaHistory: [],
       redFlaggedUserIds: [],
       comments: [],
-      subtasks: source.subtasks.map((st) => ({
-        ...st,
-        id: `sub-${crypto.randomUUID().slice(0, 8)}`,
-        completed: false,
-        status: "Open",
-      })),
-      checklist: (source.checklist ?? []).map((item) => ({
-        ...item,
-        id: `chk-${crypto.randomUUID().slice(0, 8)}`,
-        completed: false,
+      revisions: (source.revisions || []).map((rev) => ({
+        ...rev,
+        id: `rev-${crypto.randomUUID().slice(0, 8)}`,
       })),
       evidenceFiles: source.evidenceFiles.map((f) => ({
         ...f,
@@ -839,202 +843,297 @@ class StoreManager {
     }))
   }
 
-  public addSubtask(
+  // --- Revisions Actions ---
+  public addRevision(
     taskId: string,
-    title: string,
-    assigneeId: string,
-    options?: { dueDate?: string; status?: Task["status"]; actorName?: string }
-  ): void {
-    const newSubtask: Subtask = {
-      id: `sub-${crypto.randomUUID().slice(0, 8)}`,
-      title,
-      completed: options?.status === "Complete",
-      assigneeId,
-      dueDate: options?.dueDate,
-      status: options?.status ?? "Open",
-    }
-    const entry: TaskActivityEvent = {
-      id: `act-${crypto.randomUUID().slice(0, 8)}`,
-      type: "system",
-      actorId: "usr-actor",
-      actorName: options?.actorName || "Current User",
-      action: "added subtask",
-      detail: title,
-      timestamp: new Date().toISOString(),
-    }
-    this.setAndPersist((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) =>
-        t.id === taskId
-          ? {
-              ...t,
-              subtasks: [...t.subtasks, newSubtask],
-              activity: [...(t.activity ?? []), entry],
-            }
-          : t
-      ),
-    }))
-  }
+    revisionData: {
+      title: string
+      details?: string
+      assigneeId?: string
+      dueDate?: string
+      status?: RevisionStatus
+      files?: TaskFile[]
+    },
+    actorName = "Current User",
+    actorId = "usr-actor"
+  ): TaskRevision | null {
+    let createdRevision: TaskRevision | null = null
+    const nowIso = new Date().toISOString()
 
-  public updateSubtask(
-    taskId: string,
-    subtaskId: string,
-    updates: Partial<Subtask>,
-    actorName = "Current User"
-  ): void {
     this.setAndPersist((s) => ({
       ...s,
       tasks: s.tasks.map((t) => {
         if (t.id !== taskId) return t
-        const existing = t.subtasks.find((st) => st.id === subtaskId)
-        const nextSubtasks = t.subtasks.map((st) => {
-          if (st.id !== subtaskId) return st
-          const merged = { ...st, ...updates }
-          if (updates.status !== undefined) {
-            merged.completed = updates.status === "Complete"
-          } else if (updates.completed !== undefined) {
-            merged.status = updates.completed ? "Complete" : "Open"
+
+        const existingMax = (t.revisions || []).reduce(
+          (max, r) => Math.max(max, r.number || 0),
+          0
+        )
+        const nextNum = Math.max(t.nextRevisionNumber ?? 1, existingMax + 1)
+
+        const newRevision: TaskRevision = {
+          id: `rev-${crypto.randomUUID().slice(0, 8)}`,
+          number: nextNum,
+          title: revisionData.title.trim(),
+          details: revisionData.details?.trim() || "",
+          assigneeId: revisionData.assigneeId,
+          dueDate: revisionData.dueDate,
+          status: revisionData.status || "requested",
+          files: revisionData.files || [],
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          createdById: actorId,
+        }
+
+        createdRevision = newRevision
+
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId,
+          actorName,
+          action: "added revision",
+          detail: `R${newRevision.number}: ${newRevision.title}`,
+          toValue: `R${newRevision.number}`,
+          timestamp: nowIso,
+        }
+
+        return {
+          ...t,
+          nextRevisionNumber: nextNum + 1,
+          revisions: [...(t.revisions || []), newRevision],
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+
+    return createdRevision
+  }
+
+  public updateRevision(
+    taskId: string,
+    revisionId: string,
+    updates: Partial<Omit<TaskRevision, "id" | "number" | "createdAt">>,
+    actorName = "Current User",
+    actorId = "usr-actor"
+  ): void {
+    const nowIso = new Date().toISOString()
+
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+
+        const target = (t.revisions || []).find((r) => r.id === revisionId)
+        if (!target) return t
+
+        const updatedRevisions = (t.revisions || []).map((r) => {
+          if (r.id !== revisionId) return r
+          return {
+            ...r,
+            ...updates,
+            updatedAt: nowIso,
           }
-          return merged
         })
+
+        const newEntries: TaskActivityEvent[] = []
+
+        if (updates.status !== undefined && updates.status !== target.status) {
+          newEntries.push({
+            id: `act-${crypto.randomUUID().slice(0, 8)}`,
+            type: "system",
+            actorId,
+            actorName,
+            action: "changed revision status",
+            detail: `R${target.number}: ${target.status} → ${updates.status}`,
+            fromValue: target.status,
+            toValue: updates.status,
+            timestamp: nowIso,
+          })
+        }
+
+        if (
+          updates.assigneeId !== undefined &&
+          updates.assigneeId !== target.assigneeId
+        ) {
+          newEntries.push({
+            id: `act-${crypto.randomUUID().slice(0, 8)}`,
+            type: "system",
+            actorId,
+            actorName,
+            action: "changed revision assignee",
+            detail: `R${target.number} assignee updated`,
+            timestamp: nowIso,
+          })
+        }
+
+        if (
+          updates.dueDate !== undefined &&
+          updates.dueDate !== target.dueDate
+        ) {
+          newEntries.push({
+            id: `act-${crypto.randomUUID().slice(0, 8)}`,
+            type: "system",
+            actorId,
+            actorName,
+            action: "changed revision due date",
+            detail: `R${target.number} due date set to ${updates.dueDate || "none"}`,
+            timestamp: nowIso,
+          })
+        }
+
+        if (
+          updates.title !== undefined &&
+          updates.title !== target.title
+        ) {
+          newEntries.push({
+            id: `act-${crypto.randomUUID().slice(0, 8)}`,
+            type: "system",
+            actorId,
+            actorName,
+            action: "updated revision",
+            detail: `R${target.number}: ${updates.title}`,
+            timestamp: nowIso,
+          })
+        }
+
+        if (
+          updates.details !== undefined &&
+          updates.details !== target.details &&
+          updates.title === undefined
+        ) {
+          newEntries.push({
+            id: `act-${crypto.randomUUID().slice(0, 8)}`,
+            type: "system",
+            actorId,
+            actorName,
+            action: "updated revision details",
+            detail: `R${target.number} details updated`,
+            timestamp: nowIso,
+          })
+        }
+
+        return {
+          ...t,
+          revisions: updatedRevisions,
+          activity: [...(t.activity ?? []), ...newEntries],
+        }
+      }),
+    }))
+  }
+
+  public setRevisionStatus(
+    taskId: string,
+    revisionId: string,
+    status: RevisionStatus,
+    actorName = "Current User",
+    actorId = "usr-actor"
+  ): void {
+    const nowIso = new Date().toISOString()
+
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+
+        const target = (t.revisions || []).find((r) => r.id === revisionId)
+        if (!target) return t
+
         const entry: TaskActivityEvent = {
           id: `act-${crypto.randomUUID().slice(0, 8)}`,
           type: "system",
-          actorId: "usr-actor",
+          actorId,
           actorName,
-          action: "updated subtask",
-          detail: updates.title ?? existing?.title ?? "Subtask",
-          timestamp: new Date().toISOString(),
+          action: "changed revision status",
+          detail: `R${target.number}: ${target.status} → ${status}`,
+          fromValue: target.status,
+          toValue: status,
+          timestamp: nowIso,
         }
+
         return {
           ...t,
-          subtasks: nextSubtasks,
+          revisions: (t.revisions || []).map((r) =>
+            r.id === revisionId ? { ...r, status, updatedAt: nowIso } : r
+          ),
           activity: [...(t.activity ?? []), entry],
         }
       }),
     }))
   }
 
-  public toggleSubtask(
+  public removeRevision(
     taskId: string,
-    subtaskId: string,
-    completed: boolean,
+    revisionId: string,
     actorName = "Current User"
   ): void {
+    const nowIso = new Date().toISOString()
+
     this.setAndPersist((s) => ({
       ...s,
       tasks: s.tasks.map((t) => {
         if (t.id !== taskId) return t
-        const target = t.subtasks.find((st) => st.id === subtaskId)
+
+        const target = (t.revisions || []).find((r) => r.id === revisionId)
         const entry: TaskActivityEvent = {
           id: `act-${crypto.randomUUID().slice(0, 8)}`,
           type: "system",
           actorId: "usr-actor",
           actorName,
-          action: completed ? "completed subtask" : "reopened subtask",
-          detail: target?.title,
-          timestamp: new Date().toISOString(),
+          action: "deleted revision",
+          detail: target ? `R${target.number}: ${target.title}` : undefined,
+          timestamp: nowIso,
         }
+
         return {
           ...t,
-          subtasks: t.subtasks.map((st) =>
-            st.id === subtaskId
-              ? { ...st, completed, status: completed ? "Complete" : "Open" }
-              : st
+          revisions: (t.revisions || []).filter((r) => r.id !== revisionId),
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+  }
+
+  public addRevisionFiles(
+    taskId: string,
+    revisionId: string,
+    files: TaskFile[],
+    actorName = "Current User"
+  ): void {
+    const nowIso = new Date().toISOString()
+
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (t.id !== taskId) return t
+
+        const target = (t.revisions || []).find((r) => r.id === revisionId)
+        if (!target) return t
+
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: "usr-actor",
+          actorName,
+          action: "added files to revision",
+          detail: `Added ${files.length} file(s) to R${target.number}`,
+          timestamp: nowIso,
+        }
+
+        return {
+          ...t,
+          revisions: (t.revisions || []).map((r) =>
+            r.id === revisionId
+              ? {
+                  ...r,
+                  files: [...r.files, ...files],
+                  updatedAt: nowIso,
+                }
+              : r
           ),
           activity: [...(t.activity ?? []), entry],
         }
       }),
-    }))
-  }
-
-  public deleteSubtask(taskId: string, subtaskId: string, actorName = "Current User"): void {
-    this.setAndPersist((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) => {
-        if (t.id !== taskId) return t
-        const target = t.subtasks.find((st) => st.id === subtaskId)
-        const entry: TaskActivityEvent = {
-          id: `act-${crypto.randomUUID().slice(0, 8)}`,
-          type: "system",
-          actorId: "usr-actor",
-          actorName,
-          action: "removed subtask",
-          detail: target?.title,
-          timestamp: new Date().toISOString(),
-        }
-        return {
-          ...t,
-          subtasks: t.subtasks.filter((st) => st.id !== subtaskId),
-          activity: [...(t.activity ?? []), entry],
-        }
-      }),
-    }))
-  }
-
-  public addChecklistItem(taskId: string, title: string, actorName = "Current User"): void {
-    const item: ChecklistItem = {
-      id: `chk-${crypto.randomUUID().slice(0, 8)}`,
-      title,
-      completed: false,
-    }
-    const entry: TaskActivityEvent = {
-      id: `act-${crypto.randomUUID().slice(0, 8)}`,
-      type: "system",
-      actorId: "usr-actor",
-      actorName,
-      action: "added checklist item",
-      detail: title,
-      timestamp: new Date().toISOString(),
-    }
-    this.setAndPersist((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) =>
-        t.id === taskId
-          ? {
-              ...t,
-              checklist: [...(t.checklist ?? []), item],
-              activity: [...(t.activity ?? []), entry],
-            }
-          : t
-      ),
-    }))
-  }
-
-  public toggleChecklistItem(taskId: string, itemId: string, completed: boolean, actorName = "Current User"): void {
-    this.setAndPersist((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) => {
-        if (t.id !== taskId) return t
-        const target = (t.checklist ?? []).find((c) => c.id === itemId)
-        const entry: TaskActivityEvent = {
-          id: `act-${crypto.randomUUID().slice(0, 8)}`,
-          type: "system",
-          actorId: "usr-actor",
-          actorName,
-          action: completed ? "checked off item" : "unchecked item",
-          detail: target?.title,
-          timestamp: new Date().toISOString(),
-        }
-        return {
-          ...t,
-          checklist: (t.checklist ?? []).map((c) =>
-            c.id === itemId ? { ...c, completed } : c
-          ),
-          activity: [...(t.activity ?? []), entry],
-        }
-      }),
-    }))
-  }
-
-  public deleteChecklistItem(taskId: string, itemId: string): void {
-    this.setAndPersist((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) =>
-        t.id === taskId
-          ? { ...t, checklist: (t.checklist ?? []).filter((c) => c.id !== itemId) }
-          : t
-      ),
     }))
   }
 
@@ -1747,15 +1846,18 @@ class StoreManager {
         return { success: false, error: "Invalid backup format: root data object missing." }
       }
 
-      if (data.version && data.version !== STORE_VERSION) {
+      if (data.version && data.version > STORE_VERSION) {
         return {
           success: false,
-          error: `Incompatible backup version: expected ${STORE_VERSION}, got ${data.version}.`,
+          error: `Incompatible backup version: expected <= ${STORE_VERSION}, got ${data.version}.`,
         }
       }
 
       // Merge safely into complete store structure
       const base = createInitialEmptyData()
+      const rawTasks = Array.isArray(data.tasks) ? data.tasks : base.tasks
+      const migratedTasks = rawTasks.map(migrateTask)
+
       const restored: StoreData = {
         version: STORE_VERSION,
         brands: Array.isArray(data.brands) ? data.brands : base.brands,
@@ -1770,7 +1872,7 @@ class StoreManager {
           ? data.marketingSpendings
           : base.marketingSpendings,
         projects: Array.isArray(data.projects) ? data.projects : base.projects,
-        tasks: Array.isArray(data.tasks) ? data.tasks : base.tasks,
+        tasks: migratedTasks,
         chatThreads: Array.isArray(data.chatThreads) ? data.chatThreads : base.chatThreads,
         notifications: Array.isArray(data.notifications) ? data.notifications : base.notifications,
         attendanceRecords: Array.isArray(data.attendanceRecords)

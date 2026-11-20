@@ -99,6 +99,11 @@ export interface TaskRolePermissions {
   canQaReview: boolean
   canResolveQaComment: boolean
   canCreateTask: boolean
+  canAddRevision: boolean
+  canEditRevision: boolean
+  canDeleteRevision: boolean
+  canApproveRejectRevision: boolean
+  canUpdateAssignedRevisionProgress: boolean
 }
 
 export const ALL_TASK_PERMISSIONS: TaskRolePermissions = {
@@ -115,6 +120,11 @@ export const ALL_TASK_PERMISSIONS: TaskRolePermissions = {
   canQaReview: true,
   canResolveQaComment: true,
   canCreateTask: true,
+  canAddRevision: true,
+  canEditRevision: true,
+  canDeleteRevision: true,
+  canApproveRejectRevision: true,
+  canUpdateAssignedRevisionProgress: true,
 }
 
 export function getTaskPermissions(_role?: Role): TaskRolePermissions {

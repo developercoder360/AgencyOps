@@ -98,8 +98,8 @@ export default function ExportLogsPage() {
         ),
       },
       {
-        accessorKey: "requestedBy",
-        header: "Requested By",
+        accessorKey: "exportedBy",
+        header: "Exported By",
       },
       {
         accessorKey: "status",
@@ -242,8 +242,8 @@ export default function ExportLogsPage() {
               <div className="space-y-4 p-4 text-sm">
                 <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-3 text-xs">
                   <div>
-                    <span className="text-muted-foreground">Requested By: </span>
-                    <span className="font-medium">{selected.requestedBy}</span>
+                    <span className="text-muted-foreground">Exported By: </span>
+                    <span className="font-medium">{selected.exportedBy || "System"}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Requested At: </span>

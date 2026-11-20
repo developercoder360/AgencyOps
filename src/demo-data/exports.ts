@@ -53,7 +53,7 @@ function generateExportLogs(): ExportLog[] {
       rowCount,
       columns: ["id", "name", "brand", "status", "amount", "createdAt"],
       status,
-      requestedBy: pickFrom(rng, REQUESTERS),
+      exportedBy: pickFrom(rng, REQUESTERS),
       requestedAt,
       completedAt:
         status === "completed" ? `2026-11-${day} 10:15` : undefined,
