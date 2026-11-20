@@ -236,4 +236,15 @@ export const MOCK_CITIES: City[] = [
     leadCount: 11,
     status: "Active",
   },
+  {
+    id: "cit-9",
+    name: "Dubai",
+    state: "Dubai",
+    country: "United Arab Emirates",
+    timezone: "Asia/Dubai",
+    currency: "AED",
+    activeClients: 18,
+    leadCount: 8,
+    status: "Active",
+  },
 ]

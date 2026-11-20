@@ -85,6 +85,14 @@ const BANK_ACCOUNTS = [
     accountNo: "104-882-910",
     swift: "ROYCCAT2XXX",
   },
+  {
+    currency: "AED",
+    bank: "Emirates NBD Business",
+    accountName: "AgencyOps MENA FZ-LLC",
+    routing: "Branch: 044 Dubai Marina",
+    accountNo: "1012 8840 9921",
+    swift: "EBILAEADXXX",
+  },
 ]
 
 const passwordSchema = z
@@ -307,7 +315,7 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
             </DialogTitle>
             <DialogDescription>
               Share verified wire and ACH coordinates for multi-currency client
-              transfers (USD, GBP, CAD).
+              transfers (USD, GBP, CAD & AED).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

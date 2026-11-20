@@ -55,7 +55,7 @@ const settingsSchema = z.object({
   legalEntity: z.string().min(2),
   supportEmail: z.string().email(),
   phone: z.string().min(6),
-  baseCurrency: z.enum(["USD", "GBP", "CAD"]),
+  baseCurrency: z.enum(["USD", "GBP", "CAD", "AED"]),
   payrollCutoffDay: z.string(),
   address: z.string().min(5),
 })
@@ -281,6 +281,7 @@ export default function GeneralSettingsPage() {
                           <SelectItem value="USD">USD ($)</SelectItem>
                           <SelectItem value="GBP">GBP (£)</SelectItem>
                           <SelectItem value="CAD">CAD (CA$)</SelectItem>
+                          <SelectItem value="AED">AED (AED)</SelectItem>
                         </SelectContent>
                       </Select>
                     )}

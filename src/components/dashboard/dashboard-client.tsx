@@ -15,9 +15,12 @@ import {
   CreditCard,
   DollarSign,
   FolderKanban,
+  History,
   PartyPopper,
   Sparkles,
   Target,
+  TrendingDown,
+  TrendingUp,
   UserCheck,
   UserPlus,
   Users,
@@ -68,6 +71,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { formatCurrency } from "@/lib/currency"
+import type { CurrencyCode } from "@/types"
 import { useStore } from "@/lib/store"
 import {
   TaskDetailPanel,
@@ -325,15 +329,103 @@ export function DashboardClient() {
     [filteredTransactions]
   )
 
-  const tasksDueSoon = React.useMemo(
+  // Previous period date range calculation
+  const { prevFromIso, prevToIso, prevPeriodLabel } = React.useMemo(() => {
+    const start = parseIsoDate(fromIso)
+    const end = parseIsoDate(toIso)
+    const durationMs = end.getTime() - start.getTime()
+    // Previous period ends 1 day before current start
+    const prevEnd = new Date(start.getTime() - 86400000)
+    const prevStart = new Date(prevEnd.getTime() - durationMs)
+    return {
+      prevFromIso: toIsoDate(prevStart),
+      prevToIso: toIsoDate(prevEnd),
+      prevPeriodLabel: `${format(prevStart, "MMM d, yyyy")} – ${format(
+        prevEnd,
+        "MMM d, yyyy"
+      )}`,
+    }
+  }, [fromIso, toIso])
+
+  const prevFilteredTransactions = React.useMemo(
+    () =>
+      transactions.filter((t) => {
+        const matchBrand = brandFilter === "all" || t.brandId === brandFilter
+        const matchDate = t.createdAt >= prevFromIso && t.createdAt <= prevToIso
+        return matchBrand && matchDate
+      }),
+    [transactions, brandFilter, prevFromIso, prevToIso]
+  )
+
+  const prevTotalRevenueUsd = React.useMemo(
+    () =>
+      prevFilteredTransactions
+        .filter((t) => t.status === "Success" || t.status === "Processing")
+        .reduce((sum, t) => sum + t.amountUsd, 0),
+    [prevFilteredTransactions]
+  )
+
+  const prevPeriodTargetUsd = periodTargetUsd
+  const prevTargetPercent =
+    prevPeriodTargetUsd > 0
+      ? Math.min(100, Math.round((prevTotalRevenueUsd / prevPeriodTargetUsd) * 100))
+      : 0
+
+  const revenueDeltaPercent = React.useMemo(() => {
+    if (prevTotalRevenueUsd <= 0) {
+      return totalRevenueUsd > 0 ? 100 : 0
+    }
+    return Math.round(((totalRevenueUsd - prevTotalRevenueUsd) / prevTotalRevenueUsd) * 1000) / 10
+  }, [totalRevenueUsd, prevTotalRevenueUsd])
+
+  // Current period currency totals breakdown (USD, GBP, CAD & AED)
+  const currentCurrencyTotals = React.useMemo(() => {
+    const settled = filteredTransactions.filter(
+      (t) => t.status === "Success" || t.status === "Processing"
+    )
+    const totals: Record<CurrencyCode, { amount: number; amountUsd: number; count: number }> = {
+      USD: { amount: 0, amountUsd: 0, count: 0 },
+      GBP: { amount: 0, amountUsd: 0, count: 0 },
+      CAD: { amount: 0, amountUsd: 0, count: 0 },
+      AED: { amount: 0, amountUsd: 0, count: 0 },
+    }
+    for (const tx of settled) {
+      if (totals[tx.currency]) {
+        totals[tx.currency].amount += tx.amount
+        totals[tx.currency].amountUsd += tx.amountUsd
+        totals[tx.currency].count += 1
+      }
+    }
+    return totals
+  }, [filteredTransactions])
+
+  // Previous period currency totals breakdown (USD, GBP, CAD & AED)
+  const prevCurrencyTotals = React.useMemo(() => {
+    const settled = prevFilteredTransactions.filter(
+      (t) => t.status === "Success" || t.status === "Processing"
+    )
+    const totals: Record<CurrencyCode, { amount: number; amountUsd: number; count: number }> = {
+      USD: { amount: 0, amountUsd: 0, count: 0 },
+      GBP: { amount: 0, amountUsd: 0, count: 0 },
+      CAD: { amount: 0, amountUsd: 0, count: 0 },
+      AED: { amount: 0, amountUsd: 0, count: 0 },
+    }
+    for (const tx of settled) {
+      if (totals[tx.currency]) {
+        totals[tx.currency].amount += tx.amount
+        totals[tx.currency].amountUsd += tx.amountUsd
+        totals[tx.currency].count += 1
+      }
+    }
+    return totals
+  }, [prevFilteredTransactions])
+
+  // Recent pending tasks (status Open)
+  const recentPendingTasks = React.useMemo(
     () =>
       filteredTasks
-        .filter(
-          (t) =>
-            t.status !== "Complete" &&
-            t.dueDate >= REFERENCE_DATE_ISO
-        )
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+        .filter((t) => t.status === "Open")
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 5),
     [filteredTasks]
   )
@@ -652,9 +744,9 @@ export function DashboardClient() {
         <KpiCard
           title="Revenue (USD Eq.)"
           value={formatCurrency(totalRevenueUsd)}
-          delta="+14.2%"
-          deltaType="increase"
-          subtitle={`Converted across USD, GBP & CAD (${filteredTransactions.length} txns)`}
+          delta={`${revenueDeltaPercent >= 0 ? "+" : ""}${revenueDeltaPercent}%`}
+          deltaType={revenueDeltaPercent >= 0 ? "increase" : "decrease"}
+          subtitle={`Converted across USD, GBP, CAD & AED (${filteredTransactions.length} txns)`}
           icon={<DollarSign className="size-4" />}
         />
         <KpiCard
@@ -713,7 +805,7 @@ export function DashboardClient() {
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-5">
           <ProgressBar
             value={targetPercent}
             label={`${formatCurrency(totalRevenueUsd, "USD", true)} / ${formatCurrency(
@@ -723,46 +815,222 @@ export function DashboardClient() {
             )}`}
             color={targetPercent >= 75 ? "emerald" : "blue"}
           />
-          {brands.length > 0 ? (
-            <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2 lg:grid-cols-5">
-              {brands.map((brand) => {
-                const actual = transactions
-                  .filter(
-                    (t) =>
-                      t.brandId === brand.id &&
-                      t.createdAt >= fromIso &&
-                      t.createdAt <= toIso &&
-                      t.status === "Success"
-                  )
-                  .reduce((acc, t) => acc + t.amountUsd, 0)
-                const brandTarget = (brand.monthlyRevenueUsd || 10000) * monthsInRange
-                const pct = Math.min(
-                  100,
-                  Math.round((actual / Math.max(1, brandTarget)) * 100)
-                )
-                return (
-                  <div
-                    key={brand.id}
-                    className="rounded-lg border border-border bg-muted/20 p-2.5"
-                  >
-                    <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
-                      <span className="truncate font-medium text-foreground">
-                        {brand.name}
-                      </span>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">
-                        {pct}%
-                      </span>
-                    </div>
-                    <ProgressBar value={pct} color="blue" />
+
+          {/* Revenue & Multi-Currency Breakdown (Current Period) */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <span>Current Period Revenue & Currencies</span>
+              <span className="font-mono text-[11px] normal-case text-muted-foreground">
+                {filteredTransactions.filter((t) => t.status === "Success" || t.status === "Processing").length} settled txns
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {/* Total Revenue (USD Eq.) */}
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                <div className="flex items-center justify-between gap-1 text-xs text-muted-foreground mb-1">
+                  <span className="font-medium text-foreground">Total Revenue</span>
+                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-primary/30">
+                    USD Eq.
+                  </Badge>
+                </div>
+                <div className="text-lg font-bold tracking-tight text-foreground">
+                  {formatCurrency(totalRevenueUsd, "USD")}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {targetPercent}% of period target
+                </p>
+              </div>
+
+              {/* USD */}
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-1 text-xs text-muted-foreground mb-1">
+                  <span className="font-medium text-foreground">USD Volume</span>
+                  <span className="font-mono text-[11px] font-semibold text-primary">USD ($)</span>
+                </div>
+                <div className="text-lg font-bold tracking-tight text-foreground">
+                  {formatCurrency(currentCurrencyTotals.USD.amount, "USD")}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {currentCurrencyTotals.USD.count} txns ({totalRevenueUsd > 0 ? Math.round((currentCurrencyTotals.USD.amountUsd / totalRevenueUsd) * 100) : 0}% share)
+                </p>
+              </div>
+
+              {/* GBP */}
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-1 text-xs text-muted-foreground mb-1">
+                  <span className="font-medium text-foreground">GBP Volume</span>
+                  <span className="font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">GBP (£)</span>
+                </div>
+                <div className="text-lg font-bold tracking-tight text-foreground">
+                  {formatCurrency(currentCurrencyTotals.GBP.amount, "GBP")}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  ≈ {formatCurrency(currentCurrencyTotals.GBP.amountUsd, "USD")} ({currentCurrencyTotals.GBP.count} txns)
+                </p>
+              </div>
+
+              {/* CAD */}
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-1 text-xs text-muted-foreground mb-1">
+                  <span className="font-medium text-foreground">CAD Volume</span>
+                  <span className="font-mono text-[11px] font-semibold text-violet-600 dark:text-violet-400">CAD (CA$)</span>
+                </div>
+                <div className="text-lg font-bold tracking-tight text-foreground">
+                  {formatCurrency(currentCurrencyTotals.CAD.amount, "CAD")}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  ≈ {formatCurrency(currentCurrencyTotals.CAD.amountUsd, "USD")} ({currentCurrencyTotals.CAD.count} txns)
+                </p>
+              </div>
+
+              {/* AED */}
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-1 text-xs text-muted-foreground mb-1">
+                  <span className="font-medium text-foreground">AED Volume</span>
+                  <span className="font-mono text-[11px] font-semibold text-amber-600 dark:text-amber-400">AED</span>
+                </div>
+                <div className="text-lg font-bold tracking-tight text-foreground">
+                  {formatCurrency(currentCurrencyTotals.AED.amount, "AED")}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  ≈ {formatCurrency(currentCurrencyTotals.AED.amountUsd, "USD")} ({currentCurrencyTotals.AED.count} txns)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Previous Period Details Card */}
+          <Card className="border-border/80 bg-muted/30 shadow-none">
+            <CardHeader className="p-4 pb-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <History className="size-4 text-primary" />
+                    <CardTitle className="text-sm font-semibold">
+                      Previous Period Performance Details
+                    </CardTitle>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {prevPeriodLabel}
+                    </Badge>
                   </div>
-                )
-              })}
+                  <CardDescription className="text-xs">
+                    Preceding {monthsInRange}-month comparative baseline ({prevFilteredTransactions.filter((t) => t.status === "Success" || t.status === "Processing").length} settled txns)
+                  </CardDescription>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={`w-fit text-xs font-semibold tabular-nums ${
+                    revenueDeltaPercent >= 0
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                  }`}
+                >
+                  {revenueDeltaPercent >= 0 ? (
+                    <TrendingUp className="mr-1 size-3 inline" />
+                  ) : (
+                    <TrendingDown className="mr-1 size-3 inline" />
+                  )}
+                  {revenueDeltaPercent >= 0 ? `+${revenueDeltaPercent}%` : `${revenueDeltaPercent}%`} revenue vs prior period
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 pt-2 space-y-3">
+              {/* Previous period progress bar */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    Prior Attainment: <strong>{prevTargetPercent}%</strong> of {formatCurrency(prevPeriodTargetUsd)} target
+                  </span>
+                  <span className="font-mono text-[11px]">
+                    {formatCurrency(prevTotalRevenueUsd, "USD")} actual
+                  </span>
+                </div>
+                <ProgressBar
+                  value={prevTargetPercent}
+                  color={prevTargetPercent >= 75 ? "emerald" : "blue"}
+                />
+              </div>
+
+              {/* Previous period currencies breakdown */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 pt-1">
+                <div className="rounded-md border border-border/60 bg-background/60 p-2.5 text-xs">
+                  <div className="text-[10px] text-muted-foreground uppercase font-medium">Prior USD</div>
+                  <div className="font-semibold text-foreground mt-0.5">
+                    {formatCurrency(prevCurrencyTotals.USD.amount, "USD")}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">{prevCurrencyTotals.USD.count} txns</div>
+                </div>
+                <div className="rounded-md border border-border/60 bg-background/60 p-2.5 text-xs">
+                  <div className="text-[10px] text-muted-foreground uppercase font-medium">Prior GBP</div>
+                  <div className="font-semibold text-foreground mt-0.5">
+                    {formatCurrency(prevCurrencyTotals.GBP.amount, "GBP")}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">≈ {formatCurrency(prevCurrencyTotals.GBP.amountUsd, "USD")}</div>
+                </div>
+                <div className="rounded-md border border-border/60 bg-background/60 p-2.5 text-xs">
+                  <div className="text-[10px] text-muted-foreground uppercase font-medium">Prior CAD</div>
+                  <div className="font-semibold text-foreground mt-0.5">
+                    {formatCurrency(prevCurrencyTotals.CAD.amount, "CAD")}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">≈ {formatCurrency(prevCurrencyTotals.CAD.amountUsd, "USD")}</div>
+                </div>
+                <div className="rounded-md border border-border/60 bg-background/60 p-2.5 text-xs">
+                  <div className="text-[10px] text-muted-foreground uppercase font-medium">Prior AED</div>
+                  <div className="font-semibold text-foreground mt-0.5">
+                    {formatCurrency(prevCurrencyTotals.AED.amount, "AED")}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">≈ {formatCurrency(prevCurrencyTotals.AED.amountUsd, "USD")}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Brand Performance Targets */}
+          <div className="space-y-2 pt-1">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Brand Attainment Breakdown (Current Period)
             </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-              Add brands to track brand-by-brand revenue performance targets.
-            </div>
-          )}
+            {brands.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {brands.map((brand) => {
+                  const actual = transactions
+                    .filter(
+                      (t) =>
+                        t.brandId === brand.id &&
+                        t.createdAt >= fromIso &&
+                        t.createdAt <= toIso &&
+                        t.status === "Success"
+                    )
+                    .reduce((acc, t) => acc + t.amountUsd, 0)
+                  const brandTarget = (brand.monthlyRevenueUsd || 10000) * monthsInRange
+                  const pct = Math.min(
+                    100,
+                    Math.round((actual / Math.max(1, brandTarget)) * 100)
+                  )
+                  return (
+                    <div
+                      key={brand.id}
+                      className="rounded-lg border border-border bg-muted/20 p-2.5"
+                    >
+                      <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate font-medium text-foreground">
+                          {brand.name}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">
+                          {pct}%
+                        </span>
+                      </div>
+                      <ProgressBar value={pct} color="blue" />
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+                Add brands to track brand-by-brand revenue performance targets.
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -943,13 +1211,18 @@ export function DashboardClient() {
           </CardContent>
         </Card>
 
-        {/* Tasks due soon */}
+        {/* Recent Pending Tasks */}
         <Card className="lg:col-span-5">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Tasks Due Soon</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>Recent Pending Tasks</CardTitle>
+                <Badge variant="secondary" className="text-[11px] font-normal">
+                  Open ({filteredTasks.filter((t) => t.status === "Open").length})
+                </Badge>
+              </div>
               <CardDescription>
-                Upcoming deliverables requiring attention
+                Open tasks awaiting action across projects
               </CardDescription>
             </div>
             <Button asChild variant="ghost" size="sm" className="gap-1">
@@ -960,12 +1233,12 @@ export function DashboardClient() {
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
-            {tasksDueSoon.length === 0 ? (
+            {recentPendingTasks.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No upcoming tasks due for this brand selection.
+                No pending open tasks for this brand selection.
               </p>
             ) : (
-              tasksDueSoon.map((task) => {
+              recentPendingTasks.map((task) => {
                 const assignees = users.filter((u) =>
                   task.assigneeIds.includes(u.id)
                 )
@@ -1009,7 +1282,7 @@ export function DashboardClient() {
         taskId={activeTaskId}
         onClose={closeTask}
         onSelectTask={openTask}
-        orderedTaskIds={tasksDueSoon.map((t) => t.id)}
+        orderedTaskIds={recentPendingTasks.map((t) => t.id)}
       />
     </div>
   )

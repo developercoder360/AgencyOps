@@ -33,7 +33,7 @@ const STATUSES: PaymentStatus[] = [
   "Chargeback",
 ]
 
-const CURRENCIES: CurrencyCode[] = ["USD", "USD", "USD", "GBP", "CAD"]
+const CURRENCIES: CurrencyCode[] = ["USD", "USD", "GBP", "CAD", "AED"]
 
 const CLIENTS = [
   { name: "Olivia Sterling", company: "Harborline Logistics" },
@@ -73,13 +73,13 @@ function generateBilling() {
   const invoices: Invoice[] = []
   const transactions: Transaction[] = []
 
-  for (let i = 0; i < 48; i++) {
+  for (let i = 0; i < 72; i++) {
     const client = CLIENTS[i % CLIENTS.length]
     const brand = MOCK_BRANDS[i % MOCK_BRANDS.length]
     const gateway = GATEWAYS[i % GATEWAYS.length]
     const currency = CURRENCIES[i % CURRENCIES.length]
     const status = STATUSES[i % STATUSES.length]
-    const daysBack = intBetween(rng, 0, 170)
+    const daysBack = i < 44 ? intBetween(rng, 0, 175) : intBetween(rng, 180, 355)
     const issuedAt = makeDateOffset(daysBack)
     const dueDate = makeDateOffset(Math.max(-14, daysBack - 14))
 
@@ -98,7 +98,7 @@ function generateBilling() {
       (sum, item) => sum + item.quantity * item.unitPrice,
       0
     )
-    const taxRate = currency === "GBP" ? 20 : currency === "CAD" ? 13 : 0
+    const taxRate = currency === "GBP" ? 20 : currency === "CAD" ? 13 : currency === "AED" ? 5 : 0
     const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100
     const discountAmount = i % 4 === 0 ? 250 : 0
     const total = Math.max(200, subtotal + taxAmount - discountAmount)

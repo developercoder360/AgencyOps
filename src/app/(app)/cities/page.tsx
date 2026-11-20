@@ -36,7 +36,7 @@ const citySchema = z.object({
   state: z.string().min(2, "State / Region required"),
   country: z.string().min(2, "Country required"),
   timezone: z.string().min(3, "Timezone required"),
-  currency: z.enum(["USD", "GBP", "CAD"]),
+  currency: z.enum(["USD", "GBP", "CAD", "AED"]),
 })
 
 export default function CitiesPage() {
@@ -295,6 +295,7 @@ export default function CitiesPage() {
                         <SelectItem value="USD">USD</SelectItem>
                         <SelectItem value="GBP">GBP</SelectItem>
                         <SelectItem value="CAD">CAD</SelectItem>
+                        <SelectItem value="AED">AED</SelectItem>
                       </SelectContent>
                     </Select>
                   )}

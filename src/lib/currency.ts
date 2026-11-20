@@ -5,12 +5,14 @@ export const USD_RATES: Record<CurrencyCode, number> = {
   USD: 1,
   GBP: 1.27, // 1 GBP = $1.27 USD
   CAD: 0.73, // 1 CAD = $0.73 USD
+  AED: 0.272, // 1 AED = $0.272 USD (1 USD ≈ 3.6725 AED)
 }
 
 const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
   USD: "$",
   GBP: "£",
   CAD: "CA$",
+  AED: "AED ",
 }
 
 export function toUsd(amount: number, currency: CurrencyCode): number {

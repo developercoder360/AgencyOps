@@ -6,7 +6,7 @@ export type Role =
   | "QA Reviewer"
   | "HR Manager"
 
-export type CurrencyCode = "USD" | "GBP" | "CAD"
+export type CurrencyCode = "USD" | "GBP" | "CAD" | "AED"
 
 export type ProjectStatus =
   | "Open"

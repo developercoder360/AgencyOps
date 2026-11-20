@@ -94,7 +94,7 @@ const invoiceSchema = z.object({
     "NMI",
     "Bank Transfer",
   ]),
-  currency: z.enum(["USD", "GBP", "CAD"]),
+  currency: z.enum(["USD", "GBP", "CAD", "AED"]),
   taxRate: z.number().min(0).max(30),
   discountAmount: z.number().min(0),
   dueDate: z.string().min(8),
@@ -769,6 +769,7 @@ function CreateInvoiceForm({
                   <SelectItem value="USD">USD ($)</SelectItem>
                   <SelectItem value="GBP">GBP (£)</SelectItem>
                   <SelectItem value="CAD">CAD (CA$)</SelectItem>
+                  <SelectItem value="AED">AED (AED)</SelectItem>
                 </SelectContent>
               </Select>
             )}

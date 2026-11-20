@@ -65,7 +65,7 @@ export interface Team {
 export const STORE_STORAGE_KEY = "agencyops:data:v1"
 export const STORE_VERSION = 1
 
-export const REFERENCE_CURRENCIES: CurrencyCode[] = ["USD", "GBP", "CAD"]
+export const REFERENCE_CURRENCIES: CurrencyCode[] = ["USD", "GBP", "CAD", "AED"]
 
 export const REFERENCE_GATEWAYS: PaymentGateway[] = [
   "Stripe",

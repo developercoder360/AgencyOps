@@ -96,7 +96,7 @@ const leadSchema = z.object({
     "Email Campaign",
   ]),
   city: z.string().min(1, "Select a city"),
-  currency: z.enum(["USD", "GBP", "CAD"]),
+  currency: z.enum(["USD", "GBP", "CAD", "AED"]),
   estimatedValue: z.number().min(100, "Minimum value is 100"),
   status: z.enum([
     "New",
@@ -827,6 +827,7 @@ export default function LeadsPage() {
                         <SelectItem value="USD">USD ($)</SelectItem>
                         <SelectItem value="GBP">GBP (£)</SelectItem>
                         <SelectItem value="CAD">CAD (CA$)</SelectItem>
+                        <SelectItem value="AED">AED (AED)</SelectItem>
                       </SelectContent>
                     </Select>
                   )}

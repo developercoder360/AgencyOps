@@ -91,7 +91,7 @@ const projectSchema = z.object({
   ]),
   priority: z.enum(["Regular", "High", "Urgent"]),
   budget: z.number().min(500, "Minimum budget 500"),
-  currency: z.enum(["USD", "GBP", "CAD"]),
+  currency: z.enum(["USD", "GBP", "CAD", "AED"]),
   deadline: z.string().min(8),
   description: z.string().optional(),
 })
@@ -654,6 +654,7 @@ export default function ProjectsPage() {
                         <SelectItem value="USD">USD</SelectItem>
                         <SelectItem value="GBP">GBP</SelectItem>
                         <SelectItem value="CAD">CAD</SelectItem>
+                        <SelectItem value="AED">AED</SelectItem>
                       </SelectContent>
                     </Select>
                   )}

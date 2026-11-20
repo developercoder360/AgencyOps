@@ -26,7 +26,7 @@ const CATEGORIES: Project["category"][] = [
 ]
 
 const PRIORITIES: TaskPriority[] = ["Regular", "High", "Urgent"]
-const CURRENCIES: CurrencyCode[] = ["USD", "USD", "GBP", "CAD"]
+const CURRENCIES: CurrencyCode[] = ["USD", "USD", "GBP", "CAD", "AED"]
 
 const PROJECT_TITLES = [
   "Enterprise SaaS Marketing Site",
