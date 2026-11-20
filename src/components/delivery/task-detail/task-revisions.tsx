@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -9,21 +10,19 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Flag,
   Paperclip,
   Plus,
   RotateCcw,
   Trash2,
   Upload,
-  User,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
@@ -46,7 +45,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Calendar as CalendarPicker } from "@/components/ui/calendar"
-import { ConfirmDeleteDialog, StatusBadge } from "@/components/shared"
+import { AvatarGroup, ConfirmDeleteDialog, StatusBadge } from "@/components/shared"
+import { RichTextEditorSkeleton, EMPTY_DOC } from "@/components/ui/rich-text-editor"
+import { RevisionAssigneePicker } from "./revision-assignee-picker"
+import { RevisionFlagPicker } from "./revision-flag-picker"
+import { getTagChipClass } from "./types"
 import type { TaskRolePermissions } from "@/lib/permissions"
 import type {
   Role,
@@ -55,23 +58,42 @@ import type {
   TaskRevision,
   TaskStatus,
   RevisionStatus,
+  RevisionType,
+  RevisionPriority,
+  RevisionFlag,
+  TaskTagColor,
 } from "@/types"
+
+const RichTextEditor = dynamic(
+  () => import("@/components/ui/rich-text-editor").then((mod) => mod.RichTextEditor),
+  {
+    ssr: false,
+    loading: () => <RichTextEditorSkeleton />,
+  }
+)
 
 interface TaskRevisionsProps {
   taskId: string
   taskStatus: TaskStatus
   revisions: TaskRevision[]
   users: StaffUser[]
+  revisionFlags?: RevisionFlag[]
   currentUserRole?: Role
   currentUserId?: string
   permissions: TaskRolePermissions
   todayIso: string
   defaultDueDate?: string
-  defaultAssigneeId?: string
+  defaultAssigneeIds?: string[]
+  nextRevisionNumber?: number
+  nextRedrawNumber?: number
+  onAddFlag?: (flag: { name: string; color: TaskTagColor }) => RevisionFlag
   onAddRevision: (data: {
+    type: RevisionType
     title: string
-    details?: string
-    assigneeId?: string
+    details?: Record<string, unknown>
+    assigneeIds?: string[]
+    priority?: RevisionPriority
+    flagIds?: string[]
     dueDate?: string
     files?: TaskFile[]
   }) => TaskRevision | null | void
@@ -94,13 +116,16 @@ const ALL_REVISION_STATUSES: { value: RevisionStatus; label: string }[] = [
 ]
 
 const addRevisionSchema = z.object({
+  type: z.enum(["revision", "redraw"]),
   title: z
     .string()
     .trim()
     .min(1, "Title is required")
     .max(140, "Title must be 140 characters or less"),
-  details: z.string().optional(),
-  assigneeId: z.string().optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
+  assigneeIds: z.array(z.string()),
+  priority: z.enum(["regular", "high", "urgent"]),
+  flagIds: z.array(z.string()),
   dueDate: z.string().optional(),
   moveToReDraw: z.boolean(),
 })
@@ -109,14 +134,18 @@ type AddRevisionFormValues = z.infer<typeof addRevisionSchema>
 
 export function TaskRevisions({
   taskStatus,
-  revisions,
+  revisions = [],
   users,
+  revisionFlags = [],
   currentUserRole = "Super Admin",
   currentUserId = "usr-admin",
   permissions,
   todayIso,
   defaultDueDate,
-  defaultAssigneeId,
+  defaultAssigneeIds = [],
+  nextRevisionNumber,
+  nextRedrawNumber,
+  onAddFlag,
   onAddRevision,
   onUpdateRevision,
   onSetRevisionStatus,
@@ -141,32 +170,58 @@ export function TaskRevisions({
   // Delete confirm dialog state
   const [deleteTargetId, setDeleteTargetId] = React.useState<string | null>(null)
 
-  // Sort revisions newest first (descending by number)
+  // Sort revisions newest first (descending by number within each type, or global order)
   const sortedRevisions = React.useMemo(() => {
-    return [...(revisions || [])].sort((a, b) => (b.number || 0) - (a.number || 0))
+    return [...(revisions || [])].sort((a, b) => {
+      // Sort newest created first, fallback to number
+      const timeDiff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      if (!Number.isNaN(timeDiff) && timeDiff !== 0) return timeDiff
+      return (b.number || 0) - (a.number || 0)
+    })
   }, [revisions])
 
   const totalCount = sortedRevisions.length
   const approvedCount = sortedRevisions.filter((r) => r.status === "approved").length
   const allApproved = totalCount > 0 && approvedCount === totalCount
 
-  // Next revision number for header badge
-  const nextRevNumber = React.useMemo(() => {
-    return (revisions || []).reduce((max, r) => Math.max(max, r.number || 0), 0) + 1
-  }, [revisions])
+  // Next numbers per type
+  const nextRevNum = React.useMemo(() => {
+    if (typeof nextRevisionNumber === "number" && nextRevisionNumber > 0) {
+      return nextRevisionNumber
+    }
+    const max = (revisions || [])
+      .filter((r) => r.type !== "redraw")
+      .reduce((m, r) => Math.max(m, r.number || 0), 0)
+    return max + 1
+  }, [revisions, nextRevisionNumber])
+
+  const nextRdNum = React.useMemo(() => {
+    if (typeof nextRedrawNumber === "number" && nextRedrawNumber > 0) {
+      return nextRedrawNumber
+    }
+    const max = (revisions || [])
+      .filter((r) => r.type === "redraw")
+      .reduce((m, r) => Math.max(m, r.number || 0), 0)
+    return max + 1
+  }, [revisions, nextRedrawNumber])
 
   const isCompleteOrQa = taskStatus === "Complete" || taskStatus === "QA Review"
 
   const form = useForm<AddRevisionFormValues>({
     resolver: zodResolver(addRevisionSchema),
     defaultValues: {
+      type: "revision",
       title: "",
-      details: "",
-      assigneeId: defaultAssigneeId || users[0]?.id || "",
+      details: EMPTY_DOC,
+      assigneeIds: defaultAssigneeIds.length > 0 ? defaultAssigneeIds : (users[0]?.id ? [users[0].id] : []),
+      priority: "regular",
+      flagIds: [],
       dueDate: defaultDueDate || todayIso,
       moveToReDraw: isCompleteOrQa,
     },
   })
+
+  const selectedType = form.watch("type")
 
   // Clean up any stray Radix body styles when modal closes
   React.useEffect(() => {
@@ -182,9 +237,12 @@ export function TaskRevisions({
 
   function handleOpenModal() {
     form.reset({
+      type: "revision",
       title: "",
-      details: "",
-      assigneeId: defaultAssigneeId || users[0]?.id || "",
+      details: EMPTY_DOC,
+      assigneeIds: defaultAssigneeIds.length > 0 ? defaultAssigneeIds : (users[0]?.id ? [users[0].id] : []),
+      priority: "regular",
+      flagIds: [],
       dueDate: defaultDueDate || todayIso,
       moveToReDraw: isCompleteOrQa,
     })
@@ -219,19 +277,22 @@ export function TaskRevisions({
 
   function onSubmit(values: AddRevisionFormValues) {
     const created = onAddRevision({
+      type: values.type,
       title: values.title.trim(),
-      details: values.details?.trim() || undefined,
-      assigneeId: values.assigneeId || undefined,
+      details: values.details || EMPTY_DOC,
+      assigneeIds: values.assigneeIds || [],
+      priority: values.priority || "regular",
+      flagIds: values.flagIds || [],
       dueDate: values.dueDate || undefined,
       files: modalFiles,
     })
 
-    // If task was Complete/QA and checkbox was checked, trigger Re-Draw flow
-    if (isCompleteOrQa && values.moveToReDraw) {
+    // If task was Complete/QA, revision type is redraw, and checkbox was checked, trigger Re-Draw flow
+    if (isCompleteOrQa && values.type === "redraw" && values.moveToReDraw) {
       onMoveToReDraw?.()
     }
 
-    toast.success("Revision added")
+    toast.success(values.type === "redraw" ? "Re-Draw added" : "Revision added")
     setAddModalOpen(false)
 
     // Expand the new revision and keep it visible
@@ -291,7 +352,12 @@ export function TaskRevisions({
       return ALL_REVISION_STATUSES.filter((s) => s.value === rev.status)
     }
 
-    if (permissions.canUpdateAssignedRevisionProgress) {
+    if (
+      permissions.canUpdateAssignedRevisionProgress &&
+      (rev.assigneeIds?.includes(currentUserId) ||
+        currentUserRole === "Super Admin" ||
+        currentUserRole === "Project Admin")
+    ) {
       return [
         { value: "requested", label: "Requested" },
         { value: "in_progress", label: "In Progress" },
@@ -307,7 +373,9 @@ export function TaskRevisions({
     if (currentUserRole === "QA Reviewer" && rev.status === "submitted") return true
     if (
       permissions.canUpdateAssignedRevisionProgress &&
-      (rev.assigneeId === currentUserId || !rev.assigneeId || currentUserRole === "Designer/Developer")
+      (rev.assigneeIds?.includes(currentUserId) ||
+        currentUserRole === "Super Admin" ||
+        currentUserRole === "Project Admin")
     ) {
       return true
     }
@@ -382,7 +450,10 @@ export function TaskRevisions({
         <div className="space-y-2">
           {sortedRevisions.map((rev) => {
             const isExpanded = expandedId === rev.id
-            const assignee = users.find((u) => u.id === rev.assigneeId)
+            const isRedraw = rev.type === "redraw"
+            const revPrefix = isRedraw ? "RD" : "R"
+            const revAssignees = users.filter((u) => rev.assigneeIds?.includes(u.id))
+            const revFlags = revisionFlags.filter((f) => rev.flagIds?.includes(f.id))
             const isOverdue =
               rev.dueDate &&
               rev.dueDate < todayIso &&
@@ -410,9 +481,20 @@ export function TaskRevisions({
                   className="flex w-full items-center justify-between gap-2 p-2.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <div className="flex min-w-0 items-center gap-2">
-                    {/* Badge R1, R2 ... */}
+                    {/* Type badge */}
+                    {isRedraw ? (
+                      <span className="shrink-0 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold">
+                        Re-Draw
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded-full bg-muted text-muted-foreground border border-border px-2 py-0.5 text-[10px] font-medium">
+                        Revision
+                      </span>
+                    )}
+
+                    {/* Number badge R1, RD1 ... */}
                     <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-foreground ring-1 ring-border">
-                      R{rev.number}
+                      {revPrefix}{rev.number}
                     </span>
 
                     <div className="min-w-0 flex-1">
@@ -421,6 +503,41 @@ export function TaskRevisions({
                           {rev.title}
                         </span>
                         <StatusBadge status={rev.status} />
+
+                        {/* Priority Flag Icon */}
+                        <span
+                          title={`Priority: ${rev.priority || "regular"}`}
+                          className="inline-flex items-center"
+                        >
+                          <Flag
+                            className={cn(
+                              "size-3",
+                              rev.priority === "urgent"
+                                ? "text-rose-600 dark:text-rose-400 fill-rose-600/30"
+                                : rev.priority === "high"
+                                ? "text-amber-600 dark:text-amber-400 fill-amber-600/30"
+                                : "text-muted-foreground/40"
+                            )}
+                          />
+                        </span>
+
+                        {/* Flags Chips (up to 2 + N) */}
+                        {revFlags.slice(0, 2).map((flag) => (
+                          <span
+                            key={flag.id}
+                            className={cn(
+                              "rounded px-1.5 py-0.5 text-[10px] font-medium border",
+                              getTagChipClass(flag.color)
+                            )}
+                          >
+                            {flag.name}
+                          </span>
+                        ))}
+                        {revFlags.length > 2 && (
+                          <span className="text-[10px] text-muted-foreground font-medium">
+                            +{revFlags.length - 2}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -453,21 +570,16 @@ export function TaskRevisions({
                       </span>
                     ) : null}
 
-                    {/* Assignee Avatar */}
-                    {assignee ? (
-                      <Avatar className="size-5 shrink-0 ring-1 ring-border" title={assignee.name}>
-                        <AvatarFallback className="text-[9px] font-medium">
-                          {assignee.avatarInitials ||
-                            assignee.name
-                              .split(" ")
-                              .map((p) => p[0])
-                              .slice(0, 2)
-                              .join("")}
-                        </AvatarFallback>
-                      </Avatar>
+                    {/* Assignees Avatar Group */}
+                    {revAssignees.length > 0 ? (
+                      <AvatarGroup
+                        people={revAssignees}
+                        max={3}
+                        className="-space-x-1.5"
+                      />
                     ) : (
-                      <span title="Unassigned" className="text-muted-foreground/50">
-                        <User className="size-3.5" />
+                      <span title="Unassigned" className="text-xs text-muted-foreground/50">
+                        Unassigned
                       </span>
                     )}
 
@@ -484,10 +596,31 @@ export function TaskRevisions({
                 {isExpanded ? (
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="space-y-3 border-t border-border/60 bg-muted/20 p-3 pt-2.5"
+                    className="space-y-3.5 border-t border-border/60 bg-muted/20 p-3 pt-2.5"
                   >
-                    {/* Title & Status */}
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                    {/* Type, Title & Status */}
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4">
+                      {/* Type select */}
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground">Type</Label>
+                        <Select
+                          value={rev.type}
+                          disabled={!permissions.canEditRevision}
+                          onValueChange={(val: RevisionType) =>
+                            onUpdateRevision(rev.id, { type: val })
+                          }
+                        >
+                          <SelectTrigger aria-label="Revision type" className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="revision">Revision</SelectItem>
+                            <SelectItem value="redraw">Re-Draw</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Title */}
                       <div className="space-y-1 sm:col-span-2">
                         <Label className="text-[11px] text-muted-foreground">Title</Label>
                         <Input
@@ -500,6 +633,7 @@ export function TaskRevisions({
                         />
                       </div>
 
+                      {/* Status */}
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground">Status</Label>
                         <Select
@@ -523,57 +657,96 @@ export function TaskRevisions({
                       </div>
                     </div>
 
-                    {/* Details Textarea */}
+                    {/* Details Rich Text Editor */}
                     <div className="space-y-1">
                       <Label className="text-[11px] text-muted-foreground">
                         Change Details
                       </Label>
-                      <Textarea
-                        rows={2}
+                      <RichTextEditor
                         value={rev.details}
-                        disabled={!permissions.canEditRevision}
-                        onChange={(e) =>
-                          onUpdateRevision(rev.id, { details: e.target.value })
-                        }
+                        readOnly={!permissions.canEditRevision}
                         placeholder="Specific feedback or rework instructions..."
-                        className="text-xs"
+                        onChange={(doc) => onUpdateRevision(rev.id, { details: doc })}
+                        minHeight="80px"
                       />
                     </div>
 
-                    {/* Metadata Row: Assignee & Due Date */}
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {/* Assignees, Priority, Flags Grid */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {/* Multiple Assignees */}
                       <div className="space-y-1">
-                        <Label className="text-[11px] text-muted-foreground">Assignee</Label>
-                        <Select
-                          value={rev.assigneeId || "unassigned"}
+                        <Label className="text-[11px] text-muted-foreground">Assignees</Label>
+                        <RevisionAssigneePicker
+                          value={rev.assigneeIds || []}
+                          users={users}
                           disabled={!permissions.canEditRevision}
-                          onValueChange={(val) =>
-                            onUpdateRevision(rev.id, {
-                              assigneeId: val === "unassigned" ? undefined : val,
-                            })
+                          onChange={(ids) => onUpdateRevision(rev.id, { assigneeIds: ids })}
+                        />
+                      </div>
+
+                      {/* Priority Select */}
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground">Priority</Label>
+                        <Select
+                          value={rev.priority || "regular"}
+                          disabled={!permissions.canEditRevision}
+                          onValueChange={(val: RevisionPriority) =>
+                            onUpdateRevision(rev.id, { priority: val })
                           }
                         >
                           <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Unassigned" />
+                            <div className="flex items-center gap-1.5">
+                              <Flag
+                                className={cn(
+                                  "size-3",
+                                  rev.priority === "urgent"
+                                    ? "text-rose-600 dark:text-rose-400 fill-rose-600/30"
+                                    : rev.priority === "high"
+                                    ? "text-amber-600 dark:text-amber-400 fill-amber-600/30"
+                                    : "text-muted-foreground/50"
+                                )}
+                              />
+                              <SelectValue />
+                            </div>
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                            {users.map((u) => (
-                              <SelectItem key={u.id} value={u.id}>
-                                <div className="flex items-center gap-1.5">
-                                  <Avatar className="size-4 shrink-0">
-                                    <AvatarFallback className="text-[8px]">
-                                      {u.avatarInitials}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <span>{u.name}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
+                            <SelectItem value="regular">
+                              <div className="flex items-center gap-1.5">
+                                <Flag className="size-3 text-muted-foreground/50" />
+                                <span>Regular</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="high">
+                              <div className="flex items-center gap-1.5">
+                                <Flag className="size-3 text-amber-600 dark:text-amber-400 fill-amber-600/30" />
+                                <span>High</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="urgent">
+                              <div className="flex items-center gap-1.5">
+                                <Flag className="size-3 text-rose-600 dark:text-rose-400 fill-rose-600/30" />
+                                <span>Urgent</span>
+                              </div>
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
+                      {/* Flags Picker */}
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground">Flags</Label>
+                        <RevisionFlagPicker
+                          value={rev.flagIds || []}
+                          availableFlags={revisionFlags}
+                          disabled={!permissions.canEditRevision}
+                          onAddFlag={onAddFlag}
+                          onChange={(flagIds) => onUpdateRevision(rev.id, { flagIds })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Due Date & Attachments */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground">Due Date</Label>
                         <Input
@@ -586,65 +759,64 @@ export function TaskRevisions({
                           className="h-8 text-xs"
                         />
                       </div>
-                    </div>
 
-                    {/* Reference Files List & Upload */}
-                    <div className="space-y-1.5 border-t border-border/50 pt-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-[11px] text-muted-foreground">
-                          Reference Attachments ({rev.files?.length || 0})
-                        </Label>
-                        {permissions.canEditRevision ? (
-                          <>
-                            <input
-                              type="file"
-                              multiple
-                              ref={(el) => {
-                                rowFileInputRefs.current[rev.id] = el
-                              }}
-                              className="hidden"
-                              onChange={(e) =>
-                                handleRowFileSelection(e, (files) =>
-                                  onAddRevisionFiles(rev.id, files)
-                                )
-                              }
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="xs"
-                              onClick={() => rowFileInputRefs.current[rev.id]?.click()}
-                              className="h-6 gap-1 text-[11px] text-primary"
-                            >
-                              <Upload className="size-3" />
-                              <span>Attach file</span>
-                            </Button>
-                          </>
-                        ) : null}
-                      </div>
-
-                      {rev.files && rev.files.length > 0 ? (
-                        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-                          {rev.files.map((file) => (
-                            <div
-                              key={file.id}
-                              className="flex items-center justify-between gap-1.5 rounded border border-border/60 bg-background/80 p-1.5 text-xs"
-                            >
-                              <div className="flex min-w-0 items-center gap-1.5">
-                                <Paperclip className="size-3 shrink-0 text-muted-foreground" />
-                                <span className="truncate text-[11px]">{file.name}</span>
-                              </div>
-                              <span className="shrink-0 text-[10px] text-muted-foreground">
-                                {file.size}
-                              </span>
-                            </div>
-                          ))}
+                      {/* Reference Attachments header and trigger */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] text-muted-foreground">
+                            Reference Attachments ({rev.files?.length || 0})
+                          </Label>
+                          {permissions.canEditRevision ? (
+                            <>
+                              <input
+                                type="file"
+                                multiple
+                                ref={(el) => {
+                                  rowFileInputRefs.current[rev.id] = el
+                                }}
+                                className="hidden"
+                                onChange={(e) =>
+                                  handleRowFileSelection(e, (files) =>
+                                    onAddRevisionFiles(rev.id, files)
+                                  )
+                                }
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="xs"
+                                onClick={() => rowFileInputRefs.current[rev.id]?.click()}
+                                className="h-6 gap-1 text-[11px] text-primary"
+                              >
+                                <Upload className="size-3" />
+                                <span>Attach file</span>
+                              </Button>
+                            </>
+                          ) : null}
                         </div>
-                      ) : (
-                        <p className="text-[11px] text-muted-foreground/70 italic">
-                          No reference files attached to this revision.
-                        </p>
-                      )}
+                        {rev.files && rev.files.length > 0 ? (
+                          <div className="grid grid-cols-1 gap-1 max-h-24 overflow-y-auto pr-1">
+                            {rev.files.map((file) => (
+                              <div
+                                key={file.id}
+                                className="flex items-center justify-between gap-1.5 rounded border border-border/60 bg-background/80 p-1.5 text-xs"
+                              >
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+                                  <span className="truncate text-[11px]">{file.name}</span>
+                                </div>
+                                <span className="shrink-0 text-[10px] text-muted-foreground">
+                                  {file.size}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground/70 italic pt-1">
+                            No reference files attached.
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     {/* Delete Revision Action */}
@@ -658,7 +830,9 @@ export function TaskRevisions({
                           className="gap-1 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                         >
                           <Trash2 className="size-3" />
-                          <span>Delete revision R{rev.number}</span>
+                          <span>
+                            Delete {isRedraw ? "re-draw" : "revision"} {revPrefix}{rev.number}
+                          </span>
                         </Button>
                       </div>
                     ) : null}
@@ -676,8 +850,12 @@ export function TaskRevisions({
         onOpenChange={(open) => {
           if (!open) setDeleteTargetId(null)
         }}
-        title={`Delete Revision R${deleteTargetRevision?.number ?? ""}?`}
-        description={`Are you sure you want to delete revision "${deleteTargetRevision?.title}"? This action cannot be undone.`}
+        title={`Delete ${deleteTargetRevision?.type === "redraw" ? "Re-Draw" : "Revision"} ${
+          deleteTargetRevision ? (deleteTargetRevision.type === "redraw" ? "RD" : "R") + deleteTargetRevision.number : ""
+        }?`}
+        description={`Are you sure you want to delete ${
+          deleteTargetRevision?.type === "redraw" ? "re-draw" : "revision"
+        } "${deleteTargetRevision?.title}"? This action cannot be undone.`}
         onConfirm={() => {
           if (deleteTargetId) {
             onRemoveRevision(deleteTargetId)
@@ -694,16 +872,16 @@ export function TaskRevisions({
             e.preventDefault()
             addBtnRef.current?.focus({ preventScroll: true })
           }}
-          className="w-[calc(100vw-2rem)] sm:max-w-lg max-h-[90vh] flex flex-col p-4 sm:p-6 overflow-hidden"
+          className="w-full sm:max-w-lg max-h-[90dvh] flex flex-col p-4 sm:p-6 overflow-hidden"
         >
-          <DialogHeader className="pr-6">
+          <DialogHeader className="pr-6 shrink-0">
             <div className="flex items-center justify-between gap-2">
               <DialogTitle className="flex items-center gap-2 text-base font-semibold">
                 <RotateCcw className="size-4 text-primary" />
-                <span>Add revision</span>
+                <span>{selectedType === "redraw" ? "Add Re-Draw" : "Add revision"}</span>
               </DialogTitle>
               <span className="rounded-full bg-muted px-2.5 py-0.5 font-mono text-xs font-semibold text-muted-foreground ring-1 ring-border">
-                Revision #{nextRevNumber}
+                {selectedType === "redraw" ? `Re-Draw #${nextRdNum}` : `Revision #${nextRevNum}`}
               </span>
             </div>
             <DialogDescription className="text-xs text-muted-foreground">
@@ -716,7 +894,45 @@ export function TaskRevisions({
             className="flex-1 flex flex-col min-h-0 overflow-hidden"
           >
             <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 py-1">
-              {/* Title (Required, autoFocus) */}
+              {/* 1. Revision Type Segmented Control */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Type</Label>
+                <div className="grid grid-cols-2 rounded-lg bg-muted p-1 text-xs font-medium">
+                  <button
+                    type="button"
+                    onClick={() => form.setValue("type", "revision")}
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 rounded-md py-1.5 transition-colors",
+                      selectedType === "revision"
+                        ? "bg-background text-foreground shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <RotateCcw className="size-3.5" />
+                    <span>Revision</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      form.setValue("type", "redraw")
+                      if (isCompleteOrQa) {
+                        form.setValue("moveToReDraw", true)
+                      }
+                    }}
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 rounded-md py-1.5 transition-colors",
+                      selectedType === "redraw"
+                        ? "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <RotateCcw className="size-3.5" />
+                    <span>Re-Draw</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Title (Required, autoFocus) */}
               <div className="space-y-1.5">
                 <Label htmlFor="rev-modal-title" className="text-xs font-medium">
                   Title <span className="text-destructive">*</span>
@@ -742,119 +958,164 @@ export function TaskRevisions({
                 )}
               </div>
 
-              {/* Details (Textarea, Ctrl/Cmd+Enter submits) */}
+              {/* 3. Details (Rich text editor) */}
               <div className="space-y-1.5">
-                <Label htmlFor="rev-modal-details" className="text-xs font-medium">
-                  Details
-                </Label>
-                <Textarea
-                  id="rev-modal-details"
-                  placeholder="Specific feedback or rework instructions..."
-                  rows={3}
-                  {...form.register("details")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                      e.preventDefault()
-                      form.handleSubmit(onSubmit)()
-                    }
-                  }}
-                  aria-label="Revision details"
-                  className="text-xs"
+                <Label className="text-xs font-medium">Details</Label>
+                <Controller
+                  control={form.control}
+                  name="details"
+                  render={({ field }) => (
+                    <RichTextEditor
+                      value={field.value}
+                      placeholder="Describe what needs to change..."
+                      onChange={field.onChange}
+                      onSubmit={() => form.handleSubmit(onSubmit)()}
+                      minHeight="110px"
+                    />
+                  )}
                 />
                 <p className="text-[10px] text-muted-foreground">
-                  Press Enter to submit from Title, or Ctrl+Enter / Cmd+Enter from Details.
+                  Press Enter in Title or Ctrl+Enter / Cmd+Enter in Details to submit.
                 </p>
               </div>
 
-              {/* Assignee & Due Date Grid */}
+              {/* 4. Multiple Assignees */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Assignees</Label>
+                <Controller
+                  control={form.control}
+                  name="assigneeIds"
+                  render={({ field }) => (
+                    <RevisionAssigneePicker
+                      value={field.value}
+                      users={users}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+              </div>
+
+              {/* 5. Priority & 6. Flags Grid */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {/* Assignee Select */}
+                {/* Priority */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Assignee</Label>
+                  <Label className="text-xs font-medium">Priority</Label>
                   <Controller
                     control={form.control}
-                    name="assigneeId"
+                    name="priority"
                     render={({ field }) => (
                       <Select
-                        value={field.value || "unassigned"}
-                        onValueChange={(val) =>
-                          field.onChange(val === "unassigned" ? "" : val)
-                        }
+                        value={field.value}
+                        onValueChange={field.onChange}
                       >
-                        <SelectTrigger aria-label="Assignee" className="h-9 text-xs">
-                          <SelectValue placeholder="Select assignee" />
+                        <SelectTrigger aria-label="Priority" className="h-9 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <Flag
+                              className={cn(
+                                "size-3.5",
+                                field.value === "urgent"
+                                  ? "text-rose-600 dark:text-rose-400 fill-rose-600/30"
+                                  : field.value === "high"
+                                  ? "text-amber-600 dark:text-amber-400 fill-amber-600/30"
+                                  : "text-muted-foreground/50"
+                              )}
+                            />
+                            <SelectValue />
+                          </div>
                         </SelectTrigger>
                         <SelectContent className="z-[60]">
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
-                          {users.map((u) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              <div className="flex items-center gap-2">
-                                <Avatar className="size-4 shrink-0">
-                                  <AvatarFallback className="text-[8px]">
-                                    {u.avatarInitials}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span>{u.name}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="regular">
+                            <div className="flex items-center gap-1.5">
+                              <Flag className="size-3.5 text-muted-foreground/50" />
+                              <span>Regular</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="high">
+                            <div className="flex items-center gap-1.5">
+                              <Flag className="size-3.5 text-amber-600 dark:text-amber-400 fill-amber-600/30" />
+                              <span>High</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="urgent">
+                            <div className="flex items-center gap-1.5">
+                              <Flag className="size-3.5 text-rose-600 dark:text-rose-400 fill-rose-600/30" />
+                              <span>Urgent</span>
+                            </div>
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     )}
                   />
                 </div>
 
-                {/* Due Date Picker Popover */}
+                {/* Flags */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Due Date</Label>
+                  <Label className="text-xs font-medium">Flags</Label>
                   <Controller
                     control={form.control}
-                    name="dueDate"
+                    name="flagIds"
                     render={({ field }) => (
-                      <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            aria-label="Due date"
-                            className={cn(
-                              "h-9 w-full justify-start text-left text-xs font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            <Calendar className="mr-2 size-3.5" />
-                            {field.value ? field.value : <span>Pick due date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 z-[60]" align="start">
-                          <CalendarPicker
-                            mode="single"
-                            selected={
-                              field.value ? new Date(field.value + "T00:00:00") : undefined
-                            }
-                            onSelect={(date) => {
-                              if (date) {
-                                const year = date.getFullYear()
-                                const month = String(date.getMonth() + 1).padStart(2, "0")
-                                const day = String(date.getDate()).padStart(2, "0")
-                                field.onChange(`${year}-${month}-${day}`)
-                              } else {
-                                field.onChange("")
-                              }
-                              setDatePopoverOpen(false)
-                            }}
-                            defaultMonth={
-                              field.value ? new Date(field.value + "T00:00:00") : new Date()
-                            }
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <RevisionFlagPicker
+                        value={field.value}
+                        availableFlags={revisionFlags}
+                        onAddFlag={onAddFlag}
+                        onChange={field.onChange}
+                      />
                     )}
                   />
                 </div>
               </div>
 
-              {/* Reference Files Drag & Drop Zone */}
+              {/* 7. Due Date Picker */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Due Date</Label>
+                <Controller
+                  control={form.control}
+                  name="dueDate"
+                  render={({ field }) => (
+                    <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          aria-label="Due date"
+                          className={cn(
+                            "h-9 w-full justify-start text-left text-xs font-normal",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          <Calendar className="mr-2 size-3.5" />
+                          {field.value ? field.value : <span>Pick due date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 z-[60]" align="start">
+                        <CalendarPicker
+                          mode="single"
+                          selected={
+                            field.value ? new Date(field.value + "T00:00:00") : undefined
+                          }
+                          onSelect={(date) => {
+                            if (date) {
+                              const year = date.getFullYear()
+                              const month = String(date.getMonth() + 1).padStart(2, "0")
+                              const day = String(date.getDate()).padStart(2, "0")
+                              field.onChange(`${year}-${month}-${day}`)
+                            } else {
+                              field.onChange("")
+                            }
+                            setDatePopoverOpen(false)
+                          }}
+                          defaultMonth={
+                            field.value ? new Date(field.value + "T00:00:00") : new Date()
+                          }
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                />
+              </div>
+
+              {/* 8. Reference Files Drag & Drop Zone */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Reference Files</Label>
                 <div
@@ -937,8 +1198,8 @@ export function TaskRevisions({
                 ) : null}
               </div>
 
-              {/* Move to Re-Draw Checkbox for Complete/QA Tasks */}
-              {isCompleteOrQa && (
+              {/* 9. Move to Re-Draw Checkbox: ONLY for redraw type on Complete/QA Tasks */}
+              {selectedType === "redraw" && isCompleteOrQa && (
                 <Controller
                   control={form.control}
                   name="moveToReDraw"
@@ -958,7 +1219,7 @@ export function TaskRevisions({
                           Move task to Re-Draw
                         </label>
                         <p className="text-[11px] text-muted-foreground">
-                          Task is currently marked as <strong>{taskStatus}</strong>. Re-opening work will move the deliverable back into Re-Draw for rework.
+                          Task is currently marked as <strong>{taskStatus}</strong>. Adding this Re-Draw will move the deliverable back into Re-Draw for rework.
                         </p>
                       </div>
                     </div>
@@ -979,7 +1240,7 @@ export function TaskRevisions({
               </Button>
               <Button type="submit" size="sm" className="gap-1.5">
                 <Plus className="size-3.5" />
-                <span>Add revision</span>
+                <span>{selectedType === "redraw" ? "Add Re-Draw" : "Add revision"}</span>
               </Button>
             </DialogFooter>
           </form>

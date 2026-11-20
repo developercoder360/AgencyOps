@@ -1,5 +1,7 @@
 import type {
+  RevisionPriority,
   RevisionStatus,
+  RevisionType,
   Task,
   TaskActivityEvent,
   TaskPriority,
@@ -10,6 +12,67 @@ import type {
 import { MOCK_PROJECTS } from "./projects"
 import { MOCK_USERS } from "./users"
 import { createSeededRandom, intBetween, pickFrom } from "./seed"
+
+function makeRichDetails(text: string, title: string): Record<string, unknown> {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            marks: [{ type: "bold" }],
+            text: `${title}: `,
+          },
+          {
+            type: "text",
+            text,
+          },
+        ],
+      },
+      {
+        type: "bulletList",
+        content: [
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Verified against specification" }],
+              },
+            ],
+          },
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", text: "Reference link: " },
+                  {
+                    type: "text",
+                    marks: [
+                      {
+                        type: "link",
+                        attrs: {
+                          href: "https://agencyops.io/design-system",
+                          target: "_blank",
+                          rel: "noopener noreferrer",
+                        },
+                      },
+                    ],
+                    text: "Design System Guidelines",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
 
 const DEMO_REVISION_PRESETS = [
   {
@@ -107,6 +170,9 @@ function generateTasks(): Task[] {
     const revCount = status === "Re-Draw" ? Math.max(1, i % 4) : i % 4
     const revisions: TaskRevision[] = []
 
+    let revNumberSeq = 1
+    let rdNumberSeq = 1
+
     for (let rIdx = 0; rIdx < revCount; rIdx++) {
       const preset = DEMO_REVISION_PRESETS[(i + rIdx) % DEMO_REVISION_PRESETS.length]
       let revStatus: RevisionStatus = "requested"
@@ -121,13 +187,35 @@ function generateTasks(): Task[] {
         revStatus = statuses[(i + rIdx) % statuses.length]
       }
 
+      const isRedraw = status === "Re-Draw" || (i + rIdx) % 3 === 0
+      const revType: RevisionType = isRedraw ? "redraw" : "revision"
+      const num = isRedraw ? rdNumberSeq++ : revNumberSeq++
+
+      const priorities: RevisionPriority[] = ["regular", "high", "urgent"]
+      const revPriority = priorities[(i + rIdx) % priorities.length]
+
+      const flagsList = ["rflag-rush", "rflag-blocked", "rflag-approval", "rflag-scope", "rflag-client"]
+      const revFlags = rIdx === 0 ? [flagsList[i % flagsList.length]] : []
+      if (rIdx === 1) revFlags.push(flagsList[(i + 1) % flagsList.length])
+
+      const assigneeIds = [dev1.id]
+      if ((i + rIdx) % 2 === 1 && dev2 && dev2.id !== dev1.id) {
+        assigneeIds.push(dev2.id)
+      }
+      if ((i + rIdx) % 3 === 0 && reviewer.id !== dev1.id && !assigneeIds.includes(reviewer.id)) {
+        assigneeIds.push(reviewer.id)
+      }
+
       const revCreated = makeDateOffset(Math.max(dueOffset - 4 + rIdx, -10))
       revisions.push({
         id: `rev-${i}-${rIdx + 1}`,
-        number: rIdx + 1,
+        type: revType,
+        number: num,
         title: preset.title,
-        details: preset.details,
-        assigneeId: dev1.id,
+        details: makeRichDetails(preset.details, preset.title),
+        assigneeIds,
+        priority: revPriority,
+        flagIds: revFlags,
         dueDate: makeDateOffset(Math.max(dueOffset - 1 + rIdx, -5)),
         status: revStatus,
         files:
@@ -237,7 +325,8 @@ function generateTasks(): Task[] {
         status === "Open" ? 0 : intBetween(rng, 2, 18),
       tags,
       revisions,
-      nextRevisionNumber: revCount + 1,
+      nextRevisionNumber: revNumberSeq,
+      nextRedrawNumber: rdNumberSeq,
       comments: [
         {
           id: `tc-${i}-1`,

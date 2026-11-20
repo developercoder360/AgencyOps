@@ -3,8 +3,10 @@ import {
   createInitialEmptyData,
   STORE_STORAGE_KEY,
   STORE_VERSION,
+  DEFAULT_REVISION_FLAGS,
   type StoreData,
 } from "./types"
+import { sanitizeDoc } from "@/components/ui/rich-text-editor"
 
 export interface StorageEstimate {
   usedBytes: number
@@ -29,21 +31,84 @@ export function migrateTask(rawTask: unknown): Task {
   }
   const task = { ...(rawTask as LegacyTaskRaw) }
 
-  // Ensure revisions array is present and strip legacy requestedBy from revisions
+  // Ensure revisions array is present and migrate revisions
   if (!Array.isArray(task.revisions)) {
     task.revisions = []
   } else {
+    let nextRevNum = 1
+    let nextRdNum = 1
+
     task.revisions = task.revisions.map((rev) => {
       if (rev && typeof rev === "object") {
         const rawRev = { ...(rev as unknown as Record<string, unknown>) }
+        // Strip legacy requestedBy
         if ("requestedBy" in rawRev) {
           delete rawRev.requestedBy
         }
-        return rawRev as unknown as TaskRevision
+
+        // Migrate assigneeId -> assigneeIds
+        let assigneeIds: string[] = []
+        if (Array.isArray(rawRev.assigneeIds)) {
+          assigneeIds = rawRev.assigneeIds.filter((id) => typeof id === "string" && id)
+        } else if (typeof rawRev.assigneeId === "string" && rawRev.assigneeId) {
+          assigneeIds = [rawRev.assigneeId]
+        }
+        delete rawRev.assigneeId
+
+        // Type: "revision" | "redraw"
+        const type = rawRev.type === "redraw" ? "redraw" : "revision"
+
+        // Priority: "regular" | "high" | "urgent"
+        const priority =
+          rawRev.priority === "urgent" || rawRev.priority === "high" || rawRev.priority === "regular"
+            ? rawRev.priority
+            : "regular"
+
+        // Flag IDs: string[]
+        const flagIds = Array.isArray(rawRev.flagIds)
+          ? rawRev.flagIds.filter((f) => typeof f === "string")
+          : []
+
+        // Details: sanitize into Tiptap doc
+        const details = sanitizeDoc(rawRev.details)
+
+        // Number
+        let num = typeof rawRev.number === "number" && rawRev.number > 0 ? rawRev.number : 0
+        if (num === 0) {
+          num = type === "redraw" ? nextRdNum++ : nextRevNum++
+        }
+
+        return {
+          ...rawRev,
+          type,
+          number: num,
+          title: typeof rawRev.title === "string" ? rawRev.title : "",
+          details,
+          assigneeIds,
+          priority,
+          flagIds,
+          status: rawRev.status || "requested",
+          files: Array.isArray(rawRev.files) ? rawRev.files : [],
+        } as unknown as TaskRevision
       }
       return rev
     })
   }
+
+  // Calculate nextRevisionNumber and nextRedrawNumber
+  const revisionNums = (task.revisions as TaskRevision[])
+    .filter((r) => r.type !== "redraw")
+    .map((r) => r.number || 0)
+  const maxRevNum = revisionNums.length > 0 ? Math.max(...revisionNums) : 0
+  const existingNextRev = typeof task.nextRevisionNumber === "number" ? task.nextRevisionNumber : 1
+  task.nextRevisionNumber = Math.max(existingNextRev, maxRevNum + 1)
+
+  const redrawNums = (task.revisions as TaskRevision[])
+    .filter((r) => r.type === "redraw")
+    .map((r) => r.number || 0)
+  const maxRdNum = redrawNums.length > 0 ? Math.max(...redrawNums) : 0
+  const existingNextRd = typeof task.nextRedrawNumber === "number" ? task.nextRedrawNumber : 1
+  task.nextRedrawNumber = Math.max(existingNextRd, maxRdNum + 1)
 
   // If old subtasks or checklist arrays exist, move to legacy and remove old keys
   if (task.subtasks !== undefined || task.checklist !== undefined) {
@@ -93,6 +158,10 @@ export function loadStoredData(): StoreData {
       marketingSpendings: Array.isArray(parsed.marketingSpendings) ? parsed.marketingSpendings : base.marketingSpendings,
       projects: Array.isArray(parsed.projects) ? parsed.projects : base.projects,
       tasks: migratedTasks,
+      revisionFlags:
+        Array.isArray(parsed.revisionFlags) && parsed.revisionFlags.length > 0
+          ? parsed.revisionFlags
+          : [...DEFAULT_REVISION_FLAGS],
       chatThreads: Array.isArray(parsed.chatThreads) ? parsed.chatThreads : base.chatThreads,
       notifications: Array.isArray(parsed.notifications) ? parsed.notifications : base.notifications,
       attendanceRecords: Array.isArray(parsed.attendanceRecords) ? parsed.attendanceRecords : base.attendanceRecords,

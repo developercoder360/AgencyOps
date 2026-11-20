@@ -1,5 +1,6 @@
 import {
   createInitialEmptyData,
+  DEFAULT_REVISION_FLAGS,
   STORE_VERSION,
   type StoreData,
   type Team,
@@ -44,7 +45,10 @@ import type {
   Project,
   ProjectFile,
   QAReviewEvent,
+  RevisionFlag,
+  RevisionPriority,
   RevisionStatus,
+  RevisionType,
   ShiftSchedule,
   SignUp,
   StaffUser,
@@ -53,6 +57,7 @@ import type {
   TaskComment,
   TaskFile,
   TaskRevision,
+  TaskTagColor,
   Transaction,
 } from "@/types"
 import { toast } from "sonner"
@@ -847,9 +852,12 @@ export class StoreManager {
   public addRevision(
     taskId: string,
     revisionData: {
+      type?: RevisionType
       title: string
-      details?: string
-      assigneeId?: string
+      details?: Record<string, unknown>
+      assigneeIds?: string[]
+      priority?: RevisionPriority
+      flagIds?: string[]
       dueDate?: string
       status?: RevisionStatus
       files?: TaskFile[]
@@ -865,18 +873,28 @@ export class StoreManager {
       tasks: s.tasks.map((t) => {
         if (t.id !== taskId) return t
 
-        const existingMax = (t.revisions || []).reduce(
-          (max, r) => Math.max(max, r.number || 0),
-          0
-        )
-        const nextNum = Math.max(t.nextRevisionNumber ?? 1, existingMax + 1)
+        const revType: RevisionType = revisionData.type === "redraw" ? "redraw" : "revision"
+        const isRedraw = revType === "redraw"
+
+        const existingMax = (t.revisions || [])
+          .filter((r) => (isRedraw ? r.type === "redraw" : r.type !== "redraw"))
+          .reduce((max, r) => Math.max(max, r.number || 0), 0)
+
+        const nextNum = isRedraw
+          ? Math.max(t.nextRedrawNumber ?? 1, existingMax + 1)
+          : Math.max(t.nextRevisionNumber ?? 1, existingMax + 1)
+
+        const prefix = isRedraw ? "RD" : "R"
 
         const newRevision: TaskRevision = {
           id: `rev-${crypto.randomUUID().slice(0, 8)}`,
+          type: revType,
           number: nextNum,
           title: revisionData.title.trim(),
-          details: revisionData.details?.trim() || "",
-          assigneeId: revisionData.assigneeId,
+          details: revisionData.details || { type: "doc", content: [{ type: "paragraph" }] },
+          assigneeIds: revisionData.assigneeIds || [],
+          priority: revisionData.priority || "regular",
+          flagIds: revisionData.flagIds || [],
           dueDate: revisionData.dueDate,
           status: revisionData.status || "requested",
           files: revisionData.files || [],
@@ -892,15 +910,17 @@ export class StoreManager {
           type: "system",
           actorId,
           actorName,
-          action: "added revision",
-          detail: `R${newRevision.number}: ${newRevision.title}`,
-          toValue: `R${newRevision.number}`,
+          action: isRedraw ? "added redraw" : "added revision",
+          detail: `${prefix}${newRevision.number}: ${newRevision.title}`,
+          toValue: `${prefix}${newRevision.number}`,
           timestamp: nowIso,
         }
 
         return {
           ...t,
-          nextRevisionNumber: nextNum + 1,
+          ...(isRedraw
+            ? { nextRedrawNumber: nextNum + 1 }
+            : { nextRevisionNumber: nextNum + 1 }),
           revisions: [...(t.revisions || []), newRevision],
           activity: [...(t.activity ?? []), entry],
         }
@@ -927,6 +947,8 @@ export class StoreManager {
         const target = (t.revisions || []).find((r) => r.id === revisionId)
         if (!target) return t
 
+        const prefix = target.type === "redraw" ? "RD" : "R"
+
         const updatedRevisions = (t.revisions || []).map((r) => {
           if (r.id !== revisionId) return r
           return {
@@ -945,24 +967,67 @@ export class StoreManager {
             actorId,
             actorName,
             action: "changed revision status",
-            detail: `R${target.number}: ${target.status} → ${updates.status}`,
+            detail: `${prefix}${target.number}: ${target.status} → ${updates.status}`,
             fromValue: target.status,
             toValue: updates.status,
             timestamp: nowIso,
           })
         }
 
+        if (updates.type !== undefined && updates.type !== target.type) {
+          newEntries.push({
+            id: `act-${crypto.randomUUID().slice(0, 8)}`,
+            type: "system",
+            actorId,
+            actorName,
+            action: "changed revision type",
+            detail: `${prefix}${target.number} type changed to ${updates.type === "redraw" ? "Re-Draw" : "Revision"}`,
+            fromValue: target.type,
+            toValue: updates.type,
+            timestamp: nowIso,
+          })
+        }
+
+        if (updates.priority !== undefined && updates.priority !== target.priority) {
+          newEntries.push({
+            id: `act-${crypto.randomUUID().slice(0, 8)}`,
+            type: "system",
+            actorId,
+            actorName,
+            action: "changed revision priority",
+            detail: `${prefix}${target.number} priority set to ${updates.priority}`,
+            fromValue: target.priority,
+            toValue: updates.priority,
+            timestamp: nowIso,
+          })
+        }
+
         if (
-          updates.assigneeId !== undefined &&
-          updates.assigneeId !== target.assigneeId
+          updates.flagIds !== undefined &&
+          JSON.stringify(updates.flagIds) !== JSON.stringify(target.flagIds)
         ) {
           newEntries.push({
             id: `act-${crypto.randomUUID().slice(0, 8)}`,
             type: "system",
             actorId,
             actorName,
-            action: "changed revision assignee",
-            detail: `R${target.number} assignee updated`,
+            action: "updated revision flags",
+            detail: `${prefix}${target.number} flags updated`,
+            timestamp: nowIso,
+          })
+        }
+
+        if (
+          updates.assigneeIds !== undefined &&
+          JSON.stringify(updates.assigneeIds) !== JSON.stringify(target.assigneeIds)
+        ) {
+          newEntries.push({
+            id: `act-${crypto.randomUUID().slice(0, 8)}`,
+            type: "system",
+            actorId,
+            actorName,
+            action: "updated revision assignees",
+            detail: `${prefix}${target.number} assignees updated`,
             timestamp: nowIso,
           })
         }
@@ -977,7 +1042,7 @@ export class StoreManager {
             actorId,
             actorName,
             action: "changed revision due date",
-            detail: `R${target.number} due date set to ${updates.dueDate || "none"}`,
+            detail: `${prefix}${target.number} due date set to ${updates.dueDate || "none"}`,
             timestamp: nowIso,
           })
         }
@@ -992,14 +1057,14 @@ export class StoreManager {
             actorId,
             actorName,
             action: "updated revision",
-            detail: `R${target.number}: ${updates.title}`,
+            detail: `${prefix}${target.number}: ${updates.title}`,
             timestamp: nowIso,
           })
         }
 
         if (
           updates.details !== undefined &&
-          updates.details !== target.details &&
+          JSON.stringify(updates.details) !== JSON.stringify(target.details) &&
           updates.title === undefined
         ) {
           newEntries.push({
@@ -1008,7 +1073,7 @@ export class StoreManager {
             actorId,
             actorName,
             action: "updated revision details",
-            detail: `R${target.number} details updated`,
+            detail: `${prefix}${target.number} details updated`,
             timestamp: nowIso,
           })
         }
@@ -1039,13 +1104,15 @@ export class StoreManager {
         const target = (t.revisions || []).find((r) => r.id === revisionId)
         if (!target) return t
 
+        const prefix = target.type === "redraw" ? "RD" : "R"
+
         const entry: TaskActivityEvent = {
           id: `act-${crypto.randomUUID().slice(0, 8)}`,
           type: "system",
           actorId,
           actorName,
           action: "changed revision status",
-          detail: `R${target.number}: ${target.status} → ${status}`,
+          detail: `${prefix}${target.number}: ${target.status} → ${status}`,
           fromValue: target.status,
           toValue: status,
           timestamp: nowIso,
@@ -1075,13 +1142,15 @@ export class StoreManager {
         if (t.id !== taskId) return t
 
         const target = (t.revisions || []).find((r) => r.id === revisionId)
+        const prefix = target?.type === "redraw" ? "RD" : "R"
+
         const entry: TaskActivityEvent = {
           id: `act-${crypto.randomUUID().slice(0, 8)}`,
           type: "system",
           actorId: "usr-actor",
           actorName,
-          action: "deleted revision",
-          detail: target ? `R${target.number}: ${target.title}` : undefined,
+          action: target?.type === "redraw" ? "deleted redraw" : "deleted revision",
+          detail: target ? `${prefix}${target.number}: ${target.title}` : undefined,
           timestamp: nowIso,
         }
 
@@ -1092,6 +1161,21 @@ export class StoreManager {
         }
       }),
     }))
+  }
+
+  public addRevisionFlag(
+    flag: { name: string; color: TaskTagColor }
+  ): RevisionFlag {
+    const newFlag: RevisionFlag = {
+      id: `rflag-${crypto.randomUUID().slice(0, 8)}`,
+      name: flag.name.trim(),
+      color: flag.color,
+    }
+    this.setAndPersist((s) => ({
+      ...s,
+      revisionFlags: [...(s.revisionFlags || DEFAULT_REVISION_FLAGS), newFlag],
+    }))
+    return newFlag
   }
 
   public addRevisionFiles(

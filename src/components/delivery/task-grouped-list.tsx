@@ -105,6 +105,7 @@ export function TaskGroupedList({
                     const openRevisions = revs.filter(
                       (r) => r.status !== "approved" && r.status !== "rejected"
                     ).length
+                    const redrawCount = revs.filter((r) => r.type === "redraw").length
                     const overdue =
                       task.status !== "Complete" && task.dueDate < todayIso
                     const pMeta = PRIORITY_META[task.priority]
@@ -146,7 +147,7 @@ export function TaskGroupedList({
                           {/* Counts */}
                           <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
                             <span
-                              title={`${revs.length} revisions (${openRevisions} open)`}
+                              title={`${revs.length} revisions (${openRevisions} open)${redrawCount > 0 ? ` · ${redrawCount} Re-Draw` : ""}`}
                               className={cn(
                                 "inline-flex items-center gap-0.5 tabular-nums",
                                 openRevisions > 0
@@ -160,6 +161,11 @@ export function TaskGroupedList({
                                   ? `${openRevisions} open / ${revs.length}`
                                   : `${revs.length}`}
                               </span>
+                              {redrawCount > 0 ? (
+                                <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                  · {redrawCount} Re-Draw
+                                </span>
+                              ) : null}
                             </span>
                             <span
                               title="Comments"

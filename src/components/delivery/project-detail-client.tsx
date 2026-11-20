@@ -315,6 +315,7 @@ export function ProjectDetailClient({
                   const openRevisions = revs.filter(
                     (r) => r.status !== "approved" && r.status !== "rejected"
                   ).length
+                  const redrawCount = revs.filter((r) => r.type === "redraw").length
                   const overdue =
                     task.status !== "Complete" && task.dueDate < todayIso
                   const pMeta = PRIORITY_META[task.priority]
@@ -365,7 +366,7 @@ export function ProjectDetailClient({
                             {task.loggedHours}/{task.estimatedHours}h
                           </span>
                           <span
-                            title={`${revs.length} revisions (${openRevisions} open)`}
+                            title={`${revs.length} revisions (${openRevisions} open)${redrawCount > 0 ? ` · ${redrawCount} Re-Draw` : ""}`}
                             className={cn(
                               "inline-flex items-center gap-1 tabular-nums",
                               openRevisions > 0
@@ -374,9 +375,16 @@ export function ProjectDetailClient({
                             )}
                           >
                             <RotateCcw className="size-3" />
-                            {openRevisions > 0
-                              ? `${openRevisions} open / ${revs.length}`
-                              : `${revs.length}`}
+                            <span>
+                              {openRevisions > 0
+                                ? `${openRevisions} open / ${revs.length}`
+                                : `${revs.length}`}
+                            </span>
+                            {redrawCount > 0 ? (
+                              <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                · {redrawCount} Re-Draw
+                              </span>
+                            ) : null}
                           </span>
                           <span className="inline-flex items-center gap-1 tabular-nums">
                             <MessageSquare className="size-3" />

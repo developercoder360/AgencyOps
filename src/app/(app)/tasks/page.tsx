@@ -334,12 +334,21 @@ function TasksPageContent() {
         id: "revisions",
         accessorFn: (row) => {
           const revs = row.revisions || []
+          if (revs.length === 0) return "None"
           const openRevs = revs.filter(
             (r) => r.status !== "approved" && r.status !== "rejected"
           ).length
-          if (openRevs > 0) return "has_open"
-          if (revs.length > 0) return "all_approved"
-          return "none"
+          const redraws = revs.filter((r) => r.type === "redraw").length
+          const parts: string[] = []
+          if (openRevs > 0) {
+            parts.push(`${openRevs} open / ${revs.length}`)
+          } else {
+            parts.push(`${revs.length} total`)
+          }
+          if (redraws > 0) {
+            parts.push(`${redraws} Re-Draw`)
+          }
+          return parts.join(" · ")
         },
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Revisions" />
@@ -355,19 +364,35 @@ function TasksPageContent() {
           const openRevs = revs.filter(
             (r) => r.status !== "approved" && r.status !== "rejected"
           ).length
-          let statusKey = "none"
-          if (openRevs > 0) statusKey = "has_open"
-          else if (revs.length > 0) statusKey = "all_approved"
-          return filterValue.includes(statusKey)
+          const openRedraws = revs.filter(
+            (r) => r.type === "redraw" && r.status !== "approved" && r.status !== "rejected"
+          ).length
+          const hasRevision = revs.some((r) => r.type !== "redraw")
+          const hasRedraw = revs.some((r) => r.type === "redraw")
+
+          return filterValue.some((val) => {
+            if (val === "has_open") return openRevs > 0
+            if (val === "has_open_redraw") return openRedraws > 0
+            if (val === "type_revision") return hasRevision
+            if (val === "type_redraw") return hasRedraw
+            if (val === "prio_urgent") return revs.some((r) => r.priority === "urgent")
+            if (val === "prio_high") return revs.some((r) => r.priority === "high")
+            if (val === "prio_regular") return revs.some((r) => r.priority === "regular")
+            if (val === "all_approved") return revs.length > 0 && openRevs === 0
+            if (val === "none") return revs.length === 0
+            return false
+          })
         },
         cell: ({ row }) => {
           const revs = row.original.revisions || []
-          const openRevs = revs.filter(
-            (r) => r.status !== "approved" && r.status !== "rejected"
-          ).length
           if (revs.length === 0) {
             return <span className="text-xs text-muted-foreground">—</span>
           }
+          const openRevs = revs.filter(
+            (r) => r.status !== "approved" && r.status !== "rejected"
+          ).length
+          const redrawCount = revs.filter((r) => r.type === "redraw").length
+
           return (
             <span
               className={cn(
@@ -381,6 +406,11 @@ function TasksPageContent() {
               {openRevs > 0
                 ? `${openRevs} open / ${revs.length}`
                 : `${revs.length}`}
+              {redrawCount > 0 ? (
+                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                  {" · "}{redrawCount} Re-Draw
+                </span>
+              ) : null}
             </span>
           )
         },
@@ -459,6 +489,12 @@ function TasksPageContent() {
         title: "Revisions",
         options: [
           { label: "Has open revisions", value: "has_open" },
+          { label: "Has open Re-Draw", value: "has_open_redraw" },
+          { label: "Type: Revision", value: "type_revision" },
+          { label: "Type: Re-Draw", value: "type_redraw" },
+          { label: "Priority: Urgent", value: "prio_urgent" },
+          { label: "Priority: High", value: "prio_high" },
+          { label: "Priority: Regular", value: "prio_regular" },
           { label: "All revisions approved", value: "all_approved" },
           { label: "No revisions", value: "none" },
         ],
@@ -596,6 +632,7 @@ function TasksPageContent() {
                           (r) =>
                             r.status !== "approved" && r.status !== "rejected"
                         ).length
+                        const redrawCount = revs.filter((r) => r.type === "redraw").length
                         const overdue =
                           task.status !== "Complete" && task.dueDate < todayIso
                         const pMeta = PRIORITY_META[task.priority]
@@ -643,7 +680,7 @@ function TasksPageContent() {
                               <AvatarGroup people={assignees} max={2} />
                               <div className="flex shrink-0 items-center gap-2 text-[11px] whitespace-nowrap text-muted-foreground">
                                 <span
-                                  title={`${revs.length} revisions (${openRevisions} open)`}
+                                  title={`${revs.length} revisions (${openRevisions} open)${redrawCount > 0 ? ` · ${redrawCount} Re-Draw` : ""}`}
                                   className={cn(
                                     "inline-flex items-center gap-0.5 tabular-nums",
                                     openRevisions > 0
@@ -653,6 +690,11 @@ function TasksPageContent() {
                                 >
                                   <RotateCcw className="size-3 shrink-0" />
                                   <span>{revs.length}</span>
+                                  {redrawCount > 0 ? (
+                                    <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                      · {redrawCount} RD
+                                    </span>
+                                  ) : null}
                                   {openRevisions > 0 ? (
                                     <span
                                       className="size-1.5 rounded-full bg-amber-500 shrink-0"

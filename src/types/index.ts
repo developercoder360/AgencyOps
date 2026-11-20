@@ -362,12 +362,24 @@ export type RevisionStatus =
   | "approved"
   | "rejected"
 
+export type RevisionType = "revision" | "redraw"
+export type RevisionPriority = "regular" | "high" | "urgent"
+
+export interface RevisionFlag {
+  id: string
+  name: string
+  color: TaskTagColor
+}
+
 export interface TaskRevision {
   id: string
+  type: RevisionType
   number: number
   title: string
-  details: string
-  assigneeId?: string
+  details: Record<string, unknown>
+  assigneeIds: string[]
+  priority: RevisionPriority
+  flagIds: string[]
   dueDate?: string
   status: RevisionStatus
   files: TaskFile[]
@@ -434,6 +446,7 @@ export interface Task {
   tags?: TaskTag[]
   revisions: TaskRevision[]
   nextRevisionNumber?: number
+  nextRedrawNumber?: number
   legacy?: {
     subtasks?: unknown[]
     checklist?: unknown[]
