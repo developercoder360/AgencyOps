@@ -1,13 +1,14 @@
 "use client"
 
 import * as React from "react"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import {
-  AlertCircle,
   Calendar,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  FileText,
   Paperclip,
   Plus,
   RotateCcw,
@@ -22,8 +23,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -39,6 +40,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Calendar as CalendarPicker } from "@/components/ui/calendar"
 import { ConfirmDeleteDialog, StatusBadge } from "@/components/shared"
 import type { TaskRolePermissions } from "@/lib/permissions"
 import type {
@@ -64,7 +71,6 @@ interface TaskRevisionsProps {
   onAddRevision: (data: {
     title: string
     details?: string
-    requestedBy?: "client" | "internal"
     assigneeId?: string
     dueDate?: string
     files?: TaskFile[]
@@ -87,6 +93,20 @@ const ALL_REVISION_STATUSES: { value: RevisionStatus; label: string }[] = [
   { value: "rejected", label: "Rejected" },
 ]
 
+const addRevisionSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, "Title is required")
+    .max(140, "Title must be 140 characters or less"),
+  details: z.string().optional(),
+  assigneeId: z.string().optional(),
+  dueDate: z.string().optional(),
+  moveToReDraw: z.boolean(),
+})
+
+type AddRevisionFormValues = z.infer<typeof addRevisionSchema>
+
 export function TaskRevisions({
   taskStatus,
   revisions,
@@ -107,26 +127,19 @@ export function TaskRevisions({
   // Accordion expanded state (single expanded row)
   const [expandedId, setExpandedId] = React.useState<string | null>(null)
 
-  // Inline Add Form state
-  const [isAdding, setIsAdding] = React.useState(false)
-  const [newTitle, setNewTitle] = React.useState("")
-  const [newDetails, setNewDetails] = React.useState("")
-  const [newRequestedBy, setNewRequestedBy] = React.useState<"client" | "internal">("client")
-  const [newAssigneeId, setNewAssigneeId] = React.useState<string>(
-    defaultAssigneeId || users[0]?.id || ""
-  )
-  const [newDueDate, setNewDueDate] = React.useState(defaultDueDate || "")
-  const [newFiles, setNewFiles] = React.useState<TaskFile[]>([])
+  // Add Revision Modal state
+  const [addModalOpen, setAddModalOpen] = React.useState(false)
+  const [modalFiles, setModalFiles] = React.useState<TaskFile[]>([])
+  const [isDragging, setIsDragging] = React.useState(false)
+  const [datePopoverOpen, setDatePopoverOpen] = React.useState(false)
 
-  // Re-draw prompt dialog state
-  const [showReDrawDialog, setShowReDrawDialog] = React.useState(false)
+  // Trigger button ref to restore focus cleanly with preventScroll
+  const addBtnRef = React.useRef<HTMLButtonElement | null>(null)
+  const modalFileInputRef = React.useRef<HTMLInputElement | null>(null)
+  const rowFileInputRefs = React.useRef<Record<string, HTMLInputElement | null>>({})
 
   // Delete confirm dialog state
   const [deleteTargetId, setDeleteTargetId] = React.useState<string | null>(null)
-
-  // File input refs
-  const addFileInputRef = React.useRef<HTMLInputElement | null>(null)
-  const rowFileInputRefs = React.useRef<Record<string, HTMLInputElement | null>>({})
 
   // Sort revisions newest first (descending by number)
   const sortedRevisions = React.useMemo(() => {
@@ -137,43 +150,101 @@ export function TaskRevisions({
   const approvedCount = sortedRevisions.filter((r) => r.status === "approved").length
   const allApproved = totalCount > 0 && approvedCount === totalCount
 
-  // Reset form when closed
-  function handleCancelAdd() {
-    setIsAdding(false)
-    setNewTitle("")
-    setNewDetails("")
-    setNewRequestedBy("client")
-    setNewAssigneeId(defaultAssigneeId || users[0]?.id || "")
-    setNewDueDate(defaultDueDate || "")
-    setNewFiles([])
+  // Next revision number for header badge
+  const nextRevNumber = React.useMemo(() => {
+    return (revisions || []).reduce((max, r) => Math.max(max, r.number || 0), 0) + 1
+  }, [revisions])
+
+  const isCompleteOrQa = taskStatus === "Complete" || taskStatus === "QA Review"
+
+  const form = useForm<AddRevisionFormValues>({
+    resolver: zodResolver(addRevisionSchema),
+    defaultValues: {
+      title: "",
+      details: "",
+      assigneeId: defaultAssigneeId || users[0]?.id || "",
+      dueDate: defaultDueDate || todayIso,
+      moveToReDraw: isCompleteOrQa,
+    },
+  })
+
+  // Clean up any stray Radix body styles when modal closes
+  React.useEffect(() => {
+    if (!addModalOpen) {
+      requestAnimationFrame(() => {
+        document.body.removeAttribute("data-scroll-locked")
+        if (document.body.style.pointerEvents === "none") {
+          document.body.style.pointerEvents = ""
+        }
+      })
+    }
+  }, [addModalOpen])
+
+  function handleOpenModal() {
+    form.reset({
+      title: "",
+      details: "",
+      assigneeId: defaultAssigneeId || users[0]?.id || "",
+      dueDate: defaultDueDate || todayIso,
+      moveToReDraw: isCompleteOrQa,
+    })
+    setModalFiles([])
+    setDatePopoverOpen(false)
+    setIsDragging(false)
+    setAddModalOpen(true)
   }
 
-  function handleSaveAdd() {
-    const trimmedTitle = newTitle.trim()
-    if (!trimmedTitle) {
-      toast.error("Please provide a title for the revision")
-      return
+  function handleFilesAdded(fileList: FileList | File[]) {
+    const uploadedList: TaskFile[] = []
+    const nowIso = new Date().toISOString()
+
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i]
+      const sizeKb = Math.round(f.size / 1024)
+      const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`
+
+      uploadedList.push({
+        id: `att-${crypto.randomUUID().slice(0, 8)}`,
+        name: f.name,
+        previewUrl: URL.createObjectURL(f),
+        size: sizeStr,
+        type: f.type || "application/octet-stream",
+        uploadedAt: nowIso,
+        uploadedBy: "Current User",
+      })
     }
 
-    onAddRevision({
-      title: trimmedTitle,
-      details: newDetails.trim(),
-      requestedBy: newRequestedBy,
-      assigneeId: newAssigneeId || undefined,
-      dueDate: newDueDate || undefined,
-      files: newFiles,
+    setModalFiles((prev) => [...prev, ...uploadedList])
+  }
+
+  function onSubmit(values: AddRevisionFormValues) {
+    const created = onAddRevision({
+      title: values.title.trim(),
+      details: values.details?.trim() || undefined,
+      assigneeId: values.assigneeId || undefined,
+      dueDate: values.dueDate || undefined,
+      files: modalFiles,
     })
 
-    toast.success("Revision added")
-    handleCancelAdd()
+    // If task was Complete/QA and checkbox was checked, trigger Re-Draw flow
+    if (isCompleteOrQa && values.moveToReDraw) {
+      onMoveToReDraw?.()
+    }
 
-    // If task is Complete or QA Review, prompt to move to Re-Draw
-    if (taskStatus === "Complete" || taskStatus === "QA Review") {
-      setShowReDrawDialog(true)
+    toast.success("Revision added")
+    setAddModalOpen(false)
+
+    // Expand the new revision and keep it visible
+    if (created && created.id) {
+      setExpandedId(created.id)
+      requestAnimationFrame(() => {
+        const rowEl = document.getElementById(`rev-row-${created.id}`)
+        rowEl?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+      })
     }
   }
 
-  function handleFileSelection(
+  function handleRowFileSelection(
     e: React.ChangeEvent<HTMLInputElement>,
     onAdd: (files: TaskFile[]) => void
   ) {
@@ -203,14 +274,13 @@ export function TaskRevisions({
     e.target.value = ""
   }
 
-  // Determine allowed statuses for a given revision based on role
+  // Allowed statuses based on role
   function getAllowedStatuses(rev: TaskRevision): { value: RevisionStatus; label: string }[] {
     if (permissions.canApproveRejectRevision && permissions.canEditRevision) {
       return ALL_REVISION_STATUSES
     }
 
     if (currentUserRole === "QA Reviewer") {
-      // QA can approve or reject submitted revisions
       if (rev.status === "submitted") {
         return [
           { value: "submitted", label: "Submitted" },
@@ -222,7 +292,6 @@ export function TaskRevisions({
     }
 
     if (permissions.canUpdateAssignedRevisionProgress) {
-      // Designer/Developer can update progress on assigned revisions: in_progress or submitted
       return [
         { value: "requested", label: "Requested" },
         { value: "in_progress", label: "In Progress" },
@@ -230,7 +299,6 @@ export function TaskRevisions({
       ]
     }
 
-    // Read only
     return ALL_REVISION_STATUSES.filter((s) => s.value === rev.status)
   }
 
@@ -269,10 +337,11 @@ export function TaskRevisions({
 
         {permissions.canAddRevision ? (
           <Button
+            ref={addBtnRef}
             type="button"
             size="xs"
             variant="outline"
-            onClick={() => setIsAdding((prev) => !prev)}
+            onClick={handleOpenModal}
             className="gap-1 text-xs"
           >
             <Plus className="size-3.5" />
@@ -289,191 +358,19 @@ export function TaskRevisions({
         </div>
       ) : null}
 
-      {/* Inline Add Revision Form (Top of list) */}
-      {isAdding ? (
-        <div className="space-y-3 rounded-lg border border-primary/30 bg-card p-3 shadow-2xs">
-          <div className="flex items-center justify-between border-b border-border/50 pb-2">
-            <span className="text-xs font-semibold text-foreground">
-              New Revision (R{totalCount + 1})
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleCancelAdd}
-              aria-label="Cancel adding revision"
-            >
-              <X className="size-3.5 text-muted-foreground" />
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <Label htmlFor="rev-new-title" className="text-xs">
-                Title <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="rev-new-title"
-                autoFocus
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSaveAdd()
-                  } else if (e.key === "Escape") {
-                    handleCancelAdd()
-                  }
-                }}
-                placeholder="e.g. Logo colour tweak, Update hero image..."
-                className="h-8 text-xs"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="rev-new-details" className="text-xs">
-                Requested Changes (Details)
-              </Label>
-              <Textarea
-                id="rev-new-details"
-                rows={2}
-                value={newDetails}
-                onChange={(e) => setNewDetails(e.target.value)}
-                placeholder="Describe what specific changes were requested..."
-                className="text-xs"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Requested By</Label>
-                <Select
-                  value={newRequestedBy}
-                  onValueChange={(val: "client" | "internal") => setNewRequestedBy(val)}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="client">Client</SelectItem>
-                    <SelectItem value="internal">Internal</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Assignee</Label>
-                <Select value={newAssigneeId} onValueChange={setNewAssigneeId}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">Due Date</Label>
-                <Input
-                  type="date"
-                  value={newDueDate}
-                  onChange={(e) => setNewDueDate(e.target.value)}
-                  className="h-8 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Reference Files */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-[11px] text-muted-foreground">Reference Files</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => addFileInputRef.current?.click()}
-                  className="h-6 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                >
-                  <Upload className="size-3" />
-                  <span>Attach files</span>
-                </Button>
-                <input
-                  ref={addFileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) =>
-                    handleFileSelection(e, (files) =>
-                      setNewFiles((prev) => [...prev, ...files])
-                    )
-                  }
-                />
-              </div>
-
-              {newFiles.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {newFiles.map((file, idx) => (
-                    <span
-                      key={file.id || idx}
-                      className="inline-flex items-center gap-1 rounded border border-border bg-muted/40 px-2 py-0.5 text-xs text-foreground"
-                    >
-                      <Paperclip className="size-3 text-muted-foreground" />
-                      <span className="max-w-[150px] truncate">{file.name}</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setNewFiles((prev) => prev.filter((_, i) => i !== idx))
-                        }
-                        className="ml-1 text-muted-foreground hover:text-destructive"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 border-t border-border/50 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={handleCancelAdd}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="xs"
-              onClick={handleSaveAdd}
-              disabled={!newTitle.trim()}
-            >
-              Save Revision
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
       {/* Revision Rows List */}
-      {totalCount === 0 && !isAdding ? (
+      {totalCount === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-6 text-center">
           <RotateCcw className="size-7 text-muted-foreground/40" />
           <p className="mt-1 text-xs text-muted-foreground">
-            No revisions yet. Add one when the client or QA requests changes.
+            No revisions yet. Add one when rework is requested.
           </p>
           {permissions.canAddRevision ? (
             <Button
               type="button"
               variant="outline"
               size="xs"
-              onClick={() => setIsAdding(true)}
+              onClick={handleOpenModal}
               className="mt-2.5 gap-1 text-xs"
             >
               <Plus className="size-3.5" />
@@ -497,6 +394,7 @@ export function TaskRevisions({
             return (
               <div
                 key={rev.id}
+                id={`rev-row-${rev.id}`}
                 className={cn(
                   "overflow-hidden rounded-lg border transition-all",
                   isExpanded
@@ -523,12 +421,6 @@ export function TaskRevisions({
                           {rev.title}
                         </span>
                         <StatusBadge status={rev.status} />
-                        <Badge
-                          variant="outline"
-                          className="h-4 px-1.5 text-[10px] capitalize font-normal text-muted-foreground"
-                        >
-                          {rev.requestedBy}
-                        </Badge>
                       </div>
                     </div>
                   </div>
@@ -648,27 +540,8 @@ export function TaskRevisions({
                       />
                     </div>
 
-                    {/* Metadata Row: Requested By, Assignee, Due Date */}
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      <div className="space-y-1">
-                        <Label className="text-[11px] text-muted-foreground">Requested By</Label>
-                        <Select
-                          value={rev.requestedBy}
-                          disabled={!permissions.canEditRevision}
-                          onValueChange={(val: "client" | "internal") =>
-                            onUpdateRevision(rev.id, { requestedBy: val })
-                          }
-                        >
-                          <SelectTrigger aria-label="Revision status" className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="client">Client</SelectItem>
-                            <SelectItem value="internal">Internal</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
+                    {/* Metadata Row: Assignee & Due Date */}
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground">Assignee</Label>
                         <Select
@@ -680,14 +553,21 @@ export function TaskRevisions({
                             })
                           }
                         >
-                          <SelectTrigger aria-label="Revision status" className="h-8 text-xs">
+                          <SelectTrigger className="h-8 text-xs">
                             <SelectValue placeholder="Unassigned" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="unassigned">Unassigned</SelectItem>
                             {users.map((u) => (
                               <SelectItem key={u.id} value={u.id}>
-                                {u.name}
+                                <div className="flex items-center gap-1.5">
+                                  <Avatar className="size-4 shrink-0">
+                                    <AvatarFallback className="text-[8px]">
+                                      {u.avatarInitials}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span>{u.name}</span>
+                                </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -701,98 +581,67 @@ export function TaskRevisions({
                           value={rev.dueDate || ""}
                           disabled={!permissions.canEditRevision}
                           onChange={(e) =>
-                            onUpdateRevision(rev.id, {
-                              dueDate: e.target.value || undefined,
-                            })
+                            onUpdateRevision(rev.id, { dueDate: e.target.value || undefined })
                           }
-                          className={cn(
-                            "h-8 text-xs",
-                            isOverdue && "border-rose-500 text-rose-600 dark:text-rose-400"
-                          )}
+                          className="h-8 text-xs"
                         />
                       </div>
                     </div>
 
-                    {/* Reference Files Section */}
-                    <div className="space-y-1.5 pt-1">
+                    {/* Reference Files List & Upload */}
+                    <div className="space-y-1.5 border-t border-border/50 pt-2">
                       <div className="flex items-center justify-between">
                         <Label className="text-[11px] text-muted-foreground">
                           Reference Attachments ({rev.files?.length || 0})
                         </Label>
                         {permissions.canEditRevision ? (
                           <>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="xs"
-                              onClick={() =>
-                                rowFileInputRefs.current[rev.id]?.click()
-                              }
-                              className="h-6 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                            >
-                              <Upload className="size-3" />
-                              <span>Upload file</span>
-                            </Button>
                             <input
+                              type="file"
+                              multiple
                               ref={(el) => {
                                 rowFileInputRefs.current[rev.id] = el
                               }}
-                              type="file"
-                              multiple
                               className="hidden"
                               onChange={(e) =>
-                                handleFileSelection(e, (files) =>
+                                handleRowFileSelection(e, (files) =>
                                   onAddRevisionFiles(rev.id, files)
                                 )
                               }
                             />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => rowFileInputRefs.current[rev.id]?.click()}
+                              className="h-6 gap-1 text-[11px] text-primary"
+                            >
+                              <Upload className="size-3" />
+                              <span>Attach file</span>
+                            </Button>
                           </>
                         ) : null}
                       </div>
 
                       {rev.files && rev.files.length > 0 ? (
-                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                          {rev.files.map((f) => (
+                        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                          {rev.files.map((file) => (
                             <div
-                              key={f.id}
-                              className="flex items-center justify-between gap-2 rounded-md border border-border bg-card p-1.5 text-xs"
+                              key={file.id}
+                              className="flex items-center justify-between gap-1.5 rounded border border-border/60 bg-background/80 p-1.5 text-xs"
                             >
                               <div className="flex min-w-0 items-center gap-1.5">
-                                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-                                <div className="min-w-0">
-                                  <a
-                                    href={f.previewUrl || "#"}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="truncate font-medium text-foreground hover:underline"
-                                  >
-                                    {f.name}
-                                  </a>
-                                  <div className="text-[10px] text-muted-foreground">
-                                    {f.size}
-                                  </div>
-                                </div>
+                                <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+                                <span className="truncate text-[11px]">{file.name}</span>
                               </div>
-
-                              {permissions.canEditRevision ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    onUpdateRevision(rev.id, {
-                                      files: rev.files.filter((x) => x.id !== f.id),
-                                    })
-                                  }
-                                  className="text-muted-foreground hover:text-destructive"
-                                  aria-label={`Remove file ${f.name}`}
-                                >
-                                  <X className="size-3.5" />
-                                </button>
-                              ) : null}
+                              <span className="shrink-0 text-[10px] text-muted-foreground">
+                                {file.size}
+                              </span>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <p className="text-[11px] text-muted-foreground/70">
+                        <p className="text-[11px] text-muted-foreground/70 italic">
                           No reference files attached to this revision.
                         </p>
                       )}
@@ -838,40 +687,302 @@ export function TaskRevisions({
         }}
       />
 
-      {/* Re-Draw Prompt Dialog */}
-      <Dialog open={showReDrawDialog} onOpenChange={setShowReDrawDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertCircle className="size-5 text-amber-500" />
-              <span>Move this task to Re-Draw?</span>
-            </DialogTitle>
-            <DialogDescription>
-              A revision was added to a task currently marked as{" "}
-              <strong>{taskStatus}</strong>. Would you like to move this task status
-              back to <strong>Re-Draw</strong> for team rework?
+      {/* Centered Add Revision Modal Dialog */}
+      <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
+        <DialogContent
+          onCloseAutoFocus={(e) => {
+            e.preventDefault()
+            addBtnRef.current?.focus({ preventScroll: true })
+          }}
+          className="w-[calc(100vw-2rem)] sm:max-w-lg max-h-[90vh] flex flex-col p-4 sm:p-6 overflow-hidden"
+        >
+          <DialogHeader className="pr-6">
+            <div className="flex items-center justify-between gap-2">
+              <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+                <RotateCcw className="size-4 text-primary" />
+                <span>Add revision</span>
+              </DialogTitle>
+              <span className="rounded-full bg-muted px-2.5 py-0.5 font-mono text-xs font-semibold text-muted-foreground ring-1 ring-border">
+                Revision #{nextRevNumber}
+              </span>
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Log rework or changes for this deliverable.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowReDrawDialog(false)}
-            >
-              Keep as {taskStatus}
-            </Button>
-            <Button
-              type="button"
-              variant="default"
-              onClick={() => {
-                setShowReDrawDialog(false)
-                onMoveToReDraw?.()
-                toast.success("Task moved to Re-Draw")
-              }}
-            >
-              Move to Re-Draw
-            </Button>
-          </DialogFooter>
+
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex-1 flex flex-col min-h-0 overflow-hidden"
+          >
+            <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 py-1">
+              {/* Title (Required, autoFocus) */}
+              <div className="space-y-1.5">
+                <Label htmlFor="rev-modal-title" className="text-xs font-medium">
+                  Title <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="rev-modal-title"
+                  autoFocus
+                  placeholder="e.g. Logo colour tweak"
+                  {...form.register("title")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      form.handleSubmit(onSubmit)()
+                    }
+                  }}
+                  aria-label="Revision title"
+                  className={cn("h-9 text-xs", form.formState.errors.title && "border-destructive")}
+                />
+                {form.formState.errors.title && (
+                  <p className="text-[11px] font-medium text-destructive">
+                    {form.formState.errors.title.message}
+                  </p>
+                )}
+              </div>
+
+              {/* Details (Textarea, Ctrl/Cmd+Enter submits) */}
+              <div className="space-y-1.5">
+                <Label htmlFor="rev-modal-details" className="text-xs font-medium">
+                  Details
+                </Label>
+                <Textarea
+                  id="rev-modal-details"
+                  placeholder="Specific feedback or rework instructions..."
+                  rows={3}
+                  {...form.register("details")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault()
+                      form.handleSubmit(onSubmit)()
+                    }
+                  }}
+                  aria-label="Revision details"
+                  className="text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Press Enter to submit from Title, or Ctrl+Enter / Cmd+Enter from Details.
+                </p>
+              </div>
+
+              {/* Assignee & Due Date Grid */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* Assignee Select */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Assignee</Label>
+                  <Controller
+                    control={form.control}
+                    name="assigneeId"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value || "unassigned"}
+                        onValueChange={(val) =>
+                          field.onChange(val === "unassigned" ? "" : val)
+                        }
+                      >
+                        <SelectTrigger aria-label="Assignee" className="h-9 text-xs">
+                          <SelectValue placeholder="Select assignee" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[60]">
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {users.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="size-4 shrink-0">
+                                  <AvatarFallback className="text-[8px]">
+                                    {u.avatarInitials}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{u.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+
+                {/* Due Date Picker Popover */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Due Date</Label>
+                  <Controller
+                    control={form.control}
+                    name="dueDate"
+                    render={({ field }) => (
+                      <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            aria-label="Due date"
+                            className={cn(
+                              "h-9 w-full justify-start text-left text-xs font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            <Calendar className="mr-2 size-3.5" />
+                            {field.value ? field.value : <span>Pick due date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 z-[60]" align="start">
+                          <CalendarPicker
+                            mode="single"
+                            selected={
+                              field.value ? new Date(field.value + "T00:00:00") : undefined
+                            }
+                            onSelect={(date) => {
+                              if (date) {
+                                const year = date.getFullYear()
+                                const month = String(date.getMonth() + 1).padStart(2, "0")
+                                const day = String(date.getDate()).padStart(2, "0")
+                                field.onChange(`${year}-${month}-${day}`)
+                              } else {
+                                field.onChange("")
+                              }
+                              setDatePopoverOpen(false)
+                            }}
+                            defaultMonth={
+                              field.value ? new Date(field.value + "T00:00:00") : new Date()
+                            }
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* Reference Files Drag & Drop Zone */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Reference Files</Label>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setIsDragging(true)
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setIsDragging(false)
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setIsDragging(false)
+                    if (e.dataTransfer.files) {
+                      handleFilesAdded(e.dataTransfer.files)
+                    }
+                  }}
+                  onClick={() => modalFileInputRef.current?.click()}
+                  className={cn(
+                    "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-3.5 text-center cursor-pointer transition-colors",
+                    isDragging
+                      ? "border-primary bg-primary/5"
+                      : "border-border/80 hover:border-primary/50 hover:bg-muted/30"
+                  )}
+                >
+                  <Upload className="size-5 text-muted-foreground/60 mb-1" />
+                  <p className="text-xs font-medium text-foreground">
+                    Drop files here or click to browse
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Upload screenshots, mockups, or PDF specs
+                  </p>
+                  <input
+                    ref={modalFileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        handleFilesAdded(e.target.files)
+                      }
+                      e.target.value = ""
+                    }}
+                  />
+                </div>
+
+                {/* Attached Files List */}
+                {modalFiles.length > 0 ? (
+                  <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1 pt-1">
+                    {modalFiles.map((f) => (
+                      <div
+                        key={f.id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1 text-xs"
+                      >
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+                          <span className="truncate font-medium">{f.name}</span>
+                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                            ({f.size})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setModalFiles((prev) => prev.filter((item) => item.id !== f.id))
+                          }}
+                          className="rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          aria-label={`Remove file ${f.name}`}
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Move to Re-Draw Checkbox for Complete/QA Tasks */}
+              {isCompleteOrQa && (
+                <Controller
+                  control={form.control}
+                  name="moveToReDraw"
+                  render={({ field }) => (
+                    <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                      <Checkbox
+                        id="rev-move-redraw"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        className="mt-0.5"
+                      />
+                      <div className="space-y-0.5 leading-none">
+                        <label
+                          htmlFor="rev-move-redraw"
+                          className="text-xs font-semibold text-foreground cursor-pointer"
+                        >
+                          Move task to Re-Draw
+                        </label>
+                        <p className="text-[11px] text-muted-foreground">
+                          Task is currently marked as <strong>{taskStatus}</strong>. Re-opening work will move the deliverable back into Re-Draw for rework.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                />
+              )}
+            </div>
+
+            {/* Footer */}
+            <DialogFooter className="gap-2 sm:gap-0 border-t border-border/50 pt-3 mt-3 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAddModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" className="gap-1.5">
+                <Plus className="size-3.5" />
+                <span>Add revision</span>
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </section>

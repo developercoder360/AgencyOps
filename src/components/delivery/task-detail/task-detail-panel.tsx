@@ -576,6 +576,24 @@ export function TaskDetailPanel({
         <SheetContent
           side="right"
           showCloseButton={false}
+          onEscapeKeyDown={(e) => {
+            if (
+              typeof document !== "undefined" &&
+              (document.querySelector('[data-slot="dialog-content"]') ||
+                document.querySelector('[role="dialog"]:not([data-slot="sheet-content"])'))
+            ) {
+              e.preventDefault()
+            }
+          }}
+          onPointerDownOutside={(e) => {
+            if (
+              typeof document !== "undefined" &&
+              (document.querySelector('[data-slot="dialog-content"]') ||
+                document.querySelector('[role="dialog"]:not([data-slot="sheet-content"])'))
+            ) {
+              e.preventDefault()
+            }
+          }}
           className={cn(
             "flex flex-col gap-0 overflow-clip p-0 transition-all duration-200",
             // Mobile: full-screen viewport height (100dvh)

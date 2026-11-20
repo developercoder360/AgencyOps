@@ -15,27 +15,22 @@ const DEMO_REVISION_PRESETS = [
   {
     title: "Logo colour tweak",
     details: "Adjust primary brand cyan tint to meet WCAG AA contrast against slate-900 background.",
-    requestedBy: "client" as const,
   },
   {
     title: "Change header image",
     details: "Replace stock hero graphic with hi-res product mock render from deliverables folder.",
-    requestedBy: "internal" as const,
   },
   {
     title: "Resize for print",
     details: "Add 3mm bleeds and convert spot colors for offset CMYK vector output.",
-    requestedBy: "client" as const,
   },
   {
     title: "Update CTA typography",
     details: "Increase font weight to 600 and adjust letter-spacing for mobile readability.",
-    requestedBy: "internal" as const,
   },
   {
     title: "Fix responsive spacing",
     details: "Refine padding on 375px viewport to eliminate bottom gap and horizontal scroll.",
-    requestedBy: "client" as const,
   },
 ]
 
@@ -132,7 +127,6 @@ function generateTasks(): Task[] {
         number: rIdx + 1,
         title: preset.title,
         details: preset.details,
-        requestedBy: preset.requestedBy,
         assigneeId: dev1.id,
         dueDate: makeDateOffset(Math.max(dueOffset - 1 + rIdx, -5)),
         status: revStatus,

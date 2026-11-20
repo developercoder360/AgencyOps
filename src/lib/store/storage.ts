@@ -29,9 +29,20 @@ export function migrateTask(rawTask: unknown): Task {
   }
   const task = { ...(rawTask as LegacyTaskRaw) }
 
-  // Ensure revisions array is present
+  // Ensure revisions array is present and strip legacy requestedBy from revisions
   if (!Array.isArray(task.revisions)) {
     task.revisions = []
+  } else {
+    task.revisions = task.revisions.map((rev) => {
+      if (rev && typeof rev === "object") {
+        const rawRev = { ...(rev as unknown as Record<string, unknown>) }
+        if ("requestedBy" in rawRev) {
+          delete rawRev.requestedBy
+        }
+        return rawRev as unknown as TaskRevision
+      }
+      return rev
+    })
   }
 
   // If old subtasks or checklist arrays exist, move to legacy and remove old keys

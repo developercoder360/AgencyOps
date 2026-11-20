@@ -849,7 +849,6 @@ export class StoreManager {
     revisionData: {
       title: string
       details?: string
-      requestedBy?: "client" | "internal"
       assigneeId?: string
       dueDate?: string
       status?: RevisionStatus
@@ -877,7 +876,6 @@ export class StoreManager {
           number: nextNum,
           title: revisionData.title.trim(),
           details: revisionData.details?.trim() || "",
-          requestedBy: revisionData.requestedBy || "client",
           assigneeId: revisionData.assigneeId,
           dueDate: revisionData.dueDate,
           status: revisionData.status || "requested",

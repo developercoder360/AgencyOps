@@ -367,7 +367,6 @@ export interface TaskRevision {
   number: number
   title: string
   details: string
-  requestedBy: "client" | "internal"
   assigneeId?: string
   dueDate?: string
   status: RevisionStatus
@@ -571,7 +570,7 @@ export interface ExportLog {
   rowCount: number
   columns: string[]
   status: ExportStatus
-  requestedBy: string
+  exportedBy: string
   requestedAt: string
   completedAt?: string
   fileSize: string

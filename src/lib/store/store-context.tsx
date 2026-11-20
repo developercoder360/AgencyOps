@@ -231,7 +231,6 @@ export interface StoreContextValue {
     revisionData: {
       title: string
       details?: string
-      requestedBy?: "client" | "internal"
       assigneeId?: string
       dueDate?: string
       status?: RevisionStatus

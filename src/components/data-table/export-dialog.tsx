@@ -91,7 +91,7 @@ function ExportDialogBody({
         format: ext,
         rowCount,
         columns: cols,
-        requestedBy: "Current User",
+        exportedBy: "Current User",
         status: "completed",
         fileSize: `${Math.max(12, Math.round(rowCount * 0.4))} KB`,
       })
