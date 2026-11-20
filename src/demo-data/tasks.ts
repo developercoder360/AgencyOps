@@ -194,9 +194,10 @@ function generateTasks(): Task[] {
       const priorities: RevisionPriority[] = ["regular", "high", "urgent"]
       const revPriority = priorities[(i + rIdx) % priorities.length]
 
-      const flagsList = ["rflag-rush", "rflag-blocked", "rflag-approval", "rflag-scope", "rflag-client"]
-      const revFlags = rIdx === 0 ? [flagsList[i % flagsList.length]] : []
-      if (rIdx === 1) revFlags.push(flagsList[(i + 1) % flagsList.length])
+      const revFlaggedUsers: string[] = []
+      if ((i + rIdx) % 2 === 0) {
+        revFlaggedUsers.push(dev1.id)
+      }
 
       const assigneeIds = [dev1.id]
       if ((i + rIdx) % 2 === 1 && dev2 && dev2.id !== dev1.id) {
@@ -215,7 +216,7 @@ function generateTasks(): Task[] {
         details: makeRichDetails(preset.details, preset.title),
         assigneeIds,
         priority: revPriority,
-        flagIds: revFlags,
+        flaggedUserIds: revFlaggedUsers,
         dueDate: makeDateOffset(Math.max(dueOffset - 1 + rIdx, -5)),
         status: revStatus,
         files:

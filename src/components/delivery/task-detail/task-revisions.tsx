@@ -48,8 +48,7 @@ import { Calendar as CalendarPicker } from "@/components/ui/calendar"
 import { AvatarGroup, ConfirmDeleteDialog, StatusBadge } from "@/components/shared"
 import { RichTextEditorSkeleton, EMPTY_DOC } from "@/components/ui/rich-text-editor"
 import { RevisionAssigneePicker } from "./revision-assignee-picker"
-import { RevisionFlagPicker } from "./revision-flag-picker"
-import { getTagChipClass } from "./types"
+import { RevisionFlaggedUserPicker } from "./revision-flagged-user-picker"
 import type { TaskRolePermissions } from "@/lib/permissions"
 import type {
   Role,
@@ -60,8 +59,6 @@ import type {
   RevisionStatus,
   RevisionType,
   RevisionPriority,
-  RevisionFlag,
-  TaskTagColor,
 } from "@/types"
 
 const RichTextEditor = dynamic(
@@ -77,7 +74,7 @@ interface TaskRevisionsProps {
   taskStatus: TaskStatus
   revisions: TaskRevision[]
   users: StaffUser[]
-  revisionFlags?: RevisionFlag[]
+  taskAssigneeIds?: string[]
   currentUserRole?: Role
   currentUserId?: string
   permissions: TaskRolePermissions
@@ -86,14 +83,13 @@ interface TaskRevisionsProps {
   defaultAssigneeIds?: string[]
   nextRevisionNumber?: number
   nextRedrawNumber?: number
-  onAddFlag?: (flag: { name: string; color: TaskTagColor }) => RevisionFlag
   onAddRevision: (data: {
     type: RevisionType
     title: string
     details?: Record<string, unknown>
     assigneeIds?: string[]
     priority?: RevisionPriority
-    flagIds?: string[]
+    flaggedUserIds?: string[]
     dueDate?: string
     files?: TaskFile[]
   }) => TaskRevision | null | void
@@ -125,7 +121,7 @@ const addRevisionSchema = z.object({
   details: z.record(z.string(), z.unknown()).optional(),
   assigneeIds: z.array(z.string()),
   priority: z.enum(["regular", "high", "urgent"]),
-  flagIds: z.array(z.string()),
+  flaggedUserIds: z.array(z.string()),
   dueDate: z.string().optional(),
   moveToReDraw: z.boolean(),
 })
@@ -136,7 +132,7 @@ export function TaskRevisions({
   taskStatus,
   revisions = [],
   users,
-  revisionFlags = [],
+  taskAssigneeIds = [],
   currentUserRole = "Super Admin",
   currentUserId = "usr-admin",
   permissions,
@@ -145,7 +141,6 @@ export function TaskRevisions({
   defaultAssigneeIds = [],
   nextRevisionNumber,
   nextRedrawNumber,
-  onAddFlag,
   onAddRevision,
   onUpdateRevision,
   onSetRevisionStatus,
@@ -153,6 +148,7 @@ export function TaskRevisions({
   onAddRevisionFiles,
   onMoveToReDraw,
 }: TaskRevisionsProps) {
+  const canFlagUsers = Boolean(permissions.canEditRevision || permissions.canApproveRejectRevision)
   // Accordion expanded state (single expanded row)
   const [expandedId, setExpandedId] = React.useState<string | null>(null)
 
@@ -215,7 +211,7 @@ export function TaskRevisions({
       details: EMPTY_DOC,
       assigneeIds: defaultAssigneeIds.length > 0 ? defaultAssigneeIds : (users[0]?.id ? [users[0].id] : []),
       priority: "regular",
-      flagIds: [],
+      flaggedUserIds: [],
       dueDate: defaultDueDate || todayIso,
       moveToReDraw: isCompleteOrQa,
     },
@@ -242,7 +238,7 @@ export function TaskRevisions({
       details: EMPTY_DOC,
       assigneeIds: defaultAssigneeIds.length > 0 ? defaultAssigneeIds : (users[0]?.id ? [users[0].id] : []),
       priority: "regular",
-      flagIds: [],
+      flaggedUserIds: [],
       dueDate: defaultDueDate || todayIso,
       moveToReDraw: isCompleteOrQa,
     })
@@ -282,7 +278,7 @@ export function TaskRevisions({
       details: values.details || EMPTY_DOC,
       assigneeIds: values.assigneeIds || [],
       priority: values.priority || "regular",
-      flagIds: values.flagIds || [],
+      flaggedUserIds: values.flaggedUserIds || [],
       dueDate: values.dueDate || undefined,
       files: modalFiles,
     })
@@ -453,7 +449,7 @@ export function TaskRevisions({
             const isRedraw = rev.type === "redraw"
             const revPrefix = isRedraw ? "RD" : "R"
             const revAssignees = users.filter((u) => rev.assigneeIds?.includes(u.id))
-            const revFlags = revisionFlags.filter((f) => rev.flagIds?.includes(f.id))
+            const revFlaggedUsers = users.filter((u) => rev.flaggedUserIds?.includes(u.id))
             const isOverdue =
               rev.dueDate &&
               rev.dueDate < todayIso &&
@@ -521,22 +517,32 @@ export function TaskRevisions({
                           />
                         </span>
 
-                        {/* Flags Chips (up to 2 + N) */}
-                        {revFlags.slice(0, 2).map((flag) => (
-                          <span
-                            key={flag.id}
-                            className={cn(
-                              "rounded px-1.5 py-0.5 text-[10px] font-medium border",
-                              getTagChipClass(flag.color)
-                            )}
+                        {/* Flagged Staff (red flag icon + up to 2 avatars + +N) */}
+                        {revFlaggedUsers.length > 0 && (
+                          <div
+                            title={`Flagged: ${revFlaggedUsers.map((u) => u.name).join(", ")}`}
+                            className="flex items-center gap-1 text-[11px] text-destructive font-medium"
                           >
-                            {flag.name}
-                          </span>
-                        ))}
-                        {revFlags.length > 2 && (
-                          <span className="text-[10px] text-muted-foreground font-medium">
-                            +{revFlags.length - 2}
-                          </span>
+                            <Flag className="size-3 shrink-0 text-destructive fill-destructive" />
+                            <div className="flex -space-x-1.5 overflow-hidden">
+                              {revFlaggedUsers.slice(0, 2).map((u) => (
+                                <span
+                                  key={u.id}
+                                  className={cn(
+                                    "flex size-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white ring-1 ring-background",
+                                    u.avatarColor || "bg-destructive"
+                                  )}
+                                >
+                                  {u.avatarInitials}
+                                </span>
+                              ))}
+                            </div>
+                            {revFlaggedUsers.length > 2 && (
+                              <span className="text-[10px] text-destructive font-mono font-bold">
+                                +{revFlaggedUsers.length - 2}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -732,15 +738,18 @@ export function TaskRevisions({
                         </Select>
                       </div>
 
-                      {/* Flags Picker */}
+                      {/* Flagged Staff Picker */}
                       <div className="space-y-1">
-                        <Label className="text-[11px] text-muted-foreground">Flags</Label>
-                        <RevisionFlagPicker
-                          value={rev.flagIds || []}
-                          availableFlags={revisionFlags}
-                          disabled={!permissions.canEditRevision}
-                          onAddFlag={onAddFlag}
-                          onChange={(flagIds) => onUpdateRevision(rev.id, { flagIds })}
+                        <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                          <Flag className="size-3 text-destructive fill-destructive" />
+                          <span>Flag staff</span>
+                        </Label>
+                        <RevisionFlaggedUserPicker
+                          value={rev.flaggedUserIds || []}
+                          users={users}
+                          suggestedUserIds={taskAssigneeIds}
+                          disabled={!canFlagUsers}
+                          onChange={(flaggedUserIds) => onUpdateRevision(rev.id, { flaggedUserIds })}
                         />
                       </div>
                     </div>
@@ -1048,17 +1057,21 @@ export function TaskRevisions({
                   />
                 </div>
 
-                {/* Flags */}
+                {/* Flag Staff */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Flags</Label>
+                  <Label className="text-xs font-medium flex items-center gap-1">
+                    <Flag className="size-3 text-destructive fill-destructive" />
+                    <span>Flag staff</span>
+                  </Label>
                   <Controller
                     control={form.control}
-                    name="flagIds"
+                    name="flaggedUserIds"
                     render={({ field }) => (
-                      <RevisionFlagPicker
+                      <RevisionFlaggedUserPicker
                         value={field.value}
-                        availableFlags={revisionFlags}
-                        onAddFlag={onAddFlag}
+                        users={users}
+                        suggestedUserIds={taskAssigneeIds}
+                        disabled={!canFlagUsers}
                         onChange={field.onChange}
                       />
                     )}

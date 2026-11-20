@@ -3,7 +3,6 @@ import {
   createInitialEmptyData,
   STORE_STORAGE_KEY,
   STORE_VERSION,
-  DEFAULT_REVISION_FLAGS,
   type StoreData,
 } from "./types"
 import { sanitizeDoc } from "@/components/ui/rich-text-editor"
@@ -64,10 +63,11 @@ export function migrateTask(rawTask: unknown): Task {
             ? rawRev.priority
             : "regular"
 
-        // Flag IDs: string[]
-        const flagIds = Array.isArray(rawRev.flagIds)
-          ? rawRev.flagIds.filter((f) => typeof f === "string")
+        // Flagged user IDs: string[]
+        const flaggedUserIds = Array.isArray(rawRev.flaggedUserIds)
+          ? rawRev.flaggedUserIds.filter((f) => typeof f === "string")
           : []
+        delete (rawRev as Record<string, unknown>).flagIds
 
         // Details: sanitize into Tiptap doc
         const details = sanitizeDoc(rawRev.details)
@@ -86,7 +86,7 @@ export function migrateTask(rawTask: unknown): Task {
           details,
           assigneeIds,
           priority,
-          flagIds,
+          flaggedUserIds,
           status: rawRev.status || "requested",
           files: Array.isArray(rawRev.files) ? rawRev.files : [],
         } as unknown as TaskRevision
@@ -158,10 +158,6 @@ export function loadStoredData(): StoreData {
       marketingSpendings: Array.isArray(parsed.marketingSpendings) ? parsed.marketingSpendings : base.marketingSpendings,
       projects: Array.isArray(parsed.projects) ? parsed.projects : base.projects,
       tasks: migratedTasks,
-      revisionFlags:
-        Array.isArray(parsed.revisionFlags) && parsed.revisionFlags.length > 0
-          ? parsed.revisionFlags
-          : [...DEFAULT_REVISION_FLAGS],
       chatThreads: Array.isArray(parsed.chatThreads) ? parsed.chatThreads : base.chatThreads,
       notifications: Array.isArray(parsed.notifications) ? parsed.notifications : base.notifications,
       attendanceRecords: Array.isArray(parsed.attendanceRecords) ? parsed.attendanceRecords : base.attendanceRecords,

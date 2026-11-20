@@ -365,12 +365,6 @@ export type RevisionStatus =
 export type RevisionType = "revision" | "redraw"
 export type RevisionPriority = "regular" | "high" | "urgent"
 
-export interface RevisionFlag {
-  id: string
-  name: string
-  color: TaskTagColor
-}
-
 export interface TaskRevision {
   id: string
   type: RevisionType
@@ -379,7 +373,7 @@ export interface TaskRevision {
   details: Record<string, unknown>
   assigneeIds: string[]
   priority: RevisionPriority
-  flagIds: string[]
+  flaggedUserIds: string[]
   dueDate?: string
   status: RevisionStatus
   files: TaskFile[]

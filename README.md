@@ -47,14 +47,14 @@ The relations layer ([`src/lib/store/relations.ts`](src/lib/store/relations.ts))
 
 ## Task Revisions Permission Matrix
 
-| Role | Add Revisions | Edit Revisions | Delete Revisions | Approve / Reject | Update Progress (Assigned) |
-| --- | :---: | :---: | :---: | :---: | :---: |
-| **Super Admin** | Yes | Yes | Yes | Yes | Yes |
-| **Sales/Account Manager** | Yes | Yes | Yes | Yes | Yes |
-| **Project Admin** | Yes | Yes | Yes | Yes | Yes |
-| **QA Reviewer** | No | No | No | Yes (submitted) | No |
-| **Designer/Developer** | No | No | No | No | Yes (In Progress / Submitted) |
-| **HR Manager / Other** | No | No | No | No | No |
+| Role | Add Revisions | Edit Revisions | Delete Revisions | Approve / Reject | Update Progress (Assigned) | Flag Staff |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Super Admin** | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Sales/Account Manager** | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Project Admin** | Yes | Yes | Yes | Yes | Yes | Yes |
+| **QA Reviewer** | No | No | No | Yes (submitted) | No | Yes (on review) |
+| **Designer/Developer** | No | No | No | No | Yes (In Progress / Submitted) | Read-only |
+| **HR Manager / Other** | No | No | No | No | No | No |
 
 ---
 

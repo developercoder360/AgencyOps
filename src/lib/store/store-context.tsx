@@ -34,7 +34,6 @@ import type {
   Project,
   ProjectFile,
   QAReviewEvent,
-  RevisionFlag,
   RevisionPriority,
   RevisionStatus,
   RevisionType,
@@ -50,7 +49,7 @@ import type {
   Transaction,
 } from "@/types"
 import type { StorageEstimate } from "./storage"
-import { DEFAULT_REVISION_FLAGS, type Team } from "./types"
+import type { Team } from "./types"
 
 export interface StoreContextValue {
   isLoaded: boolean
@@ -69,7 +68,6 @@ export interface StoreContextValue {
   marketingSpends: MarketingSpend[]
   projects: Project[]
   tasks: Task[]
-  revisionFlags: RevisionFlag[]
   chatThreads: ChatThread[]
   notifications: AppNotification[]
   attendanceRecords: AttendanceRecord[]
@@ -239,7 +237,7 @@ export interface StoreContextValue {
       details?: Record<string, unknown>
       assigneeIds?: string[]
       priority?: RevisionPriority
-      flagIds?: string[]
+      flaggedUserIds?: string[]
       dueDate?: string
       status?: RevisionStatus
       files?: TaskFile[]
@@ -247,7 +245,6 @@ export interface StoreContextValue {
     actorName?: string,
     actorId?: string
   ) => TaskRevision | null
-  addRevisionFlag: (flag: { name: string; color: TaskTagColor }) => RevisionFlag
   updateRevision: (
     taskId: string,
     revisionId: string,
@@ -419,7 +416,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       marketingSpends: store.marketingSpendings,
       projects: store.projects,
       tasks: store.tasks,
-      revisionFlags: store.revisionFlags || DEFAULT_REVISION_FLAGS,
       chatThreads: store.chatThreads,
       notifications: store.notifications,
       attendanceRecords: store.attendanceRecords,
@@ -504,7 +500,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setRevisionStatus: storeManager.setRevisionStatus.bind(storeManager),
       removeRevision: storeManager.removeRevision.bind(storeManager),
       addRevisionFiles: storeManager.addRevisionFiles.bind(storeManager),
-      addRevisionFlag: storeManager.addRevisionFlag.bind(storeManager),
       addTaskComment: storeManager.addTaskComment.bind(storeManager),
       editTaskComment: storeManager.editTaskComment.bind(storeManager),
       deleteTaskComment: storeManager.deleteTaskComment.bind(storeManager),

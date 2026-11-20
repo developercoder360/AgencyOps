@@ -1,6 +1,5 @@
 import {
   createInitialEmptyData,
-  DEFAULT_REVISION_FLAGS,
   STORE_VERSION,
   type StoreData,
   type Team,
@@ -45,7 +44,6 @@ import type {
   Project,
   ProjectFile,
   QAReviewEvent,
-  RevisionFlag,
   RevisionPriority,
   RevisionStatus,
   RevisionType,
@@ -857,7 +855,7 @@ export class StoreManager {
       details?: Record<string, unknown>
       assigneeIds?: string[]
       priority?: RevisionPriority
-      flagIds?: string[]
+      flaggedUserIds?: string[]
       dueDate?: string
       status?: RevisionStatus
       files?: TaskFile[]
@@ -868,64 +866,93 @@ export class StoreManager {
     let createdRevision: TaskRevision | null = null
     const nowIso = new Date().toISOString()
 
-    this.setAndPersist((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) => {
-        if (t.id !== taskId) return t
+    this.setAndPersist((s) => {
+      const flaggedUserIds = revisionData.flaggedUserIds || []
+      const updatedUsers =
+        flaggedUserIds.length > 0
+          ? s.users.map((u) =>
+              flaggedUserIds.includes(u.id)
+                ? { ...u, redFlagCount: (u.redFlagCount || 0) + 1 }
+                : u
+            )
+          : s.users
 
-        const revType: RevisionType = revisionData.type === "redraw" ? "redraw" : "revision"
-        const isRedraw = revType === "redraw"
+      return {
+        ...s,
+        users: updatedUsers,
+        tasks: s.tasks.map((t) => {
+          if (t.id !== taskId) return t
 
-        const existingMax = (t.revisions || [])
-          .filter((r) => (isRedraw ? r.type === "redraw" : r.type !== "redraw"))
-          .reduce((max, r) => Math.max(max, r.number || 0), 0)
+          const revType: RevisionType = revisionData.type === "redraw" ? "redraw" : "revision"
+          const isRedraw = revType === "redraw"
 
-        const nextNum = isRedraw
-          ? Math.max(t.nextRedrawNumber ?? 1, existingMax + 1)
-          : Math.max(t.nextRevisionNumber ?? 1, existingMax + 1)
+          const existingMax = (t.revisions || [])
+            .filter((r) => (isRedraw ? r.type === "redraw" : r.type !== "redraw"))
+            .reduce((max, r) => Math.max(max, r.number || 0), 0)
 
-        const prefix = isRedraw ? "RD" : "R"
+          const nextNum = isRedraw
+            ? Math.max(t.nextRedrawNumber ?? 1, existingMax + 1)
+            : Math.max(t.nextRevisionNumber ?? 1, existingMax + 1)
 
-        const newRevision: TaskRevision = {
-          id: `rev-${crypto.randomUUID().slice(0, 8)}`,
-          type: revType,
-          number: nextNum,
-          title: revisionData.title.trim(),
-          details: revisionData.details || { type: "doc", content: [{ type: "paragraph" }] },
-          assigneeIds: revisionData.assigneeIds || [],
-          priority: revisionData.priority || "regular",
-          flagIds: revisionData.flagIds || [],
-          dueDate: revisionData.dueDate,
-          status: revisionData.status || "requested",
-          files: revisionData.files || [],
-          createdAt: nowIso,
-          updatedAt: nowIso,
-          createdById: actorId,
-        }
+          const prefix = isRedraw ? "RD" : "R"
 
-        createdRevision = newRevision
+          const newRevision: TaskRevision = {
+            id: `rev-${crypto.randomUUID().slice(0, 8)}`,
+            type: revType,
+            number: nextNum,
+            title: revisionData.title.trim(),
+            details: revisionData.details || { type: "doc", content: [{ type: "paragraph" }] },
+            assigneeIds: revisionData.assigneeIds || [],
+            priority: revisionData.priority || "regular",
+            flaggedUserIds,
+            dueDate: revisionData.dueDate,
+            status: revisionData.status || "requested",
+            files: revisionData.files || [],
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            createdById: actorId,
+          }
 
-        const entry: TaskActivityEvent = {
-          id: `act-${crypto.randomUUID().slice(0, 8)}`,
-          type: "system",
-          actorId,
-          actorName,
-          action: isRedraw ? "added redraw" : "added revision",
-          detail: `${prefix}${newRevision.number}: ${newRevision.title}`,
-          toValue: `${prefix}${newRevision.number}`,
-          timestamp: nowIso,
-        }
+          createdRevision = newRevision
 
-        return {
-          ...t,
-          ...(isRedraw
-            ? { nextRedrawNumber: nextNum + 1 }
-            : { nextRevisionNumber: nextNum + 1 }),
-          revisions: [...(t.revisions || []), newRevision],
-          activity: [...(t.activity ?? []), entry],
-        }
-      }),
-    }))
+          const newEntries: TaskActivityEvent[] = [
+            {
+              id: `act-${crypto.randomUUID().slice(0, 8)}`,
+              type: "system",
+              actorId,
+              actorName,
+              action: isRedraw ? "added redraw" : "added revision",
+              detail: `${prefix}${newRevision.number}: ${newRevision.title}`,
+              toValue: `${prefix}${newRevision.number}`,
+              timestamp: nowIso,
+            },
+          ]
+
+          for (const uid of flaggedUserIds) {
+            const u = s.users.find((x) => x.id === uid)
+            const uName = u?.name || uid
+            newEntries.push({
+              id: `act-${crypto.randomUUID().slice(0, 8)}`,
+              type: "system",
+              actorId,
+              actorName,
+              action: `flagged ${uName}`,
+              detail: `${prefix}${newRevision.number}: flagged ${uName}`,
+              timestamp: nowIso,
+            })
+          }
+
+          return {
+            ...t,
+            ...(isRedraw
+              ? { nextRedrawNumber: nextNum + 1 }
+              : { nextRevisionNumber: nextNum + 1 }),
+            revisions: [...(t.revisions || []), newRevision],
+            activity: [...(t.activity ?? []), ...newEntries],
+          }
+        }),
+      }
+    })
 
     return createdRevision
   }
@@ -939,24 +966,17 @@ export class StoreManager {
   ): void {
     const nowIso = new Date().toISOString()
 
-    this.setAndPersist((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) => {
+    this.setAndPersist((s) => {
+      let addedFlagUserIds: string[] = []
+      let removedFlagUserIds: string[] = []
+
+      const updatedTasks = s.tasks.map((t) => {
         if (t.id !== taskId) return t
 
         const target = (t.revisions || []).find((r) => r.id === revisionId)
         if (!target) return t
 
         const prefix = target.type === "redraw" ? "RD" : "R"
-
-        const updatedRevisions = (t.revisions || []).map((r) => {
-          if (r.id !== revisionId) return r
-          return {
-            ...r,
-            ...updates,
-            updatedAt: nowIso,
-          }
-        })
 
         const newEntries: TaskActivityEvent[] = []
 
@@ -1003,18 +1023,41 @@ export class StoreManager {
         }
 
         if (
-          updates.flagIds !== undefined &&
-          JSON.stringify(updates.flagIds) !== JSON.stringify(target.flagIds)
+          updates.flaggedUserIds !== undefined &&
+          JSON.stringify(updates.flaggedUserIds) !== JSON.stringify(target.flaggedUserIds || [])
         ) {
-          newEntries.push({
-            id: `act-${crypto.randomUUID().slice(0, 8)}`,
-            type: "system",
-            actorId,
-            actorName,
-            action: "updated revision flags",
-            detail: `${prefix}${target.number} flags updated`,
-            timestamp: nowIso,
-          })
+          const oldFlags = target.flaggedUserIds || []
+          const newFlags = updates.flaggedUserIds
+          addedFlagUserIds = newFlags.filter((id) => !oldFlags.includes(id))
+          removedFlagUserIds = oldFlags.filter((id) => !newFlags.includes(id))
+
+          for (const uid of addedFlagUserIds) {
+            const u = s.users.find((x) => x.id === uid)
+            const uName = u?.name || uid
+            newEntries.push({
+              id: `act-${crypto.randomUUID().slice(0, 8)}`,
+              type: "system",
+              actorId,
+              actorName,
+              action: `flagged ${uName}`,
+              detail: `${prefix}${target.number}: flagged ${uName}`,
+              timestamp: nowIso,
+            })
+          }
+
+          for (const uid of removedFlagUserIds) {
+            const u = s.users.find((x) => x.id === uid)
+            const uName = u?.name || uid
+            newEntries.push({
+              id: `act-${crypto.randomUUID().slice(0, 8)}`,
+              type: "system",
+              actorId,
+              actorName,
+              action: `removed flag from ${uName}`,
+              detail: `${prefix}${target.number}: removed flag from ${uName}`,
+              timestamp: nowIso,
+            })
+          }
         }
 
         if (
@@ -1062,29 +1105,54 @@ export class StoreManager {
           })
         }
 
-        if (
-          updates.details !== undefined &&
-          JSON.stringify(updates.details) !== JSON.stringify(target.details) &&
-          updates.title === undefined
-        ) {
+        if (updates.details !== undefined) {
           newEntries.push({
             id: `act-${crypto.randomUUID().slice(0, 8)}`,
             type: "system",
             actorId,
             actorName,
-            action: "updated revision details",
+            action: "details updated",
             detail: `${prefix}${target.number} details updated`,
             timestamp: nowIso,
           })
         }
+
+        const updatedRevisions = (t.revisions || []).map((r) => {
+          if (r.id !== revisionId) return r
+          return {
+            ...r,
+            ...updates,
+            updatedAt: nowIso,
+          }
+        })
 
         return {
           ...t,
           revisions: updatedRevisions,
           activity: [...(t.activity ?? []), ...newEntries],
         }
-      }),
-    }))
+      })
+
+      const updatedUsers =
+        addedFlagUserIds.length > 0 || removedFlagUserIds.length > 0
+          ? s.users.map((u) => {
+              let delta = 0
+              if (addedFlagUserIds.includes(u.id)) delta += 1
+              if (removedFlagUserIds.includes(u.id)) delta -= 1
+              if (delta === 0) return u
+              return {
+                ...u,
+                redFlagCount: Math.max(0, (u.redFlagCount || 0) + delta),
+              }
+            })
+          : s.users
+
+      return {
+        ...s,
+        users: updatedUsers,
+        tasks: updatedTasks,
+      }
+    })
   }
 
   public setRevisionStatus(
@@ -1136,12 +1204,16 @@ export class StoreManager {
   ): void {
     const nowIso = new Date().toISOString()
 
-    this.setAndPersist((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) => {
+    this.setAndPersist((s) => {
+      let removedFlags: string[] = []
+
+      const updatedTasks = s.tasks.map((t) => {
         if (t.id !== taskId) return t
 
         const target = (t.revisions || []).find((r) => r.id === revisionId)
+        if (target?.flaggedUserIds?.length) {
+          removedFlags = target.flaggedUserIds
+        }
         const prefix = target?.type === "redraw" ? "RD" : "R"
 
         const entry: TaskActivityEvent = {
@@ -1159,23 +1231,23 @@ export class StoreManager {
           revisions: (t.revisions || []).filter((r) => r.id !== revisionId),
           activity: [...(t.activity ?? []), entry],
         }
-      }),
-    }))
-  }
+      })
 
-  public addRevisionFlag(
-    flag: { name: string; color: TaskTagColor }
-  ): RevisionFlag {
-    const newFlag: RevisionFlag = {
-      id: `rflag-${crypto.randomUUID().slice(0, 8)}`,
-      name: flag.name.trim(),
-      color: flag.color,
-    }
-    this.setAndPersist((s) => ({
-      ...s,
-      revisionFlags: [...(s.revisionFlags || DEFAULT_REVISION_FLAGS), newFlag],
-    }))
-    return newFlag
+      const updatedUsers =
+        removedFlags.length > 0
+          ? s.users.map((u) =>
+              removedFlags.includes(u.id)
+                ? { ...u, redFlagCount: Math.max(0, (u.redFlagCount || 0) - 1) }
+                : u
+            )
+          : s.users
+
+      return {
+        ...s,
+        users: updatedUsers,
+        tasks: updatedTasks,
+      }
+    })
   }
 
   public addRevisionFiles(

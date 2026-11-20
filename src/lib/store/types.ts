@@ -24,7 +24,6 @@ import type {
   Task,
   ChatThread,
   Transaction,
-  RevisionFlag,
 } from "@/types"
 
 export interface StoreData {
@@ -40,7 +39,6 @@ export interface StoreData {
   marketingSpendings: MarketingSpend[]
   projects: Project[]
   tasks: Task[]
-  revisionFlags?: RevisionFlag[]
   chatThreads: ChatThread[]
   notifications: AppNotification[]
   attendanceRecords: AttendanceRecord[]
@@ -51,14 +49,6 @@ export interface StoreData {
   holidays: Holiday[]
   exportLogs: ExportLog[]
 }
-
-export const DEFAULT_REVISION_FLAGS: RevisionFlag[] = [
-  { id: "rflag-rush", name: "Rush", color: "rose" },
-  { id: "rflag-blocked", name: "Blocked", color: "amber" },
-  { id: "rflag-approval", name: "Needs approval", color: "violet" },
-  { id: "rflag-scope", name: "Out of scope", color: "slate" },
-  { id: "rflag-client", name: "Client request", color: "cyan" },
-]
 
 export interface Team {
   id: string
@@ -282,7 +272,6 @@ export function createInitialEmptyData(): StoreData {
     marketingSpendings: [],
     projects: [],
     tasks: [],
-    revisionFlags: [...DEFAULT_REVISION_FLAGS],
     chatThreads: [],
     notifications: [],
     attendanceRecords: [],

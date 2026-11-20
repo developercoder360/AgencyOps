@@ -99,8 +99,6 @@ export function TaskDetailPanel({
     toggleTaskWatcher,
     recordQAReview,
     setTaskOnHold,
-    revisionFlags,
-    addRevisionFlag,
   } = useStore()
 
   const [closingTaskId, setClosingTaskId] = React.useState<string | null>(null)
@@ -835,7 +833,7 @@ export function TaskDetailPanel({
                       taskStatus={task.status}
                       revisions={task.revisions || []}
                       users={users}
-                      revisionFlags={revisionFlags}
+                      taskAssigneeIds={task.assigneeIds}
                       currentUserRole="Super Admin"
                       currentUserId="usr-admin"
                       permissions={permissions}
@@ -850,7 +848,6 @@ export function TaskDetailPanel({
                       }
                       nextRevisionNumber={task.nextRevisionNumber}
                       nextRedrawNumber={task.nextRedrawNumber}
-                      onAddFlag={addRevisionFlag}
                       onAddRevision={(data) => {
                         return addRevision(task.id, data, actorName)
                       }}
