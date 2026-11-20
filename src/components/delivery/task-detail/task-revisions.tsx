@@ -9,6 +9,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Flag,
   Paperclip,
@@ -151,6 +152,7 @@ export function TaskRevisions({
   const canFlagUsers = Boolean(permissions.canEditRevision || permissions.canApproveRejectRevision)
   // Accordion expanded state (single expanded row)
   const [expandedId, setExpandedId] = React.useState<string | null>(null)
+  const [collapsed, setCollapsed] = React.useState(false)
 
   // Add Revision Modal state
   const [addModalOpen, setAddModalOpen] = React.useState(false)
@@ -384,9 +386,18 @@ export function TaskRevisions({
     <section aria-label="Revisions" className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 font-semibold text-foreground text-sm">
-            <RotateCcw className="size-4 text-primary" />
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="flex items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        >
+          {collapsed ? (
+            <ChevronRight className="size-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="size-3.5 text-muted-foreground" />
+          )}
+          <div className="flex items-center gap-1.5 font-semibold text-foreground text-[13px]">
+            <RotateCcw className="size-3.5 text-primary" />
             <span>Revisions</span>
           </div>
           <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] font-semibold text-muted-foreground">
@@ -397,7 +408,7 @@ export function TaskRevisions({
               ({approvedCount} of {totalCount} approved)
             </span>
           ) : null}
-        </div>
+        </button>
 
         {permissions.canAddRevision ? (
           <Button
@@ -414,7 +425,9 @@ export function TaskRevisions({
         ) : null}
       </div>
 
-      {/* All Revisions Approved Hint */}
+      {!collapsed && (
+        <>
+          {/* All Revisions Approved Hint */}
       {allApproved ? (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
           <CheckCircle2 className="size-4 shrink-0" />
@@ -474,86 +487,93 @@ export function TaskRevisions({
                   type="button"
                   onClick={() => setExpandedId(isExpanded ? null : rev.id)}
                   aria-expanded={isExpanded}
-                  className="flex w-full items-center justify-between gap-2 p-2.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-h-[44px] w-full items-center justify-between gap-2 p-2.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <div className="flex min-w-0 items-center gap-2">
-                    {/* Type badge */}
-                    {isRedraw ? (
-                      <span className="shrink-0 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold">
-                        Re-Draw
-                      </span>
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    {/* Chevron */}
+                    {isExpanded ? (
+                      <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
                     ) : (
-                      <span className="shrink-0 rounded-full bg-muted text-muted-foreground border border-border px-2 py-0.5 text-[10px] font-medium">
-                        Revision
-                      </span>
+                      <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
                     )}
 
-                    {/* Number badge R1, RD1 ... */}
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-foreground ring-1 ring-border">
+                    {/* Type badge + Number */}
+                    <span
+                      className={cn(
+                        "flex shrink-0 items-center justify-center rounded-full px-2 py-0.5 font-mono text-[10px] font-bold border",
+                        isRedraw
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                          : "bg-muted text-foreground border-border"
+                      )}
+                    >
                       {revPrefix}{rev.number}
                     </span>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="truncate text-xs font-semibold text-foreground">
-                          {rev.title}
-                        </span>
-                        <StatusBadge status={rev.status} />
-
-                        {/* Priority Flag Icon */}
-                        <span
-                          title={`Priority: ${rev.priority || "regular"}`}
-                          className="inline-flex items-center"
-                        >
-                          <Flag
-                            className={cn(
-                              "size-3",
-                              rev.priority === "urgent"
-                                ? "text-rose-600 dark:text-rose-400 fill-rose-600/30"
-                                : rev.priority === "high"
-                                ? "text-amber-600 dark:text-amber-400 fill-amber-600/30"
-                                : "text-muted-foreground/40"
-                            )}
-                          />
-                        </span>
-
-                        {/* Flagged Staff (red flag icon + up to 2 avatars + +N) */}
-                        {revFlaggedUsers.length > 0 && (
-                          <div
-                            title={`Flagged: ${revFlaggedUsers.map((u) => u.name).join(", ")}`}
-                            className="flex items-center gap-1 text-[11px] text-destructive font-medium"
-                          >
-                            <Flag className="size-3 shrink-0 text-destructive fill-destructive" />
-                            <div className="flex -space-x-1.5 overflow-hidden">
-                              {revFlaggedUsers.slice(0, 2).map((u) => (
-                                <span
-                                  key={u.id}
-                                  className={cn(
-                                    "flex size-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white ring-1 ring-background",
-                                    u.avatarColor || "bg-destructive"
-                                  )}
-                                >
-                                  {u.avatarInitials}
-                                </span>
-                              ))}
-                            </div>
-                            {revFlaggedUsers.length > 2 && (
-                              <span className="text-[10px] text-destructive font-mono font-bold">
-                                +{revFlaggedUsers.length - 2}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    {/* Title */}
+                    <span className="truncate text-xs font-semibold text-foreground flex-1 min-w-0">
+                      {rev.title}
+                    </span>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-2.5">
+                  {/* Metadata columns aligned */}
+                  <div className="flex shrink-0 items-center gap-2.5 text-xs">
+                    {/* Priority Flag Icon */}
+                    <span
+                      title={`Priority: ${rev.priority || "regular"}`}
+                      className="inline-flex items-center"
+                    >
+                      <Flag
+                        className={cn(
+                          "size-3 shrink-0",
+                          rev.priority === "urgent"
+                            ? "text-rose-600 dark:text-rose-400 fill-rose-600/30"
+                            : rev.priority === "high"
+                            ? "text-amber-600 dark:text-amber-400 fill-amber-600/30"
+                            : "text-muted-foreground/40"
+                        )}
+                      />
+                    </span>
+
+                    {/* Assignee avatars */}
+                    {revAssignees.length > 0 ? (
+                      <div className="hidden sm:flex items-center">
+                        <AvatarGroup people={revAssignees} max={2} />
+                      </div>
+                    ) : null}
+
+                    {/* Flagged Staff */}
+                    {revFlaggedUsers.length > 0 ? (
+                      <div
+                        title={`Flagged: ${revFlaggedUsers.map((u) => u.name).join(", ")}`}
+                        className="flex items-center gap-1 text-[11px] text-destructive font-medium shrink-0"
+                      >
+                        <Flag className="size-3 shrink-0 text-destructive fill-destructive" />
+                        <div className="flex -space-x-1.5 overflow-hidden">
+                          {revFlaggedUsers.slice(0, 2).map((u) => (
+                            <span
+                              key={u.id}
+                              className={cn(
+                                "flex size-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white ring-1 ring-background",
+                                u.avatarColor || "bg-destructive"
+                              )}
+                            >
+                              {u.avatarInitials}
+                            </span>
+                          ))}
+                        </div>
+                        {revFlaggedUsers.length > 2 && (
+                          <span className="text-[10px] text-destructive font-mono font-bold">
+                            +{revFlaggedUsers.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
+
                     {/* Files count */}
                     {rev.files && rev.files.length > 0 ? (
                       <span
                         title={`${rev.files.length} reference file(s)`}
-                        className="flex items-center gap-0.5 text-[11px] text-muted-foreground"
+                        className="hidden sm:flex items-center gap-0.5 text-[11px] text-muted-foreground"
                       >
                         <Paperclip className="size-3" />
                         <span>{rev.files.length}</span>
@@ -565,7 +585,7 @@ export function TaskRevisions({
                       <span
                         title={`Due ${rev.dueDate}`}
                         className={cn(
-                          "flex items-center gap-1 text-[11px] tabular-nums",
+                          "hidden sm:flex items-center gap-1 text-[11px] tabular-nums",
                           isOverdue
                             ? "font-semibold text-rose-600 dark:text-rose-400"
                             : "text-muted-foreground"
@@ -576,25 +596,8 @@ export function TaskRevisions({
                       </span>
                     ) : null}
 
-                    {/* Assignees Avatar Group */}
-                    {revAssignees.length > 0 ? (
-                      <AvatarGroup
-                        people={revAssignees}
-                        max={3}
-                        className="-space-x-1.5"
-                      />
-                    ) : (
-                      <span title="Unassigned" className="text-xs text-muted-foreground/50">
-                        Unassigned
-                      </span>
-                    )}
-
-                    {/* Accordion icon */}
-                    {isExpanded ? (
-                      <ChevronUp className="size-3.5 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="size-3.5 text-muted-foreground" />
-                    )}
+                    {/* Status badge */}
+                    <StatusBadge status={rev.status} />
                   </div>
                 </button>
 
@@ -602,7 +605,7 @@ export function TaskRevisions({
                 {isExpanded ? (
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="space-y-3.5 border-t border-border/60 bg-muted/20 p-3 pt-2.5"
+                    className="space-y-3.5 border-t border-border/60 border-l-2 border-l-primary/40 bg-muted/10 p-3.5 pl-4 ml-2 mr-2 mb-2 rounded-r-md"
                   >
                     {/* Type, Title & Status */}
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4">
@@ -851,6 +854,8 @@ export function TaskRevisions({
             )
           })}
         </div>
+      )}
+        </>
       )}
 
       {/* Delete Revision Confirm Dialog */}

@@ -32,7 +32,8 @@ The relations layer ([`src/lib/store/relations.ts`](src/lib/store/relations.ts))
 | **Team** | **BLOCKED** if referenced by active Staff Users. |
 | **City** | **BLOCKED** if referenced by active Staff Users or Leads. |
 | **User (Staff)** | **BLOCKED** if managing active Projects or assigned to incomplete Tasks. |
-| **Lead** | **BLOCKED** if referenced by any Invoices. |
+| **Lead** | **BLOCKED** if referenced by any active Tasks or Invoices. |
+| **Client (Sign-up)** | **BLOCKED** if referenced by any active Tasks. |
 | **Shift Schedule** | **BLOCKED** if staff members are currently assigned to this shift. |
 | **Leave Type** | **BLOCKED** if leave requests exist under this policy. |
 

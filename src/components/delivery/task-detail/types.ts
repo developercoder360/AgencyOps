@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import type { TaskPriority, TaskStatus, TaskTagColor } from "@/types"
+import type { TaskPriority, TaskStatus } from "@/types"
 
 export const TASK_STATUSES: TaskStatus[] = [
   "Open",
@@ -44,70 +44,6 @@ export const PRIORITY_META: Record<
     badgeClass:
       "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30",
   },
-}
-
-export const TAG_COLOR_OPTIONS: {
-  color: TaskTagColor
-  label: string
-  chipClass: string
-  swatchClass: string
-}[] = [
-  {
-    color: "blue",
-    label: "Blue",
-    chipClass:
-      "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
-    swatchClass: "bg-blue-500",
-  },
-  {
-    color: "emerald",
-    label: "Emerald",
-    chipClass:
-      "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30",
-    swatchClass: "bg-emerald-500",
-  },
-  {
-    color: "amber",
-    label: "Amber",
-    chipClass:
-      "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
-    swatchClass: "bg-amber-500",
-  },
-  {
-    color: "rose",
-    label: "Rose",
-    chipClass:
-      "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30",
-    swatchClass: "bg-rose-500",
-  },
-  {
-    color: "violet",
-    label: "Violet",
-    chipClass:
-      "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30",
-    swatchClass: "bg-violet-500",
-  },
-  {
-    color: "cyan",
-    label: "Cyan",
-    chipClass:
-      "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30",
-    swatchClass: "bg-cyan-500",
-  },
-  {
-    color: "slate",
-    label: "Neutral",
-    chipClass:
-      "bg-muted text-muted-foreground border-border",
-    swatchClass: "bg-muted-foreground",
-  },
-]
-
-export function getTagChipClass(color: TaskTagColor): string {
-  return (
-    TAG_COLOR_OPTIONS.find((c) => c.color === color)?.chipClass ??
-    TAG_COLOR_OPTIONS[6].chipClass
-  )
 }
 
 /**
@@ -187,21 +123,4 @@ export function formatRelativeTimestamp(ts: string, nowMs: number | null): strin
   return ts.slice(0, 10)
 }
 
-export function formatHoursMinutes(hours: number, extraSeconds = 0): string {
-  const totalSeconds = Math.max(0, Math.round(hours * 3600) + extraSeconds)
-  const h = Math.floor(totalSeconds / 3600)
-  const m = Math.floor((totalSeconds % 3600) / 60)
-  if (h === 0 && m === 0 && totalSeconds > 0) return `${totalSeconds}s`
-  if (h === 0) return `${m}m`
-  if (m === 0) return `${h}h`
-  return `${h}h ${m}m`
-}
 
-export function formatTimerClock(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600)
-  const mins = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-  const pad = (n: number) => String(n).padStart(2, "0")
-  if (hrs > 0) return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`
-  return `${pad(mins)}:${pad(secs)}`
-}

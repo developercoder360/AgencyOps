@@ -4,13 +4,14 @@ import * as React from "react"
 import { toast } from "sonner"
 import {
   AlertTriangle,
+  Calendar as CalendarIcon,
   CheckCircle2,
   ClipboardList,
   Flag,
   FolderInput,
   PauseCircle,
 } from "lucide-react"
-import { ConfirmDeleteDialog } from "@/components/shared"
+import { AvatarGroup, ConfirmDeleteDialog, StatusBadge } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -43,7 +44,6 @@ import type {
   AttachmentFile,
   TaskPriority,
   TaskStatus,
-  TaskTag,
 } from "@/types"
 import { cn } from "cn"
 import { TaskActivitySidebar } from "./task-activity-sidebar"
@@ -54,7 +54,7 @@ import { TaskPropertiesGrid } from "./task-properties-grid"
 import { TaskRevisions } from "./task-revisions"
 import { TaskWorkflowBar } from "./task-workflow-bar"
 import {
-  formatHoursMinutes,
+  PRIORITY_META,
   getTodayIsoFromNow,
   useClientNow,
 } from "./types"
@@ -80,6 +80,8 @@ export function TaskDetailPanel({
     tasks,
     projects,
     users,
+    signups,
+    leads,
     getTaskById,
     updateTask,
     deleteTask,
@@ -129,38 +131,7 @@ export function TaskDetailPanel({
     onClose()
   }
 
-  // Live timer state (keyed to task id)
-  const [timerState, setTimerState] = React.useState<{
-    runningForTaskId: string | null
-    seconds: number
-  }>({ runningForTaskId: null, seconds: 0 })
 
-  const timerRunning =
-    Boolean(task) && timerState.runningForTaskId === task?.id
-  const timerSeconds = timerRunning ? timerState.seconds : 0
-
-  React.useEffect(() => {
-    if (!timerState.runningForTaskId) return
-    const id = setInterval(() => {
-      setTimerState((prev) =>
-        prev.runningForTaskId
-          ? { ...prev, seconds: prev.seconds + 1 }
-          : prev
-      )
-    }, 1000)
-    return () => clearInterval(id)
-  }, [timerState.runningForTaskId])
-
-  // Aggregate existing tags across all tasks for tag picker suggestions
-  const allTags = React.useMemo<TaskTag[]>(() => {
-    const map = new Map<string, TaskTag>()
-    for (const t of tasks) {
-      for (const tag of t.tags ?? []) {
-        map.set(tag.label.toLowerCase(), tag)
-      }
-    }
-    return Array.from(map.values())
-  }, [tasks])
 
   // Navigation index in orderedTaskIds
   const currentIndex = taskId ? orderedTaskIds.indexOf(taskId) : -1
@@ -338,83 +309,47 @@ export function TaskDetailPanel({
     toast.success("Saved")
   }
 
-  function handleEstimateChange(estimatedHours: number) {
-    if (!task || estimatedHours === task.estimatedHours) return
+  function handleClientChange(nextClientId: string | null) {
+    if (!task || task.clientId === nextClientId) return
+    const prevClient = signups.find((s) => s.id === task.clientId)
+    const newClient = nextClientId ? signups.find((s) => s.id === nextClientId) : null
     updateTask(
       task.id,
-      { estimatedHours },
+      { clientId: nextClientId },
       {
         type: "system",
         actorId,
         actorName,
-        action: "updated time estimate",
-        field: "Estimate",
-        fromValue: `${task.estimatedHours}h`,
-        toValue: `${estimatedHours}h`,
+        action: nextClientId ? "linked client" : "removed client link",
+        field: "Client",
+        fromValue: prevClient ? `${prevClient.name} (${prevClient.code})` : undefined,
+        toValue: newClient ? `${newClient.name} (${newClient.code})` : undefined,
+        detail: nextClientId
+          ? `Linked client ${newClient?.name || nextClientId}`
+          : "Removed client link",
       }
     )
     toast.success("Saved")
   }
 
-  function commitTimerSeconds(targetTaskId: string, elapsedSeconds: number) {
-    const t = getTaskById(targetTaskId)
-    if (!t || elapsedSeconds <= 0) return
-    const existingExtra = t.trackedSeconds ?? 0
-    const totalExtra = existingExtra + elapsedSeconds
-    const addedHours = Math.floor(totalExtra / 3600)
-    const remainderSec = totalExtra % 3600
-    updateTask(
-      t.id,
-      {
-        loggedHours: t.loggedHours + addedHours,
-        trackedSeconds: remainderSec,
-      },
-      {
-        type: "system",
-        actorId,
-        actorName,
-        action: "logged tracked time",
-        field: "Time Tracked",
-        toValue: formatHoursMinutes(0, elapsedSeconds),
-      }
-    )
-    toast.success("Saved")
-  }
-
-  function handleToggleTimer() {
-    if (!task) return
-    if (timerRunning) {
-      const elapsed = timerState.seconds
-      setTimerState({ runningForTaskId: null, seconds: 0 })
-      if (elapsed > 0) {
-        commitTimerSeconds(task.id, elapsed)
-      }
-    } else {
-      if (timerState.runningForTaskId && timerState.seconds > 0) {
-        commitTimerSeconds(timerState.runningForTaskId, timerState.seconds)
-      }
-      setTimerState({ runningForTaskId: task.id, seconds: 0 })
-      toast.info(`Timer started for ${task.code}`)
-    }
-  }
-
-  function handleLogManualTime(minutesToAdd: number) {
-    if (!task || minutesToAdd <= 0) return
-    commitTimerSeconds(task.id, minutesToAdd * 60)
-  }
-
-  function handleTagsChange(nextTags: TaskTag[]) {
-    if (!task) return
+  function handleLeadChange(nextLeadId: string | null) {
+    if (!task || task.leadId === nextLeadId) return
+    const prevLead = leads.find((l) => l.id === task.leadId)
+    const newLead = nextLeadId ? leads.find((l) => l.id === nextLeadId) : null
     updateTask(
       task.id,
-      { tags: nextTags },
+      { leadId: nextLeadId },
       {
         type: "system",
         actorId,
         actorName,
-        action: "updated tags",
-        field: "Tags",
-        toValue: nextTags.map((t) => t.label).join(", ") || "None",
+        action: nextLeadId ? "linked lead" : "removed lead link",
+        field: "Lead",
+        fromValue: prevLead ? `${prevLead.name} (${prevLead.code})` : undefined,
+        toValue: newLead ? `${newLead.name} (${newLead.code})` : undefined,
+        detail: nextLeadId
+          ? `Linked lead ${newLead?.name || nextLeadId}`
+          : "Removed lead link",
       }
     )
     toast.success("Saved")
@@ -663,8 +598,6 @@ export function TaskDetailPanel({
                 isWatching={isWatching}
                 watcherCount={watchers.length}
                 isExpanded={isExpanded}
-                timerRunning={timerRunning}
-                timerSeconds={timerSeconds}
                 hasPrev={hasPrev}
                 hasNext={hasNext}
                 onPrev={navigatePrev}
@@ -674,15 +607,14 @@ export function TaskDetailPanel({
                 onOpenMoveProject={handleOpenMoveProject}
                 onRequestDelete={() => setDeleteDialogOpen(true)}
                 onToggleExpand={() => setIsExpanded((v) => !v)}
-                onStopTimer={handleToggleTimer}
                 onClose={handleClose}
               />
 
-              {/* Mobile Tabs (<768px): Details | Activity */}
+              {/* Mobile/Tablet Tabs (<900px): Details | Activity */}
               <div
                 role="tablist"
                 aria-label="Task view sections"
-                className="flex shrink-0 border-b border-border bg-muted/30 md:hidden"
+                className="flex shrink-0 border-b border-border bg-muted/30 min-[900px]:hidden"
               >
                 <button
                   type="button"
@@ -720,7 +652,7 @@ export function TaskDetailPanel({
                 <div
                   className={cn(
                     "min-h-0 min-w-0 flex-1 flex-col",
-                    mobileTab === "details" ? "flex" : "hidden md:flex"
+                    mobileTab === "details" ? "flex" : "hidden min-[900px]:flex"
                   )}
                 >
                   <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
@@ -759,8 +691,8 @@ export function TaskDetailPanel({
                       </div>
                     ) : null}
 
-                    {/* Title (inline click-to-edit) */}
-                    <div>
+                    {/* Title & Key Fields */}
+                    <div className="space-y-2">
                       {editingTitle ? (
                         <Input
                           autoFocus
@@ -777,7 +709,7 @@ export function TaskDetailPanel({
                             }
                           }}
                           aria-label="Edit task title"
-                          className="h-auto py-1.5 text-lg font-semibold leading-snug sm:text-xl"
+                          className="h-auto py-1 text-[22px] font-semibold leading-tight"
                         />
                       ) : permissions.canEditDetails ? (
                         <button
@@ -787,35 +719,68 @@ export function TaskDetailPanel({
                             setEditingTitle(true)
                           }}
                           aria-label="Click to edit task title"
-                          className="-mx-2 block w-[calc(100%+1rem)] rounded-lg px-2 py-1 text-left text-lg font-semibold leading-snug text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-xl"
+                          className="-mx-2 block w-[calc(100%+1rem)] rounded-lg px-2 py-1 text-left text-[22px] font-semibold leading-tight text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {task.title}
                         </button>
                       ) : (
-                        <h1 className="text-lg font-semibold leading-snug text-foreground sm:text-xl">
+                        <h1 className="text-[22px] font-semibold leading-tight text-foreground">
                           {task.title}
                         </h1>
                       )}
+
+                      {/* Single key fields row under title */}
+                      <div className="flex flex-wrap items-center gap-2.5 pt-0.5 text-xs text-muted-foreground">
+                        <StatusBadge status={task.status} />
+                        <span className="text-border">·</span>
+                        <span className="inline-flex items-center gap-1.5 font-medium">
+                          <Flag
+                            className={cn(
+                              "size-3.5",
+                              PRIORITY_META[task.priority].flagClass
+                            )}
+                          />
+                          <span>{task.priority}</span>
+                        </span>
+                        <span className="text-border">·</span>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1.5 tabular-nums",
+                            task.status !== "Complete" &&
+                              task.dueDate < todayIso &&
+                              "font-semibold text-rose-600 dark:text-rose-400"
+                          )}
+                        >
+                          <CalendarIcon className="size-3.5" />
+                          <span>Due {task.dueDate}</span>
+                        </span>
+                        <span className="text-border">·</span>
+                        <div className="flex items-center gap-1.5">
+                          <AvatarGroup
+                            people={users.filter((u) =>
+                              task.assigneeIds.includes(u.id)
+                            )}
+                            max={3}
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     {/* Properties Grid */}
                     <TaskPropertiesGrid
                       task={task}
                       users={users}
-                      allTags={allTags}
+                      signups={signups}
+                      leads={leads}
                       permissions={permissions}
                       todayIso={todayIso}
-                      timerRunning={timerRunning}
-                      timerSeconds={timerSeconds}
                       onStatusChange={handleStatusChange}
                       onRequestOnHold={() => setHoldDialogOpen(true)}
                       onAssigneesChange={handleAssigneesChange}
                       onDatesChange={handleDatesChange}
                       onPriorityChange={handlePriorityChange}
-                      onEstimateChange={handleEstimateChange}
-                      onToggleTimer={handleToggleTimer}
-                      onLogManualTime={handleLogManualTime}
-                      onTagsChange={handleTagsChange}
+                      onClientChange={handleClientChange}
+                      onLeadChange={handleLeadChange}
                       onNavigateClose={onClose}
                     />
 
@@ -979,13 +944,13 @@ export function TaskDetailPanel({
                   />
                 </div>
 
-                {/* RIGHT COLUMN: Activity & Comments (~280px tablet, 340px desktop) */}
+                {/* RIGHT COLUMN: Activity & Comments (320px desktop) */}
                 <div
                   className={cn(
-                    "min-h-0 flex-col border-border md:w-[280px] md:shrink-0 md:border-l lg:w-[340px]",
+                    "min-h-0 flex-col border-border bg-muted/30 min-[900px]:w-[320px] min-[900px]:shrink-0 min-[900px]:border-l",
                     mobileTab === "activity"
                       ? "flex w-full"
-                      : "hidden md:flex"
+                      : "hidden min-[900px]:flex"
                   )}
                 >
                   <TaskActivitySidebar

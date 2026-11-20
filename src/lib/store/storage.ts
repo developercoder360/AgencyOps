@@ -110,15 +110,41 @@ export function migrateTask(rawTask: unknown): Task {
   const existingNextRd = typeof task.nextRedrawNumber === "number" ? task.nextRedrawNumber : 1
   task.nextRedrawNumber = Math.max(existingNextRd, maxRdNum + 1)
 
-  // If old subtasks or checklist arrays exist, move to legacy and remove old keys
-  if (task.subtasks !== undefined || task.checklist !== undefined) {
+  // If old subtasks, checklist, tags, estimatedHours, or loggedHours exist, move to legacy and remove old keys
+  const rawT = task as unknown as Record<string, unknown>
+  if (
+    rawT.subtasks !== undefined ||
+    rawT.checklist !== undefined ||
+    rawT.tags !== undefined ||
+    rawT.estimatedHours !== undefined ||
+    rawT.loggedHours !== undefined
+  ) {
     task.legacy = {
       ...(task.legacy || {}),
-      ...(task.subtasks !== undefined ? { subtasks: task.subtasks } : {}),
-      ...(task.checklist !== undefined ? { checklist: task.checklist } : {}),
+      ...(rawT.subtasks !== undefined
+        ? { subtasks: Array.isArray(rawT.subtasks) ? rawT.subtasks : [] }
+        : {}),
+      ...(rawT.checklist !== undefined
+        ? { checklist: Array.isArray(rawT.checklist) ? rawT.checklist : [] }
+        : {}),
+      ...(rawT.tags !== undefined ? { tags: rawT.tags } : {}),
+      ...(rawT.estimatedHours !== undefined ? { estimatedHours: rawT.estimatedHours } : {}),
+      ...(rawT.loggedHours !== undefined ? { loggedHours: rawT.loggedHours } : {}),
     }
-    delete task.subtasks
-    delete task.checklist
+    delete rawT.subtasks
+    delete rawT.checklist
+    delete rawT.tags
+    delete rawT.estimatedHours
+    delete rawT.loggedHours
+    delete rawT.trackedSeconds
+  }
+
+  // Ensure clientId and leadId default to null
+  if (task.clientId === undefined) {
+    task.clientId = null
+  }
+  if (task.leadId === undefined) {
+    task.leadId = null
   }
 
   return task as unknown as Task

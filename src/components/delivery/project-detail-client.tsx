@@ -56,6 +56,8 @@ export function ProjectDetailClient({
   const {
     tasks,
     users,
+    signups,
+    leads,
     getProjectById,
     updateProject,
     addProjectFile,
@@ -362,9 +364,13 @@ export function ProjectDetailClient({
                             <Clock className="size-3" />
                             Due {task.dueDate}
                           </span>
-                          <span className="tabular-nums">
-                            {task.loggedHours}/{task.estimatedHours}h
-                          </span>
+                          {task.clientId || task.leadId ? (
+                            <span className="truncate max-w-[140px] text-xs text-muted-foreground">
+                              {task.clientId
+                                ? `Client: ${signups.find((s) => s.id === task.clientId)?.name ?? task.clientId}`
+                                : `Lead: ${leads.find((l) => l.id === task.leadId)?.name ?? task.leadId}`}
+                            </span>
+                          ) : null}
                           <span
                             title={`${revs.length} revisions (${openRevisions} open)${redrawCount > 0 ? ` · ${redrawCount} Re-Draw` : ""}`}
                             className={cn(

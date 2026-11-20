@@ -50,7 +50,12 @@ export default function SignUpsPage() {
 
   function handleConfirmDelete() {
     if (!deleteTarget) return
-    deleteSignUp(deleteTarget.id)
+    const check = deleteSignUp(deleteTarget.id)
+    if (!check.allowed) {
+      toast.error(check.reason || "Cannot delete client.")
+      setDeleteTarget(null)
+      return
+    }
     toast.success(`Removed submission ${deleteTarget.code}`)
     if (selected?.id === deleteTarget.id) {
       setSelected(null)

@@ -100,14 +100,15 @@ const createTaskSchema = z.object({
   priority: z.enum(["Regular", "High", "Urgent"]),
   assigneeId: z.string().min(1, "Assign a team member"),
   dueDate: z.string().min(8),
-  estimatedHours: z.number().min(1).max(200),
+  clientId: z.string().optional().nullable(),
+  leadId: z.string().optional().nullable(),
   description: z.string().optional(),
 })
 
 function TasksPageContent() {
   const permissions = ALL_TASK_PERMISSIONS
 
-  const { tasks, projects, brands, users, createTask, deleteTask } = useStore()
+  const { tasks, projects, brands, users, signups, leads, createTask, deleteTask } = useStore()
   const { activeTaskId, openTask, closeTask } = useTaskDeepLink()
 
   const viewMode = React.useSyncExternalStore(
@@ -154,7 +155,8 @@ function TasksPageContent() {
       priority: "High",
       assigneeId: users[0]?.id ?? "usr-admin",
       dueDate: "2026-11-20",
-      estimatedHours: 8,
+      clientId: "",
+      leadId: "",
       description: "",
     },
   })
@@ -204,8 +206,8 @@ function TasksPageContent() {
       assigneeIds: [values.assigneeId],
       reviewerId: "usr-admin",
       dueDate: values.dueDate,
-      estimatedHours: values.estimatedHours,
-      loggedHours: 0,
+      clientId: values.clientId || null,
+      leadId: values.leadId || null,
       revisions: [],
       comments: [],
       evidenceFiles: [],
@@ -248,8 +250,8 @@ function TasksPageContent() {
       assigneeIds: [defaultAssigneeId],
       reviewerId: "usr-admin",
       dueDate,
-      estimatedHours: 4,
-      loggedHours: 0,
+      clientId: null,
+      leadId: null,
     })
     toast.success(`Created ${created.code} in ${status}`)
   }
@@ -416,6 +418,52 @@ function TasksPageContent() {
         },
       },
       {
+        id: "client",
+        accessorFn: (row) => {
+          if (!row.clientId) return ""
+          const c = signups.find((s) => s.id === row.clientId)
+          return c ? c.name : row.clientId
+        },
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Client" />
+        ),
+        cell: ({ row }) => {
+          if (!row.original.clientId) return <span className="text-muted-foreground text-xs">—</span>
+          const c = signups.find((s) => s.id === row.original.clientId)
+          return (
+            <div className="max-w-[140px] truncate text-xs">
+              <span className="font-medium">{c?.name || row.original.clientId}</span>
+              {c?.email ? (
+                <span className="block text-[11px] text-muted-foreground truncate">{c.email}</span>
+              ) : null}
+            </div>
+          )
+        },
+      },
+      {
+        id: "lead",
+        accessorFn: (row) => {
+          if (!row.leadId) return ""
+          const l = leads.find((x) => x.id === row.leadId)
+          return l ? l.name : row.leadId
+        },
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Lead" />
+        ),
+        cell: ({ row }) => {
+          if (!row.original.leadId) return <span className="text-muted-foreground text-xs">—</span>
+          const l = leads.find((x) => x.id === row.original.leadId)
+          return (
+            <div className="max-w-[140px] truncate text-xs">
+              <span className="font-medium">{l?.name || row.original.leadId}</span>
+              {l?.company ? (
+                <span className="block text-[11px] text-muted-foreground truncate">{l.company}</span>
+              ) : null}
+            </div>
+          )
+        },
+      },
+      {
         accessorKey: "dueDate",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Due Date" />
@@ -469,7 +517,7 @@ function TasksPageContent() {
         ),
       },
     ],
-    [users, promptDelete, todayIso, openTask, permissions.canDeleteOrMove]
+    [users, signups, leads, promptDelete, todayIso, openTask, permissions.canDeleteOrMove]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -483,6 +531,16 @@ function TasksPageContent() {
         columnId: "priority",
         title: "Priority",
         options: TASK_PRIORITIES.map((p) => ({ label: p, value: p })),
+      },
+      {
+        columnId: "client",
+        title: "Client",
+        options: signups.map((s) => ({ label: s.name, value: s.name })),
+      },
+      {
+        columnId: "lead",
+        title: "Lead",
+        options: leads.map((l) => ({ label: l.name, value: l.name })),
       },
       {
         columnId: "revisions",
@@ -505,7 +563,7 @@ function TasksPageContent() {
         options: brands.map((b) => ({ label: b.name, value: b.name })),
       },
     ],
-    [brands]
+    [brands, signups, leads]
   )
 
   return (
@@ -587,7 +645,8 @@ function TasksPageContent() {
                     priority: "High",
                     assigneeId: users[0]?.id ?? "usr-admin",
                     dueDate: "2026-11-20",
-                    estimatedHours: 8,
+                    clientId: "",
+                    leadId: "",
                     description: "",
                   })
                   setCreateOpen(true)
@@ -667,6 +726,17 @@ function TasksPageContent() {
                             <div className="flex items-center justify-between gap-1.5">
                               <span className="truncate text-[11px] text-muted-foreground">
                                 {task.brandName}
+                                {(() => {
+                                  if (task.clientId) {
+                                    const c = signups.find((s) => s.id === task.clientId)
+                                    return c ? ` · ${c.name}` : ""
+                                  }
+                                  if (task.leadId) {
+                                    const l = leads.find((x) => x.id === task.leadId)
+                                    return l ? ` · ${l.name}` : ""
+                                  }
+                                  return ""
+                                })()}
                               </span>
                               {task.redFlaggedUserIds.length > 0 ? (
                                 <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
@@ -880,13 +950,62 @@ function TasksPageContent() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="tsk-hrs">Est. Hours</Label>
-                <Input
-                  id="tsk-hrs"
-                  type="number"
-                  {...createForm.register("estimatedHours", {
-                    valueAsNumber: true,
-                  })}
+                <Label>Client</Label>
+                <Controller
+                  control={createForm.control}
+                  name="clientId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || "none"}
+                      onValueChange={(val) => {
+                        const chosen = val === "none" ? "" : val
+                        field.onChange(chosen)
+                        if (chosen) {
+                          const su = signups.find((s) => s.id === chosen)
+                          if (su?.leadId && !createForm.getValues("leadId")) {
+                            createForm.setValue("leadId", su.leadId)
+                          }
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="No client linked" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No client</SelectItem>
+                        {signups.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name} ({s.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Lead</Label>
+                <Controller
+                  control={createForm.control}
+                  name="leadId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || "none"}
+                      onValueChange={(val) => field.onChange(val === "none" ? "" : val)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="No lead linked" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No lead</SelectItem>
+                        {leads.map((l) => (
+                          <SelectItem key={l.id} value={l.id}>
+                            {l.name} ({l.company || l.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 />
               </div>
             </div>

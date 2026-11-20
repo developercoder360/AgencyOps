@@ -35,7 +35,7 @@ import type {
 import { cn } from "cn"
 import { formatRelativeTimestamp, parseTimestampMs } from "./types"
 
-type ActivityFilter = "all" | "comments" | "history"
+type ActivityFilter = "all" | "comments" | "changes" | "qa"
 
 interface TimelineItem {
   id: string
@@ -141,12 +141,29 @@ export function TaskActivitySidebar({
 
   const visibleItems = React.useMemo(() => {
     if (filter === "comments") return allItems.filter((i) => i.kind === "comment")
-    if (filter === "history") return allItems.filter((i) => i.kind !== "comment")
+    if (filter === "changes") return allItems.filter((i) => i.kind === "system")
+    if (filter === "qa")
+      return allItems.filter(
+        (i) => i.kind === "qa" || (i.kind === "comment" && i.comment?.isQaRelated)
+      )
     return allItems
   }, [allItems, filter])
 
-  const historyCount = (task.activity ?? []).length
-  const commentCount = task.comments.length
+  const commentCount = React.useMemo(
+    () => allItems.filter((i) => i.kind === "comment").length,
+    [allItems]
+  )
+  const changesCount = React.useMemo(
+    () => allItems.filter((i) => i.kind === "system").length,
+    [allItems]
+  )
+  const qaCount = React.useMemo(
+    () =>
+      allItems.filter(
+        (i) => i.kind === "qa" || (i.kind === "comment" && i.comment?.isQaRelated)
+      ).length,
+    [allItems]
+  )
 
   const prevFeedRef = React.useRef({
     taskId: task.id,
@@ -287,7 +304,7 @@ export function TaskActivitySidebar({
   return (
     <aside
       aria-label="Task activity and comments"
-      className="flex h-full min-h-0 flex-col bg-muted/15"
+      className="flex h-full min-h-0 flex-col bg-muted/30"
     >
       {/* Header & filter tabs */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3.5 py-2.5">
@@ -301,7 +318,8 @@ export function TaskActivitySidebar({
             [
               { id: "all", label: "All", count: allItems.length },
               { id: "comments", label: "Comments", count: commentCount },
-              { id: "history", label: "History", count: historyCount },
+              { id: "changes", label: "Changes", count: changesCount },
+              { id: "qa", label: "QA", count: qaCount },
             ] as const
           ).map((tab) => (
             <button
@@ -311,7 +329,7 @@ export function TaskActivitySidebar({
               aria-selected={filter === tab.id}
               onClick={() => setFilter(tab.id)}
               className={cn(
-                "inline-flex items-center gap-1 rounded px-2 py-0.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 filter === tab.id
                   ? "bg-background text-foreground shadow-2xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -379,7 +397,7 @@ export function TaskActivitySidebar({
                       <div className="flex min-w-0 items-center gap-2">
                         <span
                           className={cn(
-                            "flex size-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
+                            "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
                             getAvatarColor(c.authorName)
                           )}
                         >

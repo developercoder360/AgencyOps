@@ -10,6 +10,7 @@ import {
   checkLeaveTypeDeletion,
   checkProjectDeletion,
   checkShiftDeletion,
+  checkSignUpDeletion,
   checkTeamDeletion,
   checkUserDeletion,
   type DeletionCheckResult,
@@ -45,7 +46,6 @@ import type {
   TaskComment,
   TaskFile,
   TaskRevision,
-  TaskTagColor,
   Transaction,
 } from "@/types"
 import type { StorageEstimate } from "./storage"
@@ -95,6 +95,7 @@ export interface StoreContextValue {
   checkCityDeletion: (id: string) => DeletionCheckResult
   checkUserDeletion: (id: string) => DeletionCheckResult
   checkLeadDeletion: (id: string) => DeletionCheckResult
+  checkSignUpDeletion: (id: string) => DeletionCheckResult
   checkProjectDeletion: (id: string) => DeletionCheckResult
   checkInvoiceDeletion: (id: string) => DeletionCheckResult
   checkLeaveTypeDeletion: (id: string) => DeletionCheckResult
@@ -147,7 +148,7 @@ export interface StoreContextValue {
 
   createSignUp: (signup: Omit<SignUp, "id" | "createdAt"> & { id?: string; createdAt?: string }) => SignUp
   updateSignUp: (id: string, updates: Partial<SignUp>) => void
-  deleteSignUp: (id: string) => void
+  deleteSignUp: (id: string) => DeletionCheckResult
   convertSignUpToLead: (
     signupId: string,
     leadData?: Partial<{
@@ -441,6 +442,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       checkCityDeletion: (id: string) => checkCityDeletion(store, id),
       checkUserDeletion: (id: string) => checkUserDeletion(store, id),
       checkLeadDeletion: (id: string) => checkLeadDeletion(store, id),
+      checkSignUpDeletion: (id: string) => checkSignUpDeletion(store, id),
       checkProjectDeletion: (id: string) => checkProjectDeletion(store, id),
       checkInvoiceDeletion: (id: string) => checkInvoiceDeletion(store, id),
       checkLeaveTypeDeletion: (id: string) => checkLeaveTypeDeletion(store, id),

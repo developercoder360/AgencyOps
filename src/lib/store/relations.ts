@@ -113,11 +113,19 @@ export function checkProjectDeletion(store: StoreData, projectId: string): Delet
 }
 
 /**
- * Lead deletion rule: BLOCK if referenced by invoices.
+ * Lead deletion rule: BLOCK if referenced by active tasks or invoices.
  */
 export function checkLeadDeletion(store: StoreData, leadId: string): DeletionCheckResult {
   const lead = store.leads.find((l) => l.id === leadId)
   if (!lead) return { allowed: true }
+
+  const linkedTasks = store.tasks.filter((t) => t.leadId === leadId).length
+  if (linkedTasks > 0) {
+    return {
+      allowed: false,
+      reason: `Cannot delete lead: referenced by ${linkedTasks} active task(s).`,
+    }
+  }
 
   const linkedInvoices = store.invoices.filter(
     (inv) =>
@@ -129,6 +137,21 @@ export function checkLeadDeletion(store: StoreData, leadId: string): DeletionChe
     return {
       allowed: false,
       reason: `Cannot delete lead: referenced by ${linkedInvoices} invoice(s).`,
+    }
+  }
+
+  return { allowed: true }
+}
+
+/**
+ * Sign-up / Client deletion rule: BLOCK if referenced by active tasks.
+ */
+export function checkSignUpDeletion(store: StoreData, signUpId: string): DeletionCheckResult {
+  const linkedTasks = store.tasks.filter((t) => t.clientId === signUpId).length
+  if (linkedTasks > 0) {
+    return {
+      allowed: false,
+      reason: `Cannot delete client: referenced by ${linkedTasks} active task(s).`,
     }
   }
 

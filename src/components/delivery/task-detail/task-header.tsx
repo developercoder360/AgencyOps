@@ -16,7 +16,6 @@ import {
   Maximize2,
   Minimize2,
   MoreHorizontal,
-  Square,
   Trash2,
   X,
 } from "lucide-react"
@@ -36,7 +35,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import type { Task } from "@/types"
-import { formatTimerClock } from "./types"
 
 interface TaskHeaderProps {
   task: Task
@@ -44,8 +42,6 @@ interface TaskHeaderProps {
   isWatching: boolean
   watcherCount: number
   isExpanded: boolean
-  timerRunning: boolean
-  timerSeconds: number
   hasPrev: boolean
   hasNext: boolean
   onPrev: () => void
@@ -55,7 +51,6 @@ interface TaskHeaderProps {
   onOpenMoveProject: () => void
   onRequestDelete: () => void
   onToggleExpand: () => void
-  onStopTimer: () => void
   onClose: () => void
 }
 
@@ -65,8 +60,6 @@ export function TaskHeader({
   isWatching,
   watcherCount,
   isExpanded,
-  timerRunning,
-  timerSeconds,
   hasPrev,
   hasNext,
   onPrev,
@@ -76,7 +69,6 @@ export function TaskHeader({
   onOpenMoveProject,
   onRequestDelete,
   onToggleExpand,
-  onStopTimer,
   onClose,
 }: TaskHeaderProps) {
   const [copiedLink, setCopiedLink] = React.useState(false)
@@ -136,24 +128,6 @@ export function TaskHeader({
 
       {/* Right actions */}
       <div className="flex shrink-0 items-center gap-1">
-        {/* Live timer pill when active */}
-        {timerRunning ? (
-          <div className="mr-1 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
-            <span className="font-mono tabular-nums">
-              {formatTimerClock(timerSeconds)}
-            </span>
-            <button
-              type="button"
-              onClick={onStopTimer}
-              aria-label="Stop running timer"
-              className="ml-0.5 inline-flex size-4 items-center justify-center rounded-full bg-emerald-600 text-white transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Square className="size-2 fill-current" />
-            </button>
-          </div>
-        ) : null}
-
         {/* Prev / Next navigation */}
         {(hasPrev || hasNext) ? (
           <div className="mr-1 hidden items-center rounded-md border border-border bg-background p-0.5 sm:flex">
@@ -162,7 +136,7 @@ export function TaskHeader({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-xs"
+                  className="size-7 p-0 text-muted-foreground hover:text-foreground"
                   onClick={onPrev}
                   disabled={!hasPrev}
                   aria-label="Previous task (Alt+K)"
@@ -179,7 +153,7 @@ export function TaskHeader({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-xs"
+                  className="size-7 p-0 text-muted-foreground hover:text-foreground"
                   onClick={onNext}
                   disabled={!hasNext}
                   aria-label="Next task (Alt+J)"
@@ -200,7 +174,7 @@ export function TaskHeader({
             <Button
               type="button"
               variant="ghost"
-              size="icon-xs"
+              className="size-8 p-0 text-muted-foreground hover:text-foreground"
               onClick={handleCopyLink}
               aria-label="Copy task link"
             >
@@ -220,22 +194,22 @@ export function TaskHeader({
             <Button
               type="button"
               variant={isWatching ? "secondary" : "ghost"}
-              size="xs"
+              className="size-8 p-0 text-muted-foreground hover:text-foreground"
               onClick={onToggleWatch}
               aria-label={isWatching ? "Stop watching task" : "Watch task"}
               aria-pressed={isWatching}
-              className="gap-1 px-2"
             >
               {isWatching ? (
                 <BellRing className="size-3.5 text-primary" />
               ) : (
                 <Bell className="size-3.5" />
               )}
-              <span className="text-[11px] tabular-nums">{watcherCount}</span>
             </Button>
           </TooltipTrigger>
           <TooltipContent className="text-xs">
-            {isWatching ? "Following updates" : "Follow this task"}
+            {isWatching
+              ? `Following updates (${watcherCount} watching)`
+              : `Follow this task (${watcherCount} watching)`}
           </TooltipContent>
         </Tooltip>
 
@@ -246,7 +220,7 @@ export function TaskHeader({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-xs"
+                className="size-8 p-0 text-muted-foreground hover:text-foreground"
                 aria-label="More task actions"
               >
                 <MoreHorizontal className="size-4" />
@@ -287,14 +261,13 @@ export function TaskHeader({
             <Button
               type="button"
               variant="ghost"
-              size="icon-xs"
+              className="hidden size-8 p-0 text-muted-foreground hover:text-foreground md:inline-flex"
               onClick={onToggleExpand}
               aria-label={
                 isExpanded
                   ? "Dock panel to right side"
                   : "Expand to centered modal"
               }
-              className="hidden md:inline-flex"
             >
               {isExpanded ? (
                 <Minimize2 className="size-3.5" />
@@ -314,7 +287,7 @@ export function TaskHeader({
             <Button
               type="button"
               variant="ghost"
-              size="icon-xs"
+              className="size-8 p-0 text-muted-foreground hover:text-foreground"
               onClick={onClose}
               aria-label="Close task panel"
             >

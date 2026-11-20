@@ -3,6 +3,8 @@
 import * as React from "react"
 import {
   Bold,
+  ChevronDown,
+  ChevronRight,
   Code,
   Eye,
   Italic,
@@ -138,6 +140,7 @@ export function TaskDescriptionEditor({
   onSave,
 }: TaskDescriptionEditorProps) {
   const [editing, setEditing] = React.useState(false)
+  const [collapsed, setCollapsed] = React.useState(false)
   const [previewing, setPreviewing] = React.useState(false)
   const [draft, setDraft] = React.useState(value)
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
@@ -210,12 +213,23 @@ export function TaskDescriptionEditor({
 
   if (!editing) {
     return (
-      <section aria-label="Task description" className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Description
-          </h3>
-          {canEdit ? (
+      <section aria-label="Task description" className="space-y-2.5">
+        <div className="flex items-center justify-between border-b border-border/60 pb-2">
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className="flex items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          >
+            {collapsed ? (
+              <ChevronRight className="size-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            )}
+            <h3 className="text-[13px] font-semibold text-foreground">
+              Description
+            </h3>
+          </button>
+          {canEdit && !collapsed ? (
             <Button
               type="button"
               variant="ghost"
@@ -228,39 +242,41 @@ export function TaskDescriptionEditor({
             </Button>
           ) : null}
         </div>
-        {canEdit ? (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={startEdit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault()
-                startEdit()
-              }
-            }}
-            className={cn(
-              "min-h-[84px] cursor-text rounded-lg border border-border/80 bg-muted/20 p-3.5 transition-colors hover:border-border hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            )}
-          >
-            {value.trim() ? (
-              <FormattedPreview text={value} />
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Add a description…
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="min-h-[72px] rounded-lg border border-border/80 bg-muted/15 p-3.5">
-            {value.trim() ? (
-              <FormattedPreview text={value} />
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No description provided.
-              </p>
-            )}
-          </div>
+        {!collapsed && (
+          canEdit ? (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={startEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  startEdit()
+                }
+              }}
+              className={cn(
+                "min-h-[56px] cursor-text rounded-lg border border-transparent p-2.5 transition-colors hover:border-border hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              )}
+            >
+              {value.trim() ? (
+                <FormattedPreview text={value} />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Add a description…
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="min-h-[48px] rounded-lg border border-transparent p-2.5">
+              {value.trim() ? (
+                <FormattedPreview text={value} />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No description provided.
+                </p>
+              )}
+            </div>
+          )
         )}
       </section>
     )

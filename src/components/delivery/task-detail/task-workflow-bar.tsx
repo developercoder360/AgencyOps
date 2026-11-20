@@ -153,7 +153,7 @@ export function TaskWorkflowBar({
       {hasAnyAction ? (
         <div
           aria-label="Workflow actions"
-          className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border bg-card/95 px-4 py-2.5 backdrop-blur-xs"
+          className="flex h-12 shrink-0 items-center justify-between gap-2 border-t border-border bg-card/95 px-4 backdrop-blur-xs"
         >
           <div className="flex flex-wrap items-center gap-2">
             {showPutOnHold ? (

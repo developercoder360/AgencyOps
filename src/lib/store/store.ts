@@ -19,6 +19,7 @@ import {
   checkLeaveTypeDeletion,
   checkProjectDeletion,
   checkShiftDeletion,
+  checkSignUpDeletion,
   checkTeamDeletion,
   checkUserDeletion,
   type DeletionCheckResult,
@@ -55,7 +56,6 @@ import type {
   TaskComment,
   TaskFile,
   TaskRevision,
-  TaskTagColor,
   Transaction,
 } from "@/types"
 import { toast } from "sonner"
@@ -375,11 +375,14 @@ export class StoreManager {
     }))
   }
 
-  public deleteSignUp(id: string): void {
+  public deleteSignUp(id: string): DeletionCheckResult {
+    const check = checkSignUpDeletion(this.data, id)
+    if (!check.allowed) return check
     this.setAndPersist((s) => ({
       ...s,
       signups: s.signups.filter((sg) => sg.id !== id),
     }))
+    return { allowed: true }
   }
 
   public convertSignUpToLead(
@@ -699,7 +702,8 @@ export class StoreManager {
       id: task.id || `tsk-${crypto.randomUUID().slice(0, 8)}`,
       createdAt: task.createdAt || nowIso.slice(0, 10),
       startDate: task.startDate || nowIso.slice(0, 10),
-      tags: task.tags || [],
+      clientId: task.clientId ?? null,
+      leadId: task.leadId ?? null,
       revisions: task.revisions || [],
       comments: task.comments || [],
       evidenceFiles: task.evidenceFiles || [],
@@ -779,8 +783,6 @@ export class StoreManager {
       code,
       title: `${source.title} (Copy)`,
       status: "Open",
-      loggedHours: 0,
-      trackedSeconds: 0,
       onHoldReason: undefined,
       qaHistory: [],
       redFlaggedUserIds: [],

@@ -7,10 +7,10 @@ import type {
   TaskPriority,
   TaskRevision,
   TaskStatus,
-  TaskTag,
 } from "@/types"
 import { MOCK_PROJECTS } from "./projects"
 import { MOCK_USERS } from "./users"
+import { MOCK_LEADS, MOCK_SIGNUPS } from "./leads"
 import { createSeededRandom, intBetween, pickFrom } from "./seed"
 
 function makeRichDetails(text: string, title: string): Record<string, unknown> {
@@ -95,15 +95,6 @@ const DEMO_REVISION_PRESETS = [
     title: "Fix responsive spacing",
     details: "Refine padding on 375px viewport to eliminate bottom gap and horizontal scroll.",
   },
-]
-
-const DEMO_TAGS: TaskTag[] = [
-  { id: "tag-ui", label: "UI/UX", color: "blue" },
-  { id: "tag-qa", label: "QA Ready", color: "violet" },
-  { id: "tag-perf", label: "Performance", color: "emerald" },
-  { id: "tag-client", label: "Client Review", color: "amber" },
-  { id: "tag-a11y", label: "A11y", color: "cyan" },
-  { id: "tag-copy", label: "Copy", color: "slate" },
 ]
 
 const TASK_STATUSES: TaskStatus[] = [
@@ -239,10 +230,21 @@ function generateTasks(): Task[] {
       })
     }
 
-    const tags = [
-      DEMO_TAGS[i % DEMO_TAGS.length],
-      DEMO_TAGS[(i + 2) % DEMO_TAGS.length],
-    ]
+    let clientId: string | null = null
+    let leadId: string | null = null
+    if (i % 3 === 0) {
+      const su = MOCK_SIGNUPS[i % MOCK_SIGNUPS.length]
+      clientId = su ? su.id : null
+      leadId = su?.leadId ?? (MOCK_LEADS[i % MOCK_LEADS.length]?.id ?? null)
+    } else if (i % 3 === 1) {
+      const su = MOCK_SIGNUPS[(i * 2) % MOCK_SIGNUPS.length]
+      clientId = su ? su.id : null
+      leadId = null
+    } else if (i % 3 === 2) {
+      const ld = MOCK_LEADS[(i * 3) % MOCK_LEADS.length]
+      leadId = ld ? ld.id : null
+      clientId = null
+    }
 
     const activity: TaskActivityEvent[] = [
       {
@@ -321,10 +323,8 @@ function generateTasks(): Task[] {
       reviewerId: reviewer.id,
       startDate: createdAt,
       dueDate,
-      estimatedHours: intBetween(rng, 4, 24),
-      loggedHours:
-        status === "Open" ? 0 : intBetween(rng, 2, 18),
-      tags,
+      clientId,
+      leadId,
       revisions,
       nextRevisionNumber: revNumberSeq,
       nextRedrawNumber: rdNumberSeq,

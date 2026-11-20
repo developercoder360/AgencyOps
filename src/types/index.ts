@@ -338,21 +338,6 @@ export interface Project {
   comments: ActivityComment[]
 }
 
-export type TaskTagColor =
-  | "blue"
-  | "emerald"
-  | "amber"
-  | "rose"
-  | "violet"
-  | "cyan"
-  | "slate"
-
-export interface TaskTag {
-  id: string
-  label: string
-  color: TaskTagColor
-}
-
 export type TaskFile = AttachmentFile
 
 export type RevisionStatus =
@@ -434,16 +419,17 @@ export interface Task {
   reviewerId: string
   startDate?: string
   dueDate: string
-  estimatedHours: number
-  loggedHours: number
-  trackedSeconds?: number
-  tags?: TaskTag[]
+  clientId?: string | null
+  leadId?: string | null
   revisions: TaskRevision[]
   nextRevisionNumber?: number
   nextRedrawNumber?: number
   legacy?: {
     subtasks?: unknown[]
     checklist?: unknown[]
+    tags?: unknown
+    estimatedHours?: unknown
+    loggedHours?: unknown
   }
   comments: TaskComment[]
   evidenceFiles: AttachmentFile[]
