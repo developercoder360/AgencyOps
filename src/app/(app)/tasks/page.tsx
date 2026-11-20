@@ -12,10 +12,10 @@ import {
   Flag,
   Kanban,
   List,
-  ListTodo,
   MessageSquare,
   Paperclip,
   Plus,
+  RotateCcw,
   Table2,
   Trash2,
 } from "lucide-react"
@@ -208,16 +208,7 @@ function TasksPageContent() {
       dueDate: values.dueDate,
       estimatedHours: values.estimatedHours,
       loggedHours: 0,
-      subtasks: [
-        {
-          id: `st-${crypto.randomUUID().slice(0, 8)}`,
-          title: "Review specifications & brief",
-          completed: false,
-          status: "Open",
-          dueDate: values.dueDate,
-          assigneeId: values.assigneeId,
-        },
-      ],
+      revisions: [],
       comments: [],
       evidenceFiles: [],
       qaHistory: [],
@@ -342,6 +333,61 @@ function TasksPageContent() {
         },
       },
       {
+        id: "revisions",
+        accessorFn: (row) => {
+          const revs = row.revisions || []
+          const openRevs = revs.filter(
+            (r) => r.status !== "approved" && r.status !== "rejected"
+          ).length
+          if (openRevs > 0) return "has_open"
+          if (revs.length > 0) return "all_approved"
+          return "none"
+        },
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Revisions" />
+        ),
+        sortingFn: (rowA, rowB) => {
+          const aCount = rowA.original.revisions?.length || 0
+          const bCount = rowB.original.revisions?.length || 0
+          return aCount - bCount
+        },
+        filterFn: (row, _columnId, filterValue: string[]) => {
+          if (!filterValue || filterValue.length === 0) return true
+          const revs = row.original.revisions || []
+          const openRevs = revs.filter(
+            (r) => r.status !== "approved" && r.status !== "rejected"
+          ).length
+          let statusKey = "none"
+          if (openRevs > 0) statusKey = "has_open"
+          else if (revs.length > 0) statusKey = "all_approved"
+          return filterValue.includes(statusKey)
+        },
+        cell: ({ row }) => {
+          const revs = row.original.revisions || []
+          const openRevs = revs.filter(
+            (r) => r.status !== "approved" && r.status !== "rejected"
+          ).length
+          if (revs.length === 0) {
+            return <span className="text-xs text-muted-foreground">—</span>
+          }
+          return (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-xs tabular-nums",
+                openRevs > 0
+                  ? "font-medium text-amber-600 dark:text-amber-400"
+                  : "text-muted-foreground"
+              )}
+            >
+              <RotateCcw className="size-3 shrink-0" />
+              {openRevs > 0
+                ? `${openRevs} open / ${revs.length}`
+                : `${revs.length}`}
+            </span>
+          )
+        },
+      },
+      {
         accessorKey: "dueDate",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Due Date" />
@@ -411,6 +457,15 @@ function TasksPageContent() {
         options: TASK_PRIORITIES.map((p) => ({ label: p, value: p })),
       },
       {
+        columnId: "revisions",
+        title: "Revisions",
+        options: [
+          { label: "Has open revisions", value: "has_open" },
+          { label: "All revisions approved", value: "all_approved" },
+          { label: "No revisions", value: "none" },
+        ],
+      },
+      {
         columnId: "brandName",
         title: "Brand",
         options: brands.map((b) => ({ label: b.name, value: b.name })),
@@ -423,7 +478,7 @@ function TasksPageContent() {
     <div className="space-y-6">
       <PageHeader
         title="Tasks & QA Board"
-        description="Track deliverable tasks, subtasks, On Hold blockers, and QA Pass/Fail reviews with red-flag tracking."
+        description="Track deliverable tasks, revisions, On Hold blockers, and QA Pass/Fail reviews with red-flag tracking."
         badge={<Badge variant="secondary">{tasks.length} tasks</Badge>}
         actions={
           <>
@@ -538,8 +593,10 @@ function TasksPageContent() {
                         const assignees = users.filter((u) =>
                           task.assigneeIds.includes(u.id)
                         )
-                        const doneSubtasks = task.subtasks.filter(
-                          (s) => s.completed
+                        const revs = task.revisions || []
+                        const openRevisions = revs.filter(
+                          (r) =>
+                            r.status !== "approved" && r.status !== "rejected"
                         ).length
                         const overdue =
                           task.status !== "Complete" && task.dueDate < todayIso
@@ -588,11 +645,22 @@ function TasksPageContent() {
                               <AvatarGroup people={assignees} max={2} />
                               <div className="flex shrink-0 items-center gap-2 text-[11px] whitespace-nowrap text-muted-foreground">
                                 <span
-                                  title="Subtasks"
-                                  className="inline-flex items-center gap-0.5 tabular-nums"
+                                  title={`${revs.length} revisions (${openRevisions} open)`}
+                                  className={cn(
+                                    "inline-flex items-center gap-0.5 tabular-nums",
+                                    openRevisions > 0
+                                      ? "font-medium text-amber-600 dark:text-amber-400"
+                                      : ""
+                                  )}
                                 >
-                                  <ListTodo className="size-3 shrink-0" />
-                                  {doneSubtasks}/{task.subtasks.length}
+                                  <RotateCcw className="size-3 shrink-0" />
+                                  <span>{revs.length}</span>
+                                  {openRevisions > 0 ? (
+                                    <span
+                                      className="size-1.5 rounded-full bg-amber-500 shrink-0"
+                                      title={`${openRevisions} open revisions`}
+                                    />
+                                  ) : null}
                                 </span>
                                 <span
                                   title="Comments"
@@ -810,7 +878,7 @@ function TasksPageContent() {
         open={Boolean(deleteTarget)}
         onOpenChange={(v) => !v && setDeleteTarget(null)}
         title={`Delete Task "${deleteTarget?.title}" (${deleteTarget?.code})?`}
-        description="Are you sure you want to delete this task deliverable? All subtasks, QA history, and comments will be removed."
+        description="Are you sure you want to delete this task deliverable? All revisions, QA history, and comments will be removed."
         onConfirm={handleConfirmDelete}
       />
     </div>

@@ -37,10 +37,12 @@ import type {
   ShiftSchedule,
   SignUp,
   StaffUser,
-  Subtask,
+  RevisionStatus,
   Task,
   TaskActivityEvent,
   TaskComment,
+  TaskFile,
+  TaskRevision,
   Transaction,
 } from "@/types"
 import type { StorageEstimate } from "./storage"
@@ -192,14 +194,24 @@ export interface StoreContextValue {
   addProjectComment: (projectId: string, content: string, authorId?: string) => void
 
   createTask: (
-    task: Omit<Task, "id" | "createdAt" | "subtasks" | "comments" | "evidenceFiles" | "qaHistory" | "redFlaggedUserIds"> & {
+    task: Omit<
+      Task,
+      | "id"
+      | "createdAt"
+      | "revisions"
+      | "comments"
+      | "evidenceFiles"
+      | "qaHistory"
+      | "redFlaggedUserIds"
+    > & {
       id?: string
       createdAt?: string
-      subtasks?: Subtask[]
+      revisions?: TaskRevision[]
       comments?: TaskComment[]
       evidenceFiles?: Task["evidenceFiles"]
       qaHistory?: QAReviewEvent[]
       redFlaggedUserIds?: string[]
+      legacy?: { subtasks?: unknown[]; checklist?: unknown[] }
     }
   ) => Task
   appendTaskActivity: (
@@ -214,33 +226,45 @@ export interface StoreContextValue {
   deleteTask: (id: string) => void
   duplicateTask: (taskId: string, actorName?: string) => Task | null
   moveTaskToProject: (taskId: string, projectId: string, actorName?: string) => void
-  addSubtask: (
+  addRevision: (
     taskId: string,
-    title: string,
-    assigneeId: string,
-    options?: { dueDate?: string; status?: Task["status"]; actorName?: string }
+    revisionData: {
+      title: string
+      details?: string
+      requestedBy?: "client" | "internal"
+      assigneeId?: string
+      dueDate?: string
+      status?: RevisionStatus
+      files?: TaskFile[]
+    },
+    actorName?: string,
+    actorId?: string
+  ) => TaskRevision | null
+  updateRevision: (
+    taskId: string,
+    revisionId: string,
+    updates: Partial<Omit<TaskRevision, "id" | "number" | "createdAt">>,
+    actorName?: string,
+    actorId?: string
   ) => void
-  updateSubtask: (
+  setRevisionStatus: (
     taskId: string,
-    subtaskId: string,
-    updates: Partial<Subtask>,
+    revisionId: string,
+    status: RevisionStatus,
+    actorName?: string,
+    actorId?: string
+  ) => void
+  removeRevision: (
+    taskId: string,
+    revisionId: string,
     actorName?: string
   ) => void
-  toggleSubtask: (
+  addRevisionFiles: (
     taskId: string,
-    subtaskId: string,
-    completed: boolean,
+    revisionId: string,
+    files: TaskFile[],
     actorName?: string
   ) => void
-  deleteSubtask: (taskId: string, subtaskId: string, actorName?: string) => void
-  addChecklistItem: (taskId: string, title: string, actorName?: string) => void
-  toggleChecklistItem: (
-    taskId: string,
-    itemId: string,
-    completed: boolean,
-    actorName?: string
-  ) => void
-  deleteChecklistItem: (taskId: string, itemId: string) => void
   addTaskComment: (
     taskId: string,
     content: string,
@@ -466,13 +490,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       deleteTask: storeManager.deleteTask.bind(storeManager),
       duplicateTask: storeManager.duplicateTask.bind(storeManager),
       moveTaskToProject: storeManager.moveTaskToProject.bind(storeManager),
-      addSubtask: storeManager.addSubtask.bind(storeManager),
-      updateSubtask: storeManager.updateSubtask.bind(storeManager),
-      toggleSubtask: storeManager.toggleSubtask.bind(storeManager),
-      deleteSubtask: storeManager.deleteSubtask.bind(storeManager),
-      addChecklistItem: storeManager.addChecklistItem.bind(storeManager),
-      toggleChecklistItem: storeManager.toggleChecklistItem.bind(storeManager),
-      deleteChecklistItem: storeManager.deleteChecklistItem.bind(storeManager),
+      addRevision: storeManager.addRevision.bind(storeManager),
+      updateRevision: storeManager.updateRevision.bind(storeManager),
+      setRevisionStatus: storeManager.setRevisionStatus.bind(storeManager),
+      removeRevision: storeManager.removeRevision.bind(storeManager),
+      addRevisionFiles: storeManager.addRevisionFiles.bind(storeManager),
       addTaskComment: storeManager.addTaskComment.bind(storeManager),
       editTaskComment: storeManager.editTaskComment.bind(storeManager),
       deleteTaskComment: storeManager.deleteTaskComment.bind(storeManager),

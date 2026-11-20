@@ -6,7 +6,7 @@ import {
   ChevronRight,
   Clock,
   Flag,
-  ListTodo,
+  RotateCcw,
   MessageSquare,
   Paperclip,
   Plus,
@@ -101,8 +101,9 @@ export function TaskGroupedList({
                     const assignees = users.filter((u) =>
                       task.assigneeIds.includes(u.id)
                     )
-                    const doneSubtasks = task.subtasks.filter(
-                      (s) => s.completed
+                    const revs = task.revisions || []
+                    const openRevisions = revs.filter(
+                      (r) => r.status !== "approved" && r.status !== "rejected"
                     ).length
                     const overdue =
                       task.status !== "Complete" && task.dueDate < todayIso
@@ -145,11 +146,20 @@ export function TaskGroupedList({
                           {/* Counts */}
                           <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
                             <span
-                              title="Subtasks"
-                              className="inline-flex items-center gap-0.5 tabular-nums"
+                              title={`${revs.length} revisions (${openRevisions} open)`}
+                              className={cn(
+                                "inline-flex items-center gap-0.5 tabular-nums",
+                                openRevisions > 0
+                                  ? "font-medium text-amber-600 dark:text-amber-400"
+                                  : ""
+                              )}
                             >
-                              <ListTodo className="size-3" />
-                              {doneSubtasks}/{task.subtasks.length}
+                              <RotateCcw className="size-3" />
+                              <span>
+                                {openRevisions > 0
+                                  ? `${openRevisions} open / ${revs.length}`
+                                  : `${revs.length}`}
+                              </span>
                             </span>
                             <span
                               title="Comments"

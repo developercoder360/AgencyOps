@@ -230,6 +230,30 @@ const STATUS_STYLE_MAP: Record<string, StatusConfig> = {
       "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
     dotClass: "bg-amber-500",
   },
+  requested: {
+    label: "Requested",
+    classes:
+      "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
+    dotClass: "bg-amber-500",
+  },
+  in_progress: {
+    label: "In Progress",
+    classes:
+      "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
+    dotClass: "bg-blue-500",
+  },
+  "in progress": {
+    label: "In Progress",
+    classes:
+      "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
+    dotClass: "bg-blue-500",
+  },
+  submitted: {
+    label: "Submitted",
+    classes:
+      "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30",
+    dotClass: "bg-purple-500",
+  },
   approved: {
     label: "Approved",
     classes:

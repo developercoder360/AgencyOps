@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { format } from "date-fns"
+import { cn } from "cn"
 import type { DateRange } from "react-day-picker"
 import {
   AlertTriangle,
@@ -16,6 +17,7 @@ import {
   DollarSign,
   FolderKanban,
   PartyPopper,
+  RotateCcw,
   Sparkles,
   Target,
   UserCheck,
@@ -136,16 +138,16 @@ export function DashboardClient() {
     to: parseIsoDate("2026-11-11"),
   })
 
-  // Dismissible Getting Started Checklist
+  // Dismissible Getting Started Guide
   const isDismissedStored = React.useSyncExternalStore(
     subscribeStorage,
     getDismissedSnapshot,
     getDismissedServerSnapshot
   )
   const [overrideDismissed, setOverrideDismissed] = React.useState<boolean | null>(null)
-  const checklistDismissed = overrideDismissed !== null ? overrideDismissed : isDismissedStored
+  const onboardingDismissed = overrideDismissed !== null ? overrideDismissed : isDismissedStored
 
-  function handleDismissChecklist() {
+  function handleDismissOnboarding() {
     setOverrideDismissed(true)
     try {
       localStorage.setItem("agencyops:getting-started:dismissed", "true")
@@ -154,7 +156,7 @@ export function DashboardClient() {
     }
   }
 
-  function handleReopenChecklist() {
+  function handleReopenOnboarding() {
     setOverrideDismissed(false)
     try {
       localStorage.removeItem("agencyops:getting-started:dismissed")
@@ -338,8 +340,8 @@ export function DashboardClient() {
     [filteredTasks]
   )
 
-  // Checklist items
-  const checklist = React.useMemo(() => {
+  // Onboarding setup steps
+  const onboardingSteps = React.useMemo(() => {
     const hasBrand = brands.length > 0
     const hasTeamOrCity = teams.length > 0 || cities.length > 0
     const hasStaff = users.filter((u) => u.id !== "usr-admin").length > 0
@@ -399,9 +401,9 @@ export function DashboardClient() {
     ]
   }, [brands, teams, cities, users, leads, invoices, projects])
 
-  const completedChecklistCount = checklist.filter((item) => item.completed).length
-  const isAllChecklistDone = completedChecklistCount === checklist.length
-  const checklistProgressPercent = Math.round((completedChecklistCount / checklist.length) * 100)
+  const completedOnboardingCount = onboardingSteps.filter((item) => item.completed).length
+  const isAllOnboardingDone = completedOnboardingCount === onboardingSteps.length
+  const onboardingProgressPercent = Math.round((completedOnboardingCount / onboardingSteps.length) * 100)
 
   function applyPreset(id: string) {
     const preset = PRESETS.find((p) => p.id === id)
@@ -507,8 +509,8 @@ export function DashboardClient() {
         }
       />
 
-      {/* Getting Started Onboarding Checklist Card */}
-      {!checklistDismissed && !isAllChecklistDone ? (
+      {/* Getting Started Onboarding Setup Guide Card */}
+      {!onboardingDismissed && !isAllOnboardingDone ? (
         <Card className="border-primary/30 bg-gradient-to-r from-primary/5 via-background to-primary/10">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -518,11 +520,11 @@ export function DashboardClient() {
                     Getting Started
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {completedChecklistCount} of {checklist.length} completed ({checklistProgressPercent}%)
+                    {completedOnboardingCount} of {onboardingSteps.length} completed ({onboardingProgressPercent}%)
                   </span>
                 </div>
                 <CardTitle className="mt-1 text-base">
-                  Welcome to AgencyOps — Operational Setup Checklist
+                  Welcome to AgencyOps — Operational Setup Guide
                 </CardTitle>
                 <CardDescription>
                   Complete these recommended initial steps to unlock your live agency pipeline.
@@ -533,19 +535,19 @@ export function DashboardClient() {
                   type="button"
                   variant="ghost"
                   size="icon-xs"
-                  onClick={handleDismissChecklist}
-                  aria-label="Dismiss checklist"
+                  onClick={handleDismissOnboarding}
+                  aria-label="Dismiss guide"
                 >
                   <X className="size-4 text-muted-foreground" />
                 </Button>
               </div>
             </div>
             <div className="pt-2">
-              <ProgressBar value={checklistProgressPercent} color="blue" />
+              <ProgressBar value={onboardingProgressPercent} color="blue" />
             </div>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 pt-1">
-            {checklist.map((item) => {
+            {onboardingSteps.map((item) => {
               const Icon = item.icon
               return (
                 <div
@@ -590,19 +592,19 @@ export function DashboardClient() {
             })}
           </CardContent>
         </Card>
-      ) : checklistDismissed && !isAllChecklistDone ? (
+      ) : onboardingDismissed && !isAllOnboardingDone ? (
         <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs">
           <span className="text-muted-foreground">
-            Onboarding checklist: <strong>{completedChecklistCount}/{checklist.length}</strong> steps completed.
+            Onboarding guide: <strong>{completedOnboardingCount}/{onboardingSteps.length}</strong> steps completed.
           </span>
           <Button
             type="button"
             variant="ghost"
             size="xs"
-            onClick={handleReopenChecklist}
+            onClick={handleReopenOnboarding}
             className="text-xs text-primary"
           >
-            Show Checklist
+            Show Guide
           </Button>
         </div>
       ) : null}
@@ -994,6 +996,23 @@ export function DashboardClient() {
                         <span className="shrink-0 whitespace-nowrap font-medium text-foreground/80">
                           • Due {task.dueDate}
                         </span>
+                        {task.revisions && task.revisions.length > 0 ? (
+                          <span
+                            className={cn(
+                              "shrink-0 inline-flex items-center gap-1 font-medium",
+                              task.revisions.some(
+                                (r) =>
+                                  r.status !== "approved" &&
+                                  r.status !== "rejected"
+                              )
+                                ? "text-amber-600 dark:text-amber-400"
+                                : "text-muted-foreground"
+                            )}
+                          >
+                            • <RotateCcw className="size-3" />
+                            {task.revisions.length} rev{task.revisions.length > 1 ? "s" : ""}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     <AvatarGroup people={assignees} max={2} />

@@ -42,7 +42,6 @@ import { getTaskPermissions, ROLE_PERSONA_SUMMARY } from "@/lib/permissions"
 import { useStore } from "@/lib/store"
 import type {
   AttachmentFile,
-  Subtask,
   TaskPriority,
   TaskStatus,
   TaskTag,
@@ -50,11 +49,10 @@ import type {
 import { cn } from "cn"
 import { TaskActivitySidebar } from "./task-activity-sidebar"
 import { TaskAttachments } from "./task-attachments"
-import { TaskChecklist } from "./task-checklist"
 import { TaskDescriptionEditor } from "./task-description-editor"
 import { TaskHeader } from "./task-header"
 import { TaskPropertiesGrid } from "./task-properties-grid"
-import { TaskSubtasks } from "./task-subtasks"
+import { TaskRevisions } from "./task-revisions"
 import { TaskWorkflowBar } from "./task-workflow-bar"
 import {
   formatHoursMinutes,
@@ -89,13 +87,11 @@ export function TaskDetailPanel({
     deleteTask,
     duplicateTask,
     moveTaskToProject,
-    addSubtask,
-    updateSubtask,
-    toggleSubtask,
-    deleteSubtask,
-    addChecklistItem,
-    toggleChecklistItem,
-    deleteChecklistItem,
+    addRevision,
+    updateRevision,
+    setRevisionStatus,
+    removeRevision,
+    addRevisionFiles,
     addTaskComment,
     editTaskComment,
     deleteTaskComment,
@@ -596,7 +592,7 @@ export function TaskDetailPanel({
           </SheetTitle>
           <SheetDescription className="sr-only">
             {task
-              ? `Task details, subtasks, attachments, workflow actions, and activity for ${task.code}.`
+              ? `Task details, revisions, attachments, workflow actions, and activity for ${task.code}.`
               : "Loading task details."}
           </SheetDescription>
 
@@ -818,52 +814,52 @@ export function TaskDetailPanel({
                       onSave={handleDescriptionSave}
                     />
 
-                    {/* Subtasks */}
-                    <TaskSubtasks
-                      subtasks={task.subtasks}
+                    {/* Revisions */}
+                    <TaskRevisions
+                      taskId={task.id}
+                      taskStatus={task.status}
+                      revisions={task.revisions || []}
                       users={users}
+                      currentUserRole={role}
+                      currentUserId="usr-admin"
+                      permissions={permissions}
+                      todayIso={todayIso}
+                      defaultDueDate={task.dueDate}
                       defaultAssigneeId={
                         task.assigneeIds[0] ?? users[0]?.id ?? "usr-admin"
                       }
-                      defaultDueDate={task.dueDate}
-                      todayIso={todayIso}
-                      canEdit={permissions.canEditDetails}
-                      onAdd={(title, assigneeId, dueDate) => {
-                        addSubtask(task.id, title, assigneeId, {
-                          dueDate,
-                          actorName,
-                        })
+                      onAddRevision={(data) => {
+                        return addRevision(task.id, data, actorName)
+                      }}
+                      onUpdateRevision={(revisionId, updates) => {
+                        updateRevision(task.id, revisionId, updates, actorName)
                         toast.success("Saved")
                       }}
-                      onToggle={(subtaskId, completed) => {
-                        toggleSubtask(task.id, subtaskId, completed, actorName)
+                      onSetRevisionStatus={(revisionId, status) => {
+                        setRevisionStatus(task.id, revisionId, status, actorName)
                         toast.success("Saved")
                       }}
-                      onUpdate={(subtaskId, updates: Partial<Subtask>) => {
-                        updateSubtask(task.id, subtaskId, updates, actorName)
-                        toast.success("Saved")
+                      onRemoveRevision={(revisionId) => {
+                        removeRevision(task.id, revisionId, actorName)
                       }}
-                      onDelete={(subtaskId) => {
-                        deleteSubtask(task.id, subtaskId, actorName)
-                        toast.success("Subtask removed")
+                      onAddRevisionFiles={(revisionId, files) => {
+                        addRevisionFiles(task.id, revisionId, files, actorName)
+                        toast.success("Reference file attached")
                       }}
-                    />
-
-                    {/* Checklist */}
-                    <TaskChecklist
-                      items={task.checklist ?? []}
-                      canEdit={permissions.canEditDetails}
-                      onAdd={(title) => {
-                        addChecklistItem(task.id, title, actorName)
-                        toast.success("Saved")
-                      }}
-                      onToggle={(itemId, completed) => {
-                        toggleChecklistItem(task.id, itemId, completed, actorName)
-                        toast.success("Saved")
-                      }}
-                      onDelete={(itemId) => {
-                        deleteChecklistItem(task.id, itemId)
-                        toast.success("Checklist item removed")
+                      onMoveToReDraw={() => {
+                        updateTask(
+                          task.id,
+                          { status: "Re-Draw" },
+                          {
+                            type: "system",
+                            actorId: "usr-actor",
+                            actorName,
+                            action: "moved task to Re-Draw",
+                            fromValue: task.status,
+                            toValue: "Re-Draw",
+                            detail: "Triggered by revision added to completed/QA task",
+                          }
+                        )
                       }}
                     />
 
@@ -1071,7 +1067,7 @@ export function TaskDetailPanel({
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
         title={`Delete Task "${task?.title}" (${task?.code})?`}
-        description="Are you sure you want to delete this task deliverable? All subtasks, checklist items, QA history, and comments will be removed."
+        description="Are you sure you want to delete this task deliverable? All revisions, QA history, and comments will be removed."
         onConfirm={handleConfirmDelete}
       />
     </>

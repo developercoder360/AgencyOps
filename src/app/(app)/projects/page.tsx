@@ -356,7 +356,7 @@ export default function ProjectsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Delivery Projects"
-        description="Client creative and technical deliverable workspaces with real-time tasks, subtasks, files, and chats."
+        description="Client creative and technical deliverable workspaces with real-time tasks, revisions, files, and chats."
         badge={<Badge variant="secondary">{projects.length} active</Badge>}
         actions={
           <div className="flex items-center gap-2">

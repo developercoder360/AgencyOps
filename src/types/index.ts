@@ -353,10 +353,28 @@ export interface TaskTag {
   color: TaskTagColor
 }
 
-export interface ChecklistItem {
+export type TaskFile = AttachmentFile
+
+export type RevisionStatus =
+  | "requested"
+  | "in_progress"
+  | "submitted"
+  | "approved"
+  | "rejected"
+
+export interface TaskRevision {
   id: string
+  number: number
   title: string
-  completed: boolean
+  details: string
+  requestedBy: "client" | "internal"
+  assigneeId?: string
+  dueDate?: string
+  status: RevisionStatus
+  files: TaskFile[]
+  createdAt: string
+  updatedAt: string
+  createdById: string
 }
 
 export interface TaskActivityEvent {
@@ -370,15 +388,6 @@ export interface TaskActivityEvent {
   toValue?: string
   detail?: string
   timestamp: string
-}
-
-export interface Subtask {
-  id: string
-  title: string
-  completed: boolean
-  assigneeId: string
-  dueDate?: string
-  status?: TaskStatus
 }
 
 export interface TaskComment {
@@ -424,8 +433,12 @@ export interface Task {
   loggedHours: number
   trackedSeconds?: number
   tags?: TaskTag[]
-  subtasks: Subtask[]
-  checklist?: ChecklistItem[]
+  revisions: TaskRevision[]
+  nextRevisionNumber?: number
+  legacy?: {
+    subtasks?: unknown[]
+    checklist?: unknown[]
+  }
   comments: TaskComment[]
   evidenceFiles: AttachmentFile[]
   onHoldReason?: string

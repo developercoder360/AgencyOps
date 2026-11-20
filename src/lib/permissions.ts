@@ -122,6 +122,11 @@ export interface TaskRolePermissions {
   canQaReview: boolean
   canResolveQaComment: boolean
   canCreateTask: boolean
+  canAddRevision: boolean
+  canEditRevision: boolean
+  canDeleteRevision: boolean
+  canApproveRejectRevision: boolean
+  canUpdateAssignedRevisionProgress: boolean
 }
 
 export function getTaskPermissions(role: Role): TaskRolePermissions {
@@ -142,6 +147,32 @@ export function getTaskPermissions(role: Role): TaskRolePermissions {
         canQaReview: true,
         canResolveQaComment: true,
         canCreateTask: true,
+        canAddRevision: true,
+        canEditRevision: true,
+        canDeleteRevision: true,
+        canApproveRejectRevision: true,
+        canUpdateAssignedRevisionProgress: true,
+      }
+    case "Sales/Account Manager":
+      return {
+        isReadOnly: false,
+        canEditDetails: false,
+        canEditStatus: false,
+        canEditAssignees: false,
+        canDeleteOrMove: false,
+        canDuplicate: false,
+        canComment: true,
+        canUploadEvidence: false,
+        canPutOnHold: false,
+        canSendToQa: false,
+        canQaReview: false,
+        canResolveQaComment: false,
+        canCreateTask: false,
+        canAddRevision: true,
+        canEditRevision: true,
+        canDeleteRevision: true,
+        canApproveRejectRevision: true,
+        canUpdateAssignedRevisionProgress: true,
       }
     case "Designer/Developer":
       return {
@@ -158,6 +189,11 @@ export function getTaskPermissions(role: Role): TaskRolePermissions {
         canQaReview: false,
         canResolveQaComment: false,
         canCreateTask: true,
+        canAddRevision: false,
+        canEditRevision: false,
+        canDeleteRevision: false,
+        canApproveRejectRevision: false,
+        canUpdateAssignedRevisionProgress: true,
       }
     case "QA Reviewer":
       return {
@@ -174,8 +210,12 @@ export function getTaskPermissions(role: Role): TaskRolePermissions {
         canQaReview: true,
         canResolveQaComment: true,
         canCreateTask: false,
+        canAddRevision: false,
+        canEditRevision: false,
+        canDeleteRevision: false,
+        canApproveRejectRevision: true,
+        canUpdateAssignedRevisionProgress: false,
       }
-    case "Sales/Account Manager":
     case "HR Manager":
     default:
       return {
@@ -192,6 +232,11 @@ export function getTaskPermissions(role: Role): TaskRolePermissions {
         canQaReview: false,
         canResolveQaComment: false,
         canCreateTask: false,
+        canAddRevision: false,
+        canEditRevision: false,
+        canDeleteRevision: false,
+        canApproveRejectRevision: false,
+        canUpdateAssignedRevisionProgress: false,
       }
   }
 }
