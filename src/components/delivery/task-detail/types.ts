@@ -152,12 +152,20 @@ export function formatSingleDate(dateStr?: string): string {
   return dateStr
 }
 
-export function formatDateRange(startDate?: string, dueDate?: string): string {
-  const start = formatSingleDate(startDate)
-  const due = formatSingleDate(dueDate)
-  if (start && due) return `${start} → ${due}`
-  if (due) return due
-  if (start) return start
+export function formatDateRange(
+  startDate?: string,
+  dueDate?: string,
+  completedDate?: string
+): string {
+  const start = formatSingleDate(startDate) || "—"
+  const due = formatSingleDate(dueDate) || "—"
+  if (completedDate !== undefined) {
+    const comp = completedDate ? formatSingleDate(completedDate) : "—"
+    return `${start} → ${due} → ${comp}`
+  }
+  if (start !== "—" && due !== "—") return `${start} → ${due}`
+  if (due !== "—") return due
+  if (start !== "—") return start
   return "—"
 }
 

@@ -45,6 +45,7 @@ import type {
 import { cn } from "cn"
 import {
   formatDateRange,
+  formatSingleDate,
   getEntityInitials,
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -256,7 +257,7 @@ export function TaskPropertiesGrid({
           </div>
         </div>
 
-        {/* 2. Dates (READ-ONLY) with detailed Tooltip */}
+        {/* 2. Dates (READ-ONLY) with side-by-side Start -> End -> Complete and detailed Tooltip */}
         <div className="flex min-h-[32px] items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-muted/40">
           <span className="flex w-[110px] shrink-0 items-center gap-2 text-xs font-normal text-muted-foreground">
             <CalendarIcon className="size-4 text-muted-foreground/80 shrink-0" />
@@ -269,19 +270,42 @@ export function TaskPropertiesGrid({
                   <div
                     tabIndex={0}
                     role="button"
-                    aria-label={`Dates: ${formatDateRange(task.startDate, task.dueDate)}. Click or hover for full timeline.`}
-                    className="inline-flex items-center gap-1.5 text-xs text-foreground/90 font-normal cursor-help hover:text-foreground transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-xs"
+                    aria-label={`Dates: Start ${formatSingleDate(task.startDate) || "—"}, End ${formatSingleDate(task.dueDate) || "—"}, Complete ${task.status === "Complete" ? (completedDate ? formatSingleDate(completedDate) : formatSingleDate(task.dueDate)) : "—"}. Click or hover for full timeline.`}
+                    className="inline-flex items-center gap-1.5 text-xs text-foreground/90 font-normal cursor-help hover:text-foreground transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-xs whitespace-nowrap"
                   >
                     <CalendarIcon className="size-3.5 text-muted-foreground/70 shrink-0 group-hover:text-foreground" />
-                    <span className="border-b border-dotted border-muted-foreground/50 pb-0.5">
-                      {formatDateRange(task.startDate, task.dueDate)}
-                    </span>
-                    {task.status === "Complete" && (
-                      <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                        <Check className="size-2.5" />
-                        Completed
+                    <div className="inline-flex items-center gap-1.5 border-b border-dotted border-muted-foreground/50 pb-0.5 whitespace-nowrap">
+                      <span
+                        className="font-medium text-foreground whitespace-nowrap"
+                        title={`Start Date: ${task.startDate ? formatFullDate(task.startDate) : "Not specified"}`}
+                      >
+                        {formatSingleDate(task.startDate) || "—"}
                       </span>
-                    )}
+                      <span className="text-muted-foreground/50">→</span>
+                      <span
+                        className="font-medium text-foreground whitespace-nowrap"
+                        title={`End Date (Due Date): ${formatFullDate(task.dueDate)}`}
+                      >
+                        {formatSingleDate(task.dueDate) || "—"}
+                      </span>
+                      <span className="text-muted-foreground/50">→</span>
+                      {task.status === "Complete" ? (
+                        <span
+                          className="inline-flex items-center gap-0.5 font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap"
+                          title={`Complete Date: ${completedDate ? formatFullDate(completedDate) : formatFullDate(task.dueDate)}`}
+                        >
+                          <Check className="size-2.5" />
+                          {completedDate ? formatSingleDate(completedDate) : formatSingleDate(task.dueDate)}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-muted-foreground/50 font-medium whitespace-nowrap"
+                          title="Complete Date: Not completed yet"
+                        >
+                          —
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent
