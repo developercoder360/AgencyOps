@@ -289,6 +289,42 @@ export function TaskDetailPanel({
     toast.success("Saved")
   }
 
+  function handleCompletedDateChange(completedAt: string | undefined) {
+    if (!task) return
+    const prevCompleted = task.completedAt
+    if (
+      completedAt === prevCompleted &&
+      (completedAt ? task.status === "Complete" : task.status !== "Complete")
+    ) {
+      return
+    }
+
+    const isMarkingComplete = Boolean(completedAt)
+    const nextStatus: TaskStatus = isMarkingComplete
+      ? "Complete"
+      : task.status === "Complete"
+        ? "Progress"
+        : task.status
+
+    updateTask(
+      task.id,
+      {
+        completedAt,
+        status: nextStatus,
+      },
+      {
+        type: "system",
+        actorId,
+        actorName,
+        action: isMarkingComplete ? "set completed date" : "cleared completed date",
+        field: "Completed Date",
+        fromValue: prevCompleted ?? "—",
+        toValue: completedAt ?? "—",
+      }
+    )
+    toast.success("Saved")
+  }
+
   function handlePriorityChange(priority: TaskPriority) {
     if (!task || priority === task.priority) return
     updateTask(
@@ -740,6 +776,7 @@ export function TaskDetailPanel({
                       onRequestOnHold={() => setHoldDialogOpen(true)}
                       onAssigneesChange={handleAssigneesChange}
                       onDatesChange={handleDatesChange}
+                      onCompletedDateChange={handleCompletedDateChange}
                       onPriorityChange={handlePriorityChange}
                       onClientChange={handleClientChange}
                       onLeadChange={handleLeadChange}

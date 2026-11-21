@@ -4,12 +4,8 @@ import * as React from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
-  Bell,
-  BellRing,
   Check,
-  ChevronDown,
   ChevronRight,
-  ChevronUp,
   Copy,
   FolderInput,
   Link2,
@@ -56,14 +52,14 @@ interface TaskHeaderProps {
 export function TaskHeader({
   task,
   permissions,
-  isWatching,
-  watcherCount,
+  isWatching: _isWatching,
+  watcherCount: _watcherCount,
   isExpanded,
-  hasPrev,
-  hasNext,
-  onPrev,
-  onNext,
-  onToggleWatch,
+  hasPrev: _hasPrev,
+  hasNext: _hasNext,
+  onPrev: _onPrev,
+  onNext: _onNext,
+  onToggleWatch: _onToggleWatch,
   onDuplicate,
   onOpenMoveProject,
   onRequestDelete,
@@ -127,46 +123,6 @@ export function TaskHeader({
 
       {/* Right actions */}
       <div className="flex shrink-0 items-center gap-1">
-        {/* Prev / Next navigation */}
-        {(hasPrev || hasNext) ? (
-          <div className="mr-1 hidden items-center rounded-md border border-border bg-background p-0.5 sm:flex">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="size-7 p-0 text-muted-foreground hover:text-foreground"
-                  onClick={onPrev}
-                  disabled={!hasPrev}
-                  aria-label="Previous task (Alt+K)"
-                >
-                  <ChevronUp className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="text-xs">
-                Previous task (Alt+K or Alt+↑)
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="size-7 p-0 text-muted-foreground hover:text-foreground"
-                  onClick={onNext}
-                  disabled={!hasNext}
-                  aria-label="Next task (Alt+J)"
-                >
-                  <ChevronDown className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="text-xs">
-                Next task (Alt+J or Alt+↓)
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        ) : null}
-
         {/* Copy link */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -185,31 +141,6 @@ export function TaskHeader({
             </Button>
           </TooltipTrigger>
           <TooltipContent className="text-xs">Copy deep link</TooltipContent>
-        </Tooltip>
-
-        {/* Watch / Follow toggle */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant={isWatching ? "secondary" : "ghost"}
-              className="size-8 p-0 text-muted-foreground hover:text-foreground"
-              onClick={onToggleWatch}
-              aria-label={isWatching ? "Stop watching task" : "Watch task"}
-              aria-pressed={isWatching}
-            >
-              {isWatching ? (
-                <BellRing className="size-3.5 text-primary" />
-              ) : (
-                <Bell className="size-3.5" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="text-xs">
-            {isWatching
-              ? `Following updates (${watcherCount} watching)`
-              : `Follow this task (${watcherCount} watching)`}
-          </TooltipContent>
         </Tooltip>
 
         {/* More actions menu */}

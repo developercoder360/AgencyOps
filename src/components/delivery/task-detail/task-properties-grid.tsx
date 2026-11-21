@@ -8,12 +8,15 @@ import {
   FileEdit,
   Flag,
   Folder,
+  Pencil,
   ShieldCheck,
   Tag,
   User,
   Users,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Calendar as CalendarPicker } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
 import {
   Popover,
@@ -44,7 +47,6 @@ import type {
 } from "@/types"
 import { cn } from "cn"
 import {
-  formatDateRange,
   formatSingleDate,
   getEntityInitials,
   TASK_PRIORITIES,
@@ -80,6 +82,29 @@ function formatFullDate(dateStr?: string): string {
   return dateStr
 }
 
+function parseLocalDate(dateStr?: string | null): Date | undefined {
+  if (!dateStr) return undefined
+  const clean = dateStr.slice(0, 10)
+  const parts = clean.split("-")
+  if (parts.length === 3) {
+    const y = parseInt(parts[0], 10)
+    const m = parseInt(parts[1], 10) - 1
+    const d = parseInt(parts[2], 10)
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return new Date(y, m, d)
+    }
+  }
+  const parsed = new Date(dateStr)
+  return isNaN(parsed.getTime()) ? undefined : parsed
+}
+
+function toLocalDateString(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
 interface TaskPropertiesGridProps {
   task: Task
   users: StaffUser[]
@@ -91,6 +116,7 @@ interface TaskPropertiesGridProps {
   onRequestOnHold: () => void
   onAssigneesChange: (assigneeIds: string[]) => void
   onDatesChange?: (startDate: string | undefined, dueDate: string) => void
+  onCompletedDateChange?: (completedDate: string | undefined) => void
   onPriorityChange: (priority: TaskPriority) => void
   onClientChange?: (clientId: string | null) => void
   onLeadChange?: (leadId: string | null) => void
@@ -103,14 +129,19 @@ export function TaskPropertiesGrid({
   users,
   signups,
   permissions,
+  todayIso,
   onStatusChange,
   onRequestOnHold,
   onAssigneesChange,
+  onDatesChange,
+  onCompletedDateChange,
   onPriorityChange,
   creatorName: propCreatorName,
 }: TaskPropertiesGridProps) {
   const [assigneeSearch, setAssigneeSearch] = React.useState("")
   const [assigneeOpen, setAssigneeOpen] = React.useState(false)
+  const [endDateOpen, setEndDateOpen] = React.useState(false)
+  const [completeDateOpen, setCompleteDateOpen] = React.useState(false)
 
   // Assigned team member (single)
   const primaryAssignee = React.useMemo(
@@ -257,95 +288,224 @@ export function TaskPropertiesGrid({
           </div>
         </div>
 
-        {/* 2. Dates (READ-ONLY) with side-by-side Start -> End -> Complete and detailed Tooltip */}
+        {/* 2. Dates with side-by-side Start -> End -> Complete and interactive editing */}
         <div className="flex min-h-[32px] items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-muted/40">
-          <span className="flex w-[110px] shrink-0 items-center gap-2 text-xs font-normal text-muted-foreground">
-            <CalendarIcon className="size-4 text-muted-foreground/80 shrink-0" />
-            Dates
-          </span>
-          <div className="min-w-0 flex-1">
-            <TooltipProvider delayDuration={150}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`Dates: Start ${formatSingleDate(task.startDate) || "—"}, End ${formatSingleDate(task.dueDate) || "—"}, Complete ${task.status === "Complete" ? (completedDate ? formatSingleDate(completedDate) : formatSingleDate(task.dueDate)) : "—"}. Click or hover for full timeline.`}
-                    className="inline-flex items-center gap-1.5 text-xs text-foreground/90 font-normal cursor-help hover:text-foreground transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-xs whitespace-nowrap"
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  tabIndex={0}
+                  role="button"
+                  aria-label="Task dates timeline"
+                  className="flex w-[110px] shrink-0 items-center gap-2 text-xs font-normal text-muted-foreground cursor-help hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-xs"
+                >
+                  <CalendarIcon className="size-4 text-muted-foreground/80 shrink-0" />
+                  <span>Dates</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                align="start"
+                className="z-[80] rounded-lg border bg-popover p-2.5 text-xs text-popover-foreground shadow-md"
+              >
+                <div className="mb-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Task Timeline
+                </div>
+                <div className="grid grid-cols-[100px_1fr] gap-x-2.5 gap-y-1.5 text-xs">
+                  <span className="text-muted-foreground">Start Date:</span>
+                  <span className="font-medium text-foreground">
+                    {task.startDate ? formatFullDate(task.startDate) : "Not specified"} (Read-only)
+                  </span>
+
+                  <span className="text-muted-foreground">End Date:</span>
+                  <span className="font-medium text-foreground">
+                    {formatFullDate(task.dueDate)} (Due Date)
+                  </span>
+
+                  <span className="text-muted-foreground">Complete Date:</span>
+                  <span
+                    className={cn(
+                      "font-medium",
+                      task.status === "Complete" || completedDate
+                        ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                        : "text-muted-foreground"
+                    )}
                   >
-                    <CalendarIcon className="size-3.5 text-muted-foreground/70 shrink-0 group-hover:text-foreground" />
-                    <div className="inline-flex items-center gap-1.5 border-b border-dotted border-muted-foreground/50 pb-0.5 whitespace-nowrap">
-                      <span
-                        className="font-medium text-foreground whitespace-nowrap"
-                        title={`Start Date: ${task.startDate ? formatFullDate(task.startDate) : "Not specified"}`}
+                    {task.status === "Complete" || completedDate
+                      ? completedDate
+                        ? formatFullDate(completedDate)
+                        : formatFullDate(task.dueDate)
+                      : `Not completed (${task.status})`}
+                  </span>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <div className="min-w-0 flex-1">
+            <div className="inline-flex items-center gap-1.5 text-xs text-foreground/90 font-normal whitespace-nowrap">
+              {/* Start Date (Read-only) */}
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="font-medium text-foreground whitespace-nowrap px-1 py-0.5 rounded cursor-default hover:bg-muted/50 transition-colors"
+                    >
+                      {formatSingleDate(task.startDate) || "—"}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    Start Date: {task.startDate ? formatFullDate(task.startDate) : "Not specified"} (Read-only)
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <span className="text-muted-foreground/50">→</span>
+
+              {/* End Date (Editable) */}
+              {permissions.canEditDetails && onDatesChange ? (
+                <Popover open={endDateOpen} onOpenChange={setEndDateOpen}>
+                  <TooltipProvider delayDuration={150}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Edit end date"
+                            className="group inline-flex items-center gap-1 rounded border border-transparent px-1.5 py-0.5 font-medium text-foreground transition-colors hover:border-border/70 hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring whitespace-nowrap cursor-pointer"
+                          >
+                            <span>{formatSingleDate(task.dueDate) || "—"}</span>
+                            <Pencil className="size-2.5 text-muted-foreground/60 transition-opacity opacity-0 group-hover:opacity-100" />
+                          </button>
+                        </PopoverTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        End Date (Due Date): {formatFullDate(task.dueDate)} — Click to edit
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <PopoverContent className="w-auto p-2 z-[70]" align="start">
+                    <div className="flex items-center justify-between border-b pb-1.5 mb-2 px-1 text-xs">
+                      <span className="font-semibold text-foreground">Edit End Date</span>
+                      <span className="text-[10px] text-muted-foreground">Due Date</span>
+                    </div>
+                    <CalendarPicker
+                      mode="single"
+                      selected={parseLocalDate(task.dueDate)}
+                      onSelect={(date) => {
+                        if (date) {
+                          onDatesChange(task.startDate, toLocalDateString(date))
+                        }
+                        setEndDateOpen(false)
+                      }}
+                      defaultMonth={parseLocalDate(task.dueDate) ?? new Date()}
+                    />
+                  </PopoverContent>
+                </Popover>
+              ) : (
+                <span className="font-medium text-foreground whitespace-nowrap px-1 py-0.5">
+                  {formatSingleDate(task.dueDate) || "—"}
+                </span>
+              )}
+
+              <span className="text-muted-foreground/50">→</span>
+
+              {/* Complete Date (Editable) */}
+              {permissions.canEditStatus && onCompletedDateChange ? (
+                <Popover open={completeDateOpen} onOpenChange={setCompleteDateOpen}>
+                  <TooltipProvider delayDuration={150}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Edit complete date"
+                            className={cn(
+                              "group inline-flex items-center gap-1 rounded border border-transparent px-1.5 py-0.5 font-medium transition-colors hover:border-border/70 hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring whitespace-nowrap cursor-pointer",
+                              task.status === "Complete" || completedDate
+                                ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                                : "text-muted-foreground/60 hover:text-foreground"
+                            )}
+                          >
+                            {task.status === "Complete" || completedDate ? (
+                              <>
+                                <Check className="size-2.5 shrink-0" />
+                                <span>{completedDate ? formatSingleDate(completedDate) : formatSingleDate(task.dueDate)}</span>
+                              </>
+                            ) : (
+                              <span>—</span>
+                            )}
+                            <Pencil className="size-2.5 text-muted-foreground/60 transition-opacity opacity-0 group-hover:opacity-100" />
+                          </button>
+                        </PopoverTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        Complete Date: {task.status === "Complete" || completedDate ? formatFullDate(completedDate || task.dueDate) : "Not completed"} — Click to edit
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <PopoverContent className="w-auto p-2 z-[70] space-y-2" align="start">
+                    <div className="flex items-center justify-between border-b pb-1.5 px-1 text-xs">
+                      <span className="font-semibold text-foreground">Edit Complete Date</span>
+                      <span className="text-[10px] text-muted-foreground">Completion</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 px-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs flex-1"
+                        onClick={() => {
+                          onCompletedDateChange(todayIso)
+                          setCompleteDateOpen(false)
+                        }}
                       >
-                        {formatSingleDate(task.startDate) || "—"}
-                      </span>
-                      <span className="text-muted-foreground/50">→</span>
-                      <span
-                        className="font-medium text-foreground whitespace-nowrap"
-                        title={`End Date (Due Date): ${formatFullDate(task.dueDate)}`}
-                      >
-                        {formatSingleDate(task.dueDate) || "—"}
-                      </span>
-                      <span className="text-muted-foreground/50">→</span>
-                      {task.status === "Complete" ? (
-                        <span
-                          className="inline-flex items-center gap-0.5 font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap"
-                          title={`Complete Date: ${completedDate ? formatFullDate(completedDate) : formatFullDate(task.dueDate)}`}
+                        <Check className="mr-1 size-3 text-emerald-600" />
+                        Mark Today ({formatSingleDate(todayIso)})
+                      </Button>
+                      {(task.status === "Complete" || completedDate) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            onCompletedDateChange(undefined)
+                            setCompleteDateOpen(false)
+                          }}
                         >
-                          <Check className="size-2.5" />
-                          {completedDate ? formatSingleDate(completedDate) : formatSingleDate(task.dueDate)}
-                        </span>
-                      ) : (
-                        <span
-                          className="text-muted-foreground/50 font-medium whitespace-nowrap"
-                          title="Complete Date: Not completed yet"
-                        >
-                          —
-                        </span>
+                          Clear
+                        </Button>
                       )}
                     </div>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="top"
-                  align="start"
-                  className="z-[80] rounded-lg border bg-popover p-2.5 text-xs text-popover-foreground shadow-md"
-                >
-                  <div className="mb-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
-                    Task Timeline
-                  </div>
-                  <div className="grid grid-cols-[100px_1fr] gap-x-2.5 gap-y-1.5 text-xs">
-                    <span className="text-muted-foreground">Start Date:</span>
-                    <span className="font-medium text-foreground">
-                      {task.startDate ? formatFullDate(task.startDate) : "Not specified"}
-                    </span>
 
-                    <span className="text-muted-foreground">End Date:</span>
-                    <span className="font-medium text-foreground">
-                      {formatFullDate(task.dueDate)} (Due Date)
+                    <CalendarPicker
+                      mode="single"
+                      selected={parseLocalDate(completedDate)}
+                      onSelect={(date) => {
+                        if (date) {
+                          onCompletedDateChange(toLocalDateString(date))
+                        }
+                        setCompleteDateOpen(false)
+                      }}
+                      defaultMonth={parseLocalDate(completedDate) ?? new Date()}
+                    />
+                  </PopoverContent>
+                </Popover>
+              ) : (
+                <span className="font-medium text-foreground whitespace-nowrap px-1 py-0.5">
+                  {task.status === "Complete" || completedDate ? (
+                    <span className="inline-flex items-center gap-0.5 font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                      <Check className="size-2.5" />
+                      {completedDate ? formatSingleDate(completedDate) : formatSingleDate(task.dueDate)}
                     </span>
-
-                    <span className="text-muted-foreground">Complete Date:</span>
-                    <span
-                      className={cn(
-                        "font-medium",
-                        task.status === "Complete"
-                          ? "text-emerald-600 dark:text-emerald-400 font-semibold"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {task.status === "Complete"
-                        ? completedDate
-                          ? formatFullDate(completedDate)
-                          : formatFullDate(task.dueDate)
-                        : `Not completed (${task.status})`}
-                    </span>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                  ) : (
+                    <span className="text-muted-foreground/50 font-medium whitespace-nowrap">—</span>
+                  )}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
