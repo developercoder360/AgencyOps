@@ -218,6 +218,7 @@ export function TaskDetailPanel({
       {
         status: next,
         onHoldReason: next === "On Hold" ? task.onHoldReason : undefined,
+        completedAt: next === "Complete" ? (task.completedAt || todayIso) : undefined,
       },
       {
         type: "system",

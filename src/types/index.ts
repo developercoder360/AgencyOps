@@ -419,6 +419,7 @@ export interface Task {
   reviewerId: string
   startDate?: string
   dueDate: string
+  completedAt?: string
   clientId?: string | null
   leadId?: string | null
   revisions: TaskRevision[]

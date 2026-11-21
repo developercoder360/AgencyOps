@@ -27,6 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type { TaskRolePermissions } from "@/lib/permissions"
 import type {
   Lead,
@@ -43,6 +49,35 @@ import {
   TASK_PRIORITIES,
   TASK_STATUSES,
 } from "./types"
+
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+]
+
+function formatFullDate(dateStr?: string): string {
+  if (!dateStr) return "—"
+  const clean = dateStr.slice(0, 10)
+  const parts = clean.split("-")
+  if (parts.length === 3) {
+    const monthIdx = parseInt(parts[1], 10) - 1
+    const day = parseInt(parts[2], 10)
+    if (monthIdx >= 0 && monthIdx < 12 && !isNaN(day)) {
+      return `${MONTH_NAMES[monthIdx]} ${day}, ${parts[0]}`
+    }
+  }
+  return dateStr
+}
 
 interface TaskPropertiesGridProps {
   task: Task
@@ -102,6 +137,23 @@ export function TaskPropertiesGrid({
     currentClient?.name ||
     task.brandName ||
     "MagnaCharm Creations"
+
+  // Completed date resolution
+  const completedDate = React.useMemo(() => {
+    if (task.completedAt) return task.completedAt
+    const passQa = task.qaHistory?.find((q) => q.outcome === "Pass")
+    if (passQa?.timestamp) return passQa.timestamp
+    const completeActivity = (task.activity ?? []).find(
+      (a) =>
+        a.field?.toLowerCase() === "status" &&
+        (a.toValue === "Complete" || a.toValue?.toLowerCase() === "complete")
+    )
+    if (completeActivity?.timestamp) return completeActivity.timestamp
+    if (task.status === "Complete") {
+      return task.dueDate || task.createdAt
+    }
+    return null
+  }, [task])
 
   // Creator resolution
   const creatorName = React.useMemo(() => {
@@ -204,15 +256,72 @@ export function TaskPropertiesGrid({
           </div>
         </div>
 
-        {/* 2. Dates (READ-ONLY) */}
+        {/* 2. Dates (READ-ONLY) with detailed Tooltip */}
         <div className="flex min-h-[32px] items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-muted/40">
           <span className="flex w-[110px] shrink-0 items-center gap-2 text-xs font-normal text-muted-foreground">
             <CalendarIcon className="size-4 text-muted-foreground/80 shrink-0" />
             Dates
           </span>
-          <div className="min-w-0 flex-1 flex items-center gap-1.5 text-xs text-foreground/90 font-normal">
-            <CalendarIcon className="size-3.5 text-muted-foreground/70 shrink-0" />
-            <span>{formatDateRange(task.startDate, task.dueDate)}</span>
+          <div className="min-w-0 flex-1">
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Dates: ${formatDateRange(task.startDate, task.dueDate)}. Click or hover for full timeline.`}
+                    className="inline-flex items-center gap-1.5 text-xs text-foreground/90 font-normal cursor-help hover:text-foreground transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-xs"
+                  >
+                    <CalendarIcon className="size-3.5 text-muted-foreground/70 shrink-0 group-hover:text-foreground" />
+                    <span className="border-b border-dotted border-muted-foreground/50 pb-0.5">
+                      {formatDateRange(task.startDate, task.dueDate)}
+                    </span>
+                    {task.status === "Complete" && (
+                      <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                        <Check className="size-2.5" />
+                        Completed
+                      </span>
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  align="start"
+                  className="z-[80] rounded-lg border bg-popover p-2.5 text-xs text-popover-foreground shadow-md"
+                >
+                  <div className="mb-2 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Task Timeline
+                  </div>
+                  <div className="grid grid-cols-[100px_1fr] gap-x-2.5 gap-y-1.5 text-xs">
+                    <span className="text-muted-foreground">Start Date:</span>
+                    <span className="font-medium text-foreground">
+                      {task.startDate ? formatFullDate(task.startDate) : "Not specified"}
+                    </span>
+
+                    <span className="text-muted-foreground">End Date:</span>
+                    <span className="font-medium text-foreground">
+                      {formatFullDate(task.dueDate)} (Due Date)
+                    </span>
+
+                    <span className="text-muted-foreground">Complete Date:</span>
+                    <span
+                      className={cn(
+                        "font-medium",
+                        task.status === "Complete"
+                          ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                          : "text-muted-foreground"
+                      )}
+                    >
+                      {task.status === "Complete"
+                        ? completedDate
+                          ? formatFullDate(completedDate)
+                          : formatFullDate(task.dueDate)
+                        : `Not completed (${task.status})`}
+                    </span>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 
