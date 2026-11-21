@@ -35,7 +35,7 @@ import type {
 import { cn } from "cn"
 import { formatRelativeTimestamp, parseTimestampMs } from "./types"
 
-type ActivityFilter = "all" | "comments" | "changes" | "qa"
+type ActivityFilter = "all" | "comments" | "status"
 
 interface TimelineItem {
   id: string
@@ -141,11 +141,8 @@ export function TaskActivitySidebar({
 
   const visibleItems = React.useMemo(() => {
     if (filter === "comments") return allItems.filter((i) => i.kind === "comment")
-    if (filter === "changes") return allItems.filter((i) => i.kind === "system")
-    if (filter === "qa")
-      return allItems.filter(
-        (i) => i.kind === "qa" || (i.kind === "comment" && i.comment?.isQaRelated)
-      )
+    if (filter === "status")
+      return allItems.filter((i) => i.kind === "system" || i.kind === "qa")
     return allItems
   }, [allItems, filter])
 
@@ -153,15 +150,8 @@ export function TaskActivitySidebar({
     () => allItems.filter((i) => i.kind === "comment").length,
     [allItems]
   )
-  const changesCount = React.useMemo(
-    () => allItems.filter((i) => i.kind === "system").length,
-    [allItems]
-  )
-  const qaCount = React.useMemo(
-    () =>
-      allItems.filter(
-        (i) => i.kind === "qa" || (i.kind === "comment" && i.comment?.isQaRelated)
-      ).length,
+  const statusHistoryCount = React.useMemo(
+    () => allItems.filter((i) => i.kind === "system" || i.kind === "qa").length,
     [allItems]
   )
 
@@ -318,8 +308,7 @@ export function TaskActivitySidebar({
             [
               { id: "all", label: "All", count: allItems.length },
               { id: "comments", label: "Comments", count: commentCount },
-              { id: "changes", label: "Changes", count: changesCount },
-              { id: "qa", label: "QA", count: qaCount },
+              { id: "status", label: "Status History", count: statusHistoryCount },
             ] as const
           ).map((tab) => (
             <button
@@ -360,7 +349,9 @@ export function TaskActivitySidebar({
             <p className="text-xs text-muted-foreground">
               {filter === "comments"
                 ? "No comments yet. Start the conversation below."
-                : "No activity recorded yet."}
+                : filter === "status"
+                  ? "No status history recorded yet."
+                  : "No activity recorded yet."}
             </p>
             {filter === "comments" && permissions.canComment ? (
               <Button
