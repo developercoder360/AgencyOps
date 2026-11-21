@@ -49,6 +49,7 @@ import { AvatarGroup, ConfirmDeleteDialog, StatusBadge } from "@/components/shar
 import { RichTextEditorSkeleton, EMPTY_DOC } from "@/components/ui/rich-text-editor"
 import { RevisionAssigneePicker } from "./revision-assignee-picker"
 import { RevisionFlaggedUserPicker } from "./revision-flagged-user-picker"
+import { RevisionRedFlagCard } from "./revision-red-flag-card"
 import type { TaskRolePermissions } from "@/lib/permissions"
 import type {
   Role,
@@ -119,12 +120,19 @@ const addRevisionSchema = z.object({
     .min(1, "Title is required")
     .max(140, "Title must be 140 characters or less"),
   details: z.record(z.string(), z.unknown()).optional(),
-  assigneeIds: z.array(z.string()),
+  assigneeIds: z.array(z.string()).max(1, "Only one assignee allowed"),
   priority: z.enum(["regular", "high", "urgent"]),
+  isRedFlag: z.boolean(),
   flaggedUserIds: z.array(z.string()),
   dueDate: z.string().optional(),
   moveToReDraw: z.boolean(),
-})
+}).refine(
+  (data) => !data.isRedFlag || (data.flaggedUserIds && data.flaggedUserIds.length > 0),
+  {
+    message: "Select at least one task collaborator to red flag",
+    path: ["flaggedUserIds"],
+  }
+)
 
 type AddRevisionFormValues = z.infer<typeof addRevisionSchema>
 
@@ -204,14 +212,20 @@ export function TaskRevisions({
 
   const isCompleteOrQa = taskStatus === "Complete" || taskStatus === "QA Review"
 
+  const taskCollaborators = React.useMemo(() => {
+    const scoped = users.filter((u) => taskAssigneeIds.includes(u.id))
+    return scoped.length > 0 ? scoped : users
+  }, [users, taskAssigneeIds])
+
   const form = useForm<AddRevisionFormValues>({
     resolver: zodResolver(addRevisionSchema),
     defaultValues: {
       type: "revision",
       title: "",
       details: EMPTY_DOC,
-      assigneeIds: defaultAssigneeIds.length > 0 ? defaultAssigneeIds : (users[0]?.id ? [users[0].id] : []),
+      assigneeIds: defaultAssigneeIds.length > 0 ? [defaultAssigneeIds[0]] : (users[0]?.id ? [users[0].id] : []),
       priority: "regular",
+      isRedFlag: false,
       flaggedUserIds: [],
       dueDate: defaultDueDate || todayIso,
       moveToReDraw: isCompleteOrQa,
@@ -237,8 +251,9 @@ export function TaskRevisions({
       type: "revision",
       title: "",
       details: EMPTY_DOC,
-      assigneeIds: defaultAssigneeIds.length > 0 ? defaultAssigneeIds : (users[0]?.id ? [users[0].id] : []),
+      assigneeIds: defaultAssigneeIds.length > 0 ? [defaultAssigneeIds[0]] : (users[0]?.id ? [users[0].id] : []),
       priority: "regular",
+      isRedFlag: false,
       flaggedUserIds: [],
       dueDate: defaultDueDate || todayIso,
       moveToReDraw: isCompleteOrQa,
@@ -277,9 +292,9 @@ export function TaskRevisions({
       type: values.type,
       title: values.title.trim(),
       details: values.details || EMPTY_DOC,
-      assigneeIds: values.assigneeIds || [],
+      assigneeIds: (values.assigneeIds || []).slice(0, 1),
       priority: values.priority || "regular",
-      flaggedUserIds: values.flaggedUserIds || [],
+      flaggedUserIds: values.isRedFlag ? (values.flaggedUserIds || []) : [],
       dueDate: values.dueDate || undefined,
       files: modalFiles,
     })
@@ -992,9 +1007,9 @@ export function TaskRevisions({
                 </p>
               </div>
 
-              {/* 4. Multiple Assignees */}
+              {/* 4. Assignee (Single selection) */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Assignees</Label>
+                <Label className="text-xs font-medium">Assignee</Label>
                 <Controller
                   control={form.control}
                   name="assigneeIds"
@@ -1008,7 +1023,7 @@ export function TaskRevisions({
                 />
               </div>
 
-              {/* 5. Priority & 6. Flags Grid */}
+              {/* 5. Priority & 6. Due Date Grid */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {/* Priority */}
                 <div className="space-y-1.5">
@@ -1061,76 +1076,84 @@ export function TaskRevisions({
                   />
                 </div>
 
-                {/* Flag Staff */}
+                {/* Due Date Picker */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium flex items-center gap-1">
-                    <Flag className="size-3 text-destructive fill-destructive" />
-                    <span>Flag staff</span>
-                  </Label>
+                  <Label className="text-xs font-medium">Due Date</Label>
                   <Controller
                     control={form.control}
-                    name="flaggedUserIds"
+                    name="dueDate"
                     render={({ field }) => (
-                      <RevisionFlaggedUserPicker
-                        value={field.value}
-                        users={users}
-                        suggestedUserIds={taskAssigneeIds}
-                        disabled={!canFlagUsers}
-                        onChange={field.onChange}
-                      />
+                      <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            aria-label="Due date"
+                            className={cn(
+                              "h-9 w-full justify-start text-left text-xs font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            <Calendar className="mr-2 size-3.5" />
+                            {field.value ? field.value : <span>Pick due date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 z-[60]" align="start">
+                          <CalendarPicker
+                            mode="single"
+                            selected={
+                              field.value ? new Date(field.value + "T00:00:00") : undefined
+                            }
+                            onSelect={(date) => {
+                              if (date) {
+                                const year = date.getFullYear()
+                                const month = String(date.getMonth() + 1).padStart(2, "0")
+                                const day = String(date.getDate()).padStart(2, "0")
+                                field.onChange(`${year}-${month}-${day}`)
+                              } else {
+                                field.onChange("")
+                              }
+                              setDatePopoverOpen(false)
+                            }}
+                            defaultMonth={
+                              field.value ? new Date(field.value + "T00:00:00") : new Date()
+                            }
+                          />
+                        </PopoverContent>
+                      </Popover>
                     )}
                   />
                 </div>
               </div>
 
-              {/* 7. Due Date Picker */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Due Date</Label>
-                <Controller
-                  control={form.control}
-                  name="dueDate"
-                  render={({ field }) => (
-                    <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          aria-label="Due date"
-                          className={cn(
-                            "h-9 w-full justify-start text-left text-xs font-normal",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          <Calendar className="mr-2 size-3.5" />
-                          {field.value ? field.value : <span>Pick due date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[60]" align="start">
-                        <CalendarPicker
-                          mode="single"
-                          selected={
-                            field.value ? new Date(field.value + "T00:00:00") : undefined
+              {/* 7. Red Flag Section matching reference screenshot */}
+              <Controller
+                control={form.control}
+                name="isRedFlag"
+                render={({ field: isRedFlagField }) => (
+                  <Controller
+                    control={form.control}
+                    name="flaggedUserIds"
+                    render={({ field: flaggedUsersField, fieldState }) => (
+                      <RevisionRedFlagCard
+                        enabled={Boolean(isRedFlagField.value)}
+                        onEnabledChange={(enabled) => {
+                          isRedFlagField.onChange(enabled)
+                          if (!enabled) {
+                            flaggedUsersField.onChange([])
+                            form.clearErrors("flaggedUserIds")
                           }
-                          onSelect={(date) => {
-                            if (date) {
-                              const year = date.getFullYear()
-                              const month = String(date.getMonth() + 1).padStart(2, "0")
-                              const day = String(date.getDate()).padStart(2, "0")
-                              field.onChange(`${year}-${month}-${day}`)
-                            } else {
-                              field.onChange("")
-                            }
-                            setDatePopoverOpen(false)
-                          }}
-                          defaultMonth={
-                            field.value ? new Date(field.value + "T00:00:00") : new Date()
-                          }
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                />
-              </div>
+                        }}
+                        value={flaggedUsersField.value || []}
+                        onChange={flaggedUsersField.onChange}
+                        taskCollaborators={taskCollaborators}
+                        disabled={!canFlagUsers}
+                        error={fieldState.error?.message}
+                      />
+                    )}
+                  />
+                )}
+              />
 
               {/* 8. Reference Files Drag & Drop Zone */}
               <div className="space-y-1.5">

@@ -77,7 +77,6 @@ export function RevisionFlaggedUserPicker({
     <div className={cn("space-y-1.5", className)}>
       {/* Selected Chips */}
       <div className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background p-1.5">
-        <Flag className="size-3.5 shrink-0 text-destructive fill-destructive ml-1" />
         {selectedUsers.length === 0 ? (
           <span className="px-1 text-xs text-muted-foreground/70">
             No flagged staff
