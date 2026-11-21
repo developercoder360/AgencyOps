@@ -20,7 +20,6 @@ import {
   X,
 } from "lucide-react"
 import type { TaskRolePermissions } from "@/lib/permissions"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,

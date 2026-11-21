@@ -9,7 +9,6 @@ import {
   FileImage,
   FileSpreadsheet,
   FileText,
-  Paperclip,
   Trash2,
   Upload,
 } from "lucide-react"

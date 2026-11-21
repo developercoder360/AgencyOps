@@ -123,4 +123,54 @@ export function formatRelativeTimestamp(ts: string, nowMs: number | null): strin
   return ts.slice(0, 10)
 }
 
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+]
+
+export function formatSingleDate(dateStr?: string): string {
+  if (!dateStr) return ""
+  const clean = dateStr.slice(0, 10)
+  const parts = clean.split("-")
+  if (parts.length === 3) {
+    const monthIdx = parseInt(parts[1], 10) - 1
+    const day = parseInt(parts[2], 10)
+    if (monthIdx >= 0 && monthIdx < 12 && !isNaN(day)) {
+      return `${MONTH_NAMES[monthIdx]} ${day}`
+    }
+  }
+  return dateStr
+}
+
+export function formatDateRange(startDate?: string, dueDate?: string): string {
+  const start = formatSingleDate(startDate)
+  const due = formatSingleDate(dueDate)
+  if (start && due) return `${start} → ${due}`
+  if (due) return due
+  if (start) return start
+  return "—"
+}
+
+export function getEntityInitials(name?: string, maxChars = 3): string {
+  if (!name) return ""
+  const words = name.trim().split(/\s+/)
+  if (words.length === 1) return words[0].slice(0, maxChars).toUpperCase()
+  return words
+    .slice(0, maxChars)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+}
+
+
 

@@ -4,14 +4,13 @@ import * as React from "react"
 import { toast } from "sonner"
 import {
   AlertTriangle,
-  Calendar as CalendarIcon,
   CheckCircle2,
   ClipboardList,
   Flag,
   FolderInput,
   PauseCircle,
 } from "lucide-react"
-import { AvatarGroup, ConfirmDeleteDialog, StatusBadge } from "@/components/shared"
+import { ConfirmDeleteDialog } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -54,7 +53,6 @@ import { TaskPropertiesGrid } from "./task-properties-grid"
 import { TaskRevisions } from "./task-revisions"
 import { TaskWorkflowBar } from "./task-workflow-bar"
 import {
-  PRIORITY_META,
   getTodayIsoFromNow,
   useClientNow,
 } from "./types"
@@ -77,7 +75,6 @@ export function TaskDetailPanel({
 
   const {
     isLoaded,
-    tasks,
     projects,
     users,
     signups,
@@ -691,8 +688,8 @@ export function TaskDetailPanel({
                       </div>
                     ) : null}
 
-                    {/* Title & Key Fields */}
-                    <div className="space-y-2">
+                    {/* Title */}
+                    <div>
                       {editingTitle ? (
                         <Input
                           autoFocus
@@ -728,42 +725,6 @@ export function TaskDetailPanel({
                           {task.title}
                         </h1>
                       )}
-
-                      {/* Single key fields row under title */}
-                      <div className="flex flex-wrap items-center gap-2.5 pt-0.5 text-xs text-muted-foreground">
-                        <StatusBadge status={task.status} />
-                        <span className="text-border">·</span>
-                        <span className="inline-flex items-center gap-1.5 font-medium">
-                          <Flag
-                            className={cn(
-                              "size-3.5",
-                              PRIORITY_META[task.priority].flagClass
-                            )}
-                          />
-                          <span>{task.priority}</span>
-                        </span>
-                        <span className="text-border">·</span>
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1.5 tabular-nums",
-                            task.status !== "Complete" &&
-                              task.dueDate < todayIso &&
-                              "font-semibold text-rose-600 dark:text-rose-400"
-                          )}
-                        >
-                          <CalendarIcon className="size-3.5" />
-                          <span>Due {task.dueDate}</span>
-                        </span>
-                        <span className="text-border">·</span>
-                        <div className="flex items-center gap-1.5">
-                          <AvatarGroup
-                            people={users.filter((u) =>
-                              task.assigneeIds.includes(u.id)
-                            )}
-                            max={3}
-                          />
-                        </div>
-                      </div>
                     </div>
 
                     {/* Properties Grid */}
