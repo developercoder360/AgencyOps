@@ -76,13 +76,11 @@ export function TaskPropertiesGrid({
   const [assigneeSearch, setAssigneeSearch] = React.useState("")
   const [assigneeOpen, setAssigneeOpen] = React.useState(false)
 
-  // Assigned team members
-  const assignees = React.useMemo(
-    () => users.filter((u) => task.assigneeIds.includes(u.id)),
+  // Assigned team member (single)
+  const primaryAssignee = React.useMemo(
+    () => users.find((u) => task.assigneeIds.includes(u.id)) || null,
     [users, task.assigneeIds]
   )
-
-  const primaryAssignee = assignees[0]
 
   const filteredUsers = React.useMemo(() => {
     const q = assigneeSearch.trim().toLowerCase()
@@ -138,12 +136,14 @@ export function TaskPropertiesGrid({
     return admin ?? users[0]
   }, [task.reviewerId, users])
 
-  function toggleAssignee(userId: string) {
-    const current = task.assigneeIds
-    const next = current.includes(userId)
-      ? current.filter((id) => id !== userId)
-      : [...current, userId]
-    onAssigneesChange(next)
+  function selectAssignee(userId: string) {
+    if (task.assigneeIds.includes(userId)) {
+      onAssigneesChange([])
+    } else {
+      onAssigneesChange([userId])
+    }
+    setAssigneeOpen(false)
+    setAssigneeSearch("")
   }
 
   return (
@@ -276,7 +276,7 @@ export function TaskPropertiesGrid({
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    aria-label="Edit assignees"
+                    aria-label="Edit assignee"
                     className="flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {primaryAssignee ? (
@@ -287,11 +287,6 @@ export function TaskPropertiesGrid({
                         <span className="truncate font-medium text-foreground">
                           {primaryAssignee.name}
                         </span>
-                        {assignees.length > 1 ? (
-                          <span className="shrink-0 text-[11px] text-muted-foreground font-normal">
-                            +{assignees.length - 1}
-                          </span>
-                        ) : null}
                       </div>
                     ) : (
                       <span className="text-muted-foreground">Unassigned</span>
@@ -305,33 +300,63 @@ export function TaskPropertiesGrid({
                       onChange={(e) => setAssigneeSearch(e.target.value)}
                       placeholder="Search assignees…"
                       className="h-7 text-xs"
+                      autoFocus
                     />
                   </div>
                   <div className="max-h-48 space-y-0.5 overflow-y-auto">
-                    {filteredUsers.map((u) => {
-                      const selected = task.assigneeIds.includes(u.id)
-                      return (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => toggleAssignee(u.id)}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted",
-                            selected && "bg-muted/70"
-                          )}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate font-medium">{u.name}</div>
-                            <div className="truncate text-[10px] text-muted-foreground">
-                              {u.role}
+                    {primaryAssignee && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onAssigneesChange([])
+                          setAssigneeOpen(false)
+                          setAssigneeSearch("")
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <span>Unassign (no assignee)</span>
+                      </button>
+                    )}
+                    {filteredUsers.length === 0 ? (
+                      <p className="py-2 text-center text-xs text-muted-foreground">
+                        No staff matched.
+                      </p>
+                    ) : (
+                      filteredUsers.map((u) => {
+                        const selected = task.assigneeIds.includes(u.id)
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => selectAssignee(u.id)}
+                            className={cn(
+                              "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted",
+                              selected && "bg-muted/70 font-medium"
+                            )}
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span
+                                className={cn(
+                                  "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
+                                  u.avatarColor || "bg-blue-600"
+                                )}
+                              >
+                                {u.avatarInitials}
+                              </span>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium">{u.name}</div>
+                                <div className="truncate text-[10px] text-muted-foreground">
+                                  {u.role}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          {selected ? (
-                            <Check className="size-3.5 shrink-0 text-primary" />
-                          ) : null}
-                        </button>
-                      )
-                    })}
+                            {selected ? (
+                              <Check className="size-3.5 shrink-0 text-primary" />
+                            ) : null}
+                          </button>
+                        )
+                      })
+                    )}
                   </div>
                 </PopoverContent>
               </Popover>
@@ -343,11 +368,6 @@ export function TaskPropertiesGrid({
                 <span className="truncate font-medium text-foreground">
                   {primaryAssignee.name}
                 </span>
-                {assignees.length > 1 ? (
-                  <span className="text-[11px] text-muted-foreground">
-                    +{assignees.length - 1}
-                  </span>
-                ) : null}
               </div>
             ) : (
               <span className="text-muted-foreground">Unassigned</span>
