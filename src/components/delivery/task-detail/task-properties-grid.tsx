@@ -115,6 +115,7 @@ interface TaskPropertiesGridProps {
   onStatusChange: (status: TaskStatus) => void
   onRequestOnHold: () => void
   onAssigneesChange: (assigneeIds: string[]) => void
+  onMembersChange?: (memberIds: string[]) => void
   onDatesChange?: (startDate: string | undefined, dueDate: string) => void
   onCompletedDateChange?: (completedDate: string | undefined) => void
   onPriorityChange: (priority: TaskPriority) => void
@@ -133,6 +134,7 @@ export function TaskPropertiesGrid({
   onStatusChange,
   onRequestOnHold,
   onAssigneesChange,
+  onMembersChange,
   onDatesChange,
   onCompletedDateChange,
   onPriorityChange,
@@ -140,8 +142,50 @@ export function TaskPropertiesGrid({
 }: TaskPropertiesGridProps) {
   const [assigneeSearch, setAssigneeSearch] = React.useState("")
   const [assigneeOpen, setAssigneeOpen] = React.useState(false)
+  const [memberSearch, setMemberSearch] = React.useState("")
+  const [memberOpen, setMemberOpen] = React.useState(false)
   const [endDateOpen, setEndDateOpen] = React.useState(false)
   const [completeDateOpen, setCompleteDateOpen] = React.useState(false)
+
+  const canEditMembers = permissions.canEditAssignees || permissions.canEditDetails
+
+  // Members (multiple)
+  const selectedMemberIds = React.useMemo(
+    () => task.memberIds ?? [],
+    [task.memberIds]
+  )
+
+  const selectedMembers = React.useMemo(
+    () => users.filter((u) => selectedMemberIds.includes(u.id)),
+    [users, selectedMemberIds]
+  )
+
+  const filteredMemberUsers = React.useMemo(() => {
+    const q = memberSearch.trim().toLowerCase()
+    if (!q) return users
+    return users.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        u.role.toLowerCase().includes(q)
+    )
+  }, [users, memberSearch])
+
+  function toggleMember(userId: string) {
+    if (!onMembersChange) return
+    const next = selectedMemberIds.includes(userId)
+      ? selectedMemberIds.filter((id) => id !== userId)
+      : [...selectedMemberIds, userId]
+    onMembersChange(next)
+  }
+
+  const membersDisplayText = React.useMemo(() => {
+    if (selectedMembers.length === 0) return "Empty"
+    if (selectedMembers.length === 1) return selectedMembers[0].name
+    if (selectedMembers.length === 2)
+      return `${selectedMembers[0].name.split(" ")[0]}, ${selectedMembers[1].name.split(" ")[0]}`
+    return `${selectedMembers.length} members`
+  }, [selectedMembers])
 
   // Assigned team member (single)
   const primaryAssignee = React.useMemo(
@@ -548,9 +592,177 @@ export function TaskPropertiesGrid({
             Members
           </span>
           <div className="min-w-0 flex-1">
-            <span className="inline-flex items-center rounded bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              Empty
-            </span>
+            {canEditMembers && onMembersChange ? (
+              <Popover open={memberOpen} onOpenChange={setMemberOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Edit members"
+                    className="flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer group"
+                  >
+                    {selectedMembers.length === 0 ? (
+                      <span className="inline-flex items-center rounded bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground group-hover:text-foreground group-hover:bg-muted">
+                        Empty
+                      </span>
+                    ) : selectedMembers.length === 1 ? (
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
+                            selectedMembers[0].avatarColor || "bg-indigo-600"
+                          )}
+                        >
+                          {selectedMembers[0].avatarInitials}
+                        </span>
+                        <span className="truncate font-medium text-foreground">
+                          {selectedMembers[0].name}
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        className="flex min-w-0 items-center gap-1.5"
+                        title={selectedMembers.map((m) => m.name).join(", ")}
+                      >
+                        <div className="flex items-center -space-x-1.5 shrink-0">
+                          {selectedMembers.slice(0, 3).map((m) => (
+                            <span
+                              key={m.id}
+                              className={cn(
+                                "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ring-2 ring-background",
+                                m.avatarColor || "bg-indigo-600"
+                              )}
+                              title={m.name}
+                            >
+                              {m.avatarInitials}
+                            </span>
+                          ))}
+                          {selectedMembers.length > 3 ? (
+                            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[8px] font-semibold text-muted-foreground ring-2 ring-background">
+                              +{selectedMembers.length - 3}
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="truncate font-medium text-foreground">
+                          {membersDisplayText}
+                        </span>
+                      </div>
+                    )}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-68 p-2 z-[70]">
+                  <div className="mb-2 flex items-center justify-between gap-1 px-1">
+                    <span className="text-xs font-semibold text-foreground">
+                      Task Members
+                    </span>
+                    {selectedMemberIds.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => onMembersChange([])}
+                        className="text-[11px] text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+                      >
+                        Clear all
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="mb-2">
+                    <Input
+                      value={memberSearch}
+                      onChange={(e) => setMemberSearch(e.target.value)}
+                      placeholder="Search members to add…"
+                      className="h-7 text-xs"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                    {filteredMemberUsers.length === 0 ? (
+                      <p className="py-2 text-center text-xs text-muted-foreground">
+                        No staff matched.
+                      </p>
+                    ) : (
+                      filteredMemberUsers.map((u) => {
+                        const isSelected = selectedMemberIds.includes(u.id)
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => toggleMember(u.id)}
+                            className={cn(
+                              "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted cursor-pointer",
+                              isSelected && "bg-muted/70 font-medium"
+                            )}
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span
+                                className={cn(
+                                  "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
+                                  u.avatarColor || "bg-indigo-600"
+                                )}
+                              >
+                                {u.avatarInitials}
+                              </span>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium">{u.name}</div>
+                                <div className="truncate text-[10px] text-muted-foreground">
+                                  {u.role}
+                                </div>
+                              </div>
+                            </div>
+                            {isSelected ? (
+                              <Check className="size-3.5 shrink-0 text-primary" />
+                            ) : null}
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            ) : selectedMembers.length === 0 ? (
+              <span className="inline-flex items-center rounded bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                Empty
+              </span>
+            ) : selectedMembers.length === 1 ? (
+              <div className="flex min-w-0 items-center gap-1.5 text-xs">
+                <span
+                  className={cn(
+                    "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
+                    selectedMembers[0].avatarColor || "bg-indigo-600"
+                  )}
+                >
+                  {selectedMembers[0].avatarInitials}
+                </span>
+                <span className="truncate font-medium text-foreground">
+                  {selectedMembers[0].name}
+                </span>
+              </div>
+            ) : (
+              <div
+                className="flex min-w-0 items-center gap-1.5 text-xs"
+                title={selectedMembers.map((m) => m.name).join(", ")}
+              >
+                <div className="flex items-center -space-x-1.5 shrink-0">
+                  {selectedMembers.slice(0, 3).map((m) => (
+                    <span
+                      key={m.id}
+                      className={cn(
+                        "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ring-2 ring-background",
+                        m.avatarColor || "bg-indigo-600"
+                      )}
+                    >
+                      {m.avatarInitials}
+                    </span>
+                  ))}
+                  {selectedMembers.length > 3 ? (
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[8px] font-semibold text-muted-foreground ring-2 ring-background">
+                      +{selectedMembers.length - 3}
+                    </span>
+                  ) : null}
+                </div>
+                <span className="truncate font-medium text-foreground">
+                  {membersDisplayText}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>

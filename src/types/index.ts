@@ -416,6 +416,7 @@ export interface Task {
   status: TaskStatus
   priority: TaskPriority
   assigneeIds: string[]
+  memberIds?: string[]
   reviewerId: string
   startDate?: string
   dueDate: string

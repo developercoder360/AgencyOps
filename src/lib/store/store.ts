@@ -704,6 +704,7 @@ export class StoreManager {
       startDate: task.startDate || nowIso.slice(0, 10),
       clientId: task.clientId ?? null,
       leadId: task.leadId ?? null,
+      memberIds: task.memberIds || [],
       revisions: task.revisions || [],
       comments: task.comments || [],
       evidenceFiles: task.evidenceFiles || [],

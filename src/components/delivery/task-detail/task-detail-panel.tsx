@@ -267,6 +267,43 @@ export function TaskDetailPanel({
     toast.success("Saved")
   }
 
+  function handleMembersChange(nextIds: string[]) {
+    if (!task) return
+    const currentMemberIds = task.memberIds ?? []
+    const addedIds = nextIds.filter((id) => !currentMemberIds.includes(id))
+    const removedIds = currentMemberIds.filter((id) => !nextIds.includes(id))
+    const names = (ids: string[]) =>
+      ids
+        .map((id) => users.find((u) => u.id === id)?.name ?? id)
+        .join(", ")
+
+    let action = "updated members"
+    let detail: string | undefined
+    if (addedIds.length > 0 && removedIds.length === 0) {
+      action = "added member"
+      detail = names(addedIds)
+    } else if (removedIds.length > 0 && addedIds.length === 0) {
+      action = "removed member"
+      detail = names(removedIds)
+    } else if (addedIds.length > 0 && removedIds.length > 0) {
+      detail = `Added ${names(addedIds)}; removed ${names(removedIds)}`
+    }
+
+    updateTask(
+      task.id,
+      { memberIds: nextIds },
+      {
+        type: "system",
+        actorId,
+        actorName,
+        action,
+        field: "Members",
+        detail,
+      }
+    )
+    toast.success("Saved")
+  }
+
   function handleDatesChange(startDate: string | undefined, dueDate: string) {
     if (!task) return
     const changedDue = dueDate !== task.dueDate
@@ -775,6 +812,7 @@ export function TaskDetailPanel({
                       onStatusChange={handleStatusChange}
                       onRequestOnHold={() => setHoldDialogOpen(true)}
                       onAssigneesChange={handleAssigneesChange}
+                      onMembersChange={handleMembersChange}
                       onDatesChange={handleDatesChange}
                       onCompletedDateChange={handleCompletedDateChange}
                       onPriorityChange={handlePriorityChange}
