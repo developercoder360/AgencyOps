@@ -237,10 +237,16 @@ export interface SignUp {
   brandId: string
   brandName: string
   serviceInterest: string
+  services?: string[]
   source: LeadSource
   city: string
+  state?: string
+  zipCode?: string
+  country?: string
+  referralUrl?: string
   ipAddress: string
   utmCampaign: string
+  assignedStaffIds?: string[]
   convertedToLead: boolean
   leadId?: string
   createdAt: string

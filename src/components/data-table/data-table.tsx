@@ -20,7 +20,6 @@ import { format } from "date-fns"
 import type { DateRange } from "react-day-picker"
 import {
   CalendarIcon,
-  Check,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -28,13 +27,11 @@ import {
   Columns3,
   Download,
   Inbox,
-  PlusCircle,
   Search,
   X,
 } from "lucide-react"
 import { cn } from "cn"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Calendar } from "@/components/ui/calendar"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -67,6 +64,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ExportDialog, type ExportColumnOption } from "./export-dialog"
+import { FacetedFilterPopover } from "./faceted-filter"
 import type { FacetedFilterConfig } from "./types"
 
 function toIsoDate(date: Date): string {
@@ -74,6 +72,16 @@ function toIsoDate(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, "0")
   const d = String(date.getDate()).padStart(2, "0")
   return `${y}-${m}-${d}`
+}
+
+function getColumnLabel(col: {
+  id: string
+  columnDef: { header?: unknown; meta?: unknown }
+}): string {
+  const metaLabel = (col.columnDef.meta as { label?: string } | undefined)?.label
+  if (metaLabel) return metaLabel
+  if (typeof col.columnDef.header === "string") return col.columnDef.header
+  return col.id.replace(/([a-z0-9])([A-Z])/g, "$1 $2").trim()
 }
 
 export interface DataTableProps<TData, TValue> {
@@ -226,10 +234,7 @@ export function DataTable<TData, TValue>({
         .filter((col) => col.id !== "select" && col.id !== "actions")
         .map((col) => ({
           id: col.id,
-          label:
-            typeof col.columnDef.header === "string"
-              ? col.columnDef.header
-              : col.id.replace(/([A-Z])/g, " $1").trim(),
+          label: getColumnLabel(col),
         })),
     [table]
   )
@@ -307,90 +312,13 @@ export function DataTable<TData, TValue>({
             const facets = col.getFacetedUniqueValues()
 
             return (
-              <Popover key={filter.columnId}>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 border-dashed gap-1.5"
-                  >
-                    <PlusCircle className="size-3.5" />
-                    <span>{filter.title}</span>
-                    {selected.length > 0 ? (
-                      <>
-                        <span className="mx-0.5 h-3.5 w-px bg-border" />
-                        <Badge
-                          variant="secondary"
-                          className="rounded-sm px-1.5 font-normal"
-                        >
-                          {selected.length}
-                        </Badge>
-                      </>
-                    ) : null}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-56 p-2">
-                  <div className="mb-1.5 px-2 py-1 text-xs font-medium text-muted-foreground">
-                    Filter by {filter.title}
-                  </div>
-                  <div
-                    role="listbox"
-                    aria-label={`Filter by ${filter.title}`}
-                    aria-multiselectable="true"
-                    className="max-h-56 space-y-1 overflow-y-auto"
-                  >
-                    {filter.options.map((opt) => {
-                      const isChecked = selected.includes(opt.value)
-                      const count = facets.get(opt.value) ?? 0
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          role="option"
-                          aria-selected={isChecked}
-                          onClick={() => {
-                            const next = isChecked
-                              ? selected.filter((v) => v !== opt.value)
-                              : [...selected, opt.value]
-                            col.setFilterValue(next.length ? next : undefined)
-                          }}
-                          className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <span className="flex items-center gap-2 truncate">
-                            <span
-                              aria-hidden="true"
-                              className={cn(
-                                "flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
-                                isChecked
-                                  ? "border-primary bg-primary text-primary-foreground"
-                                  : "border-input dark:bg-input/30"
-                              )}
-                            >
-                              {isChecked ? <Check className="size-3.5" /> : null}
-                            </span>
-                            <span className="truncate">{opt.label}</span>
-                          </span>
-                          <span className="font-mono text-[11px] text-muted-foreground">
-                            {count}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {selected.length > 0 ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => col.setFilterValue(undefined)}
-                      className="mt-2 w-full"
-                    >
-                      Clear filter
-                    </Button>
-                  ) : null}
-                </PopoverContent>
-              </Popover>
+              <FacetedFilterPopover
+                key={filter.columnId}
+                filter={filter}
+                selected={selected}
+                facets={facets}
+                onSelectChange={(next) => col.setFilterValue(next)}
+              />
             )
           })}
 
@@ -485,9 +413,7 @@ export function DataTable<TData, TValue>({
                     checked={col.getIsVisible()}
                     onCheckedChange={(value) => col.toggleVisibility(!!value)}
                   >
-                    {typeof col.columnDef.header === "string"
-                      ? col.columnDef.header
-                      : col.id.replace(/([A-Z])/g, " $1")}
+                    {getColumnLabel(col)}
                   </DropdownMenuCheckboxItem>
                 ))}
             </DropdownMenuContent>

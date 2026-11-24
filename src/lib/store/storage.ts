@@ -1,4 +1,4 @@
-import type { Brand, Invoice, Lead, Project, Task, TaskRevision } from "@/types"
+import type { Brand, City, Invoice, Lead, Project, SignUp, Task, TaskRevision } from "@/types"
 import {
   createInitialEmptyData,
   STORE_STORAGE_KEY,
@@ -208,6 +208,55 @@ export function migrateProject(rawProject: unknown, index: number): Project {
   return prj as unknown as Project
 }
 
+export function migrateSignUp(
+  rawSignUp: unknown,
+  index: number,
+  leads: Lead[],
+  brands: Brand[],
+  cities: City[]
+): SignUp {
+  if (!rawSignUp || typeof rawSignUp !== "object") {
+    return rawSignUp as SignUp
+  }
+  const su = { ...(rawSignUp as Record<string, unknown>) }
+  if (!Array.isArray(su.assignedStaffIds)) {
+    const linkedLead =
+      typeof su.leadId === "string"
+        ? leads.find((l) => l.id === su.leadId)
+        : undefined
+    su.assignedStaffIds = linkedLead?.assignedStaffIds ?? []
+  }
+  if (typeof su.createdAt === "string" && su.createdAt.length === 10) {
+    const hour = String(9 + (index % 10)).padStart(2, "0")
+    const min = String((index * 13) % 60).padStart(2, "0")
+    su.createdAt = `${su.createdAt} ${hour}:${min}`
+  }
+  const cityName = typeof su.city === "string" ? su.city.toLowerCase() : ""
+  const cityObj = cities.find((c) => c.name.toLowerCase() === cityName)
+  if (!su.state && cityObj?.state) {
+    su.state = cityObj.state
+  }
+  if (!su.country) {
+    su.country = cityObj?.country || "United States"
+  }
+  if (!su.zipCode) {
+    const sampleZips = ["10005", "10017", "60654", "78701", "98104", "94104"]
+    su.zipCode = sampleZips[index % sampleZips.length]
+  }
+  if (!su.referralUrl) {
+    const brand = brands.find(
+      (b) => b.id === su.brandId || b.name === su.brandName
+    )
+    const domain = brand?.domain || "agencyops.io"
+    const sourceSlug = String(su.source || "website")
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+    const campaign = String(su.utmCampaign || "direct")
+    su.referralUrl = `https://${domain}/get-started?utm_source=${sourceSlug}&utm_campaign=${campaign}`
+  }
+  return su as unknown as SignUp
+}
+
 export function loadStoredData(): StoreData {
   if (typeof window === "undefined") {
     return createInitialEmptyData()
@@ -230,8 +279,13 @@ export function loadStoredData(): StoreData {
     const migratedTasks = rawTasks.map(migrateTask)
     const rawBrands = Array.isArray(parsed.brands) ? parsed.brands : base.brands
     const migratedBrands = rawBrands.map(migrateBrand)
+    const rawCities = Array.isArray(parsed.cities) ? parsed.cities : base.cities
     const rawLeads = Array.isArray(parsed.leads) ? parsed.leads : base.leads
     const migratedLeads = rawLeads.map(migrateLead)
+    const rawSignUps = Array.isArray(parsed.signups) ? parsed.signups : base.signups
+    const migratedSignUps = rawSignUps.map((su, idx) =>
+      migrateSignUp(su, idx, migratedLeads, migratedBrands, rawCities)
+    )
     const rawInvoices = Array.isArray(parsed.invoices) ? parsed.invoices : base.invoices
     const migratedInvoices = rawInvoices.map(migrateInvoice)
     const rawProjects = Array.isArray(parsed.projects) ? parsed.projects : base.projects
@@ -244,7 +298,7 @@ export function loadStoredData(): StoreData {
       teams: Array.isArray(parsed.teams) ? parsed.teams : base.teams,
       users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : base.users,
       leads: migratedLeads,
-      signups: Array.isArray(parsed.signups) ? parsed.signups : base.signups,
+      signups: migratedSignUps,
       invoices: migratedInvoices,
       transactions: Array.isArray(parsed.transactions) ? parsed.transactions : base.transactions,
       marketingSpendings: Array.isArray(parsed.marketingSpendings) ? parsed.marketingSpendings : base.marketingSpendings,

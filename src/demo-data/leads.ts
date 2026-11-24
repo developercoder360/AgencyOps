@@ -307,7 +307,22 @@ function generateSignUps(): SignUp[] {
     const city = MOCK_CITIES[(i + 2) % MOCK_CITIES.length]
     const source = pickFrom(rng, LEAD_SOURCES)
     const converted = i % 3 !== 0
-    const createdAt = makeDateOffset(intBetween(rng, 0, 120))
+    const datePart = makeDateOffset(intBetween(rng, 0, 120))
+    const hour = String(intBetween(rng, 8, 21)).padStart(2, "0")
+    const minute = String(intBetween(rng, 0, 59)).padStart(2, "0")
+    const createdAt = `${datePart} ${hour}:${minute}`
+    const rep = SALES_REPS[i % SALES_REPS.length]
+    const assignedStaffIds = converted || i % 2 === 0 ? [rep.id] : []
+    const zipCode = SAMPLE_ZIPS[i % SAMPLE_ZIPS.length]
+    const utmCampaign =
+      source === "Google Ads"
+        ? "q4-brand-design-us"
+        : source === "Bing Ads"
+          ? "bing-enterprise-web"
+          : "organic-landing-hero"
+    const referralUrl = `https://${brand.domain}/get-started?utm_source=${source
+      .toLowerCase()
+      .replace(/\s+/g, "-")}&utm_campaign=${utmCampaign}`
 
     items.push({
       id: `su-${i + 1}`,
@@ -320,15 +335,16 @@ function generateSignUps(): SignUp[] {
       brandId: brand.id,
       brandName: brand.name,
       serviceInterest: SERVICE_INTERESTS[i % SERVICE_INTERESTS.length],
+      services: [SERVICE_INTERESTS[i % SERVICE_INTERESTS.length]],
       source,
       city: city.name,
+      state: city.state,
+      zipCode,
+      country: city.country,
+      referralUrl,
       ipAddress: `172.58.${intBetween(rng, 10, 220)}.${intBetween(rng, 12, 240)}`,
-      utmCampaign:
-        source === "Google Ads"
-          ? "q4-brand-design-us"
-          : source === "Bing Ads"
-            ? "bing-enterprise-web"
-            : "organic-landing-hero",
+      utmCampaign,
+      assignedStaffIds,
       convertedToLead: converted,
       leadId: converted ? `lead-${(i % 48) + 1}` : undefined,
       createdAt,

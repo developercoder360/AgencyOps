@@ -359,7 +359,7 @@ export class StoreManager {
     const newSignUp: SignUp = {
       ...signup,
       id: signup.id || `sgn-${crypto.randomUUID().slice(0, 8)}`,
-      createdAt: signup.createdAt || new Date().toISOString().slice(0, 10),
+      createdAt: signup.createdAt || new Date().toISOString().replace("T", " ").slice(0, 16),
     }
     this.setAndPersist((s) => ({
       ...s,
