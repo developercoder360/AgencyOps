@@ -25,6 +25,10 @@ import type {
   ChatThread,
   City,
   ExportLog,
+  FileItem,
+  FilePermissionKey,
+  FileScope,
+  FileViewMode,
   Holiday,
   Invoice,
   Lead,
@@ -45,8 +49,14 @@ import type {
   TaskActivityEvent,
   TaskComment,
   TaskFile,
+  TaskPermissionKey,
+  TaskPriority,
   TaskRevision,
+  TaskStatus,
+  TasksViewMode,
   Transaction,
+  UserFilePermissions,
+  UserTaskPermissions,
 } from "@/types"
 import type { StorageEstimate } from "./storage"
 import type { Team } from "./types"
@@ -68,6 +78,12 @@ export interface StoreContextValue {
   marketingSpends: MarketingSpend[]
   projects: Project[]
   tasks: Task[]
+  tasksViewMode: TasksViewMode
+  userTaskPermissions: Record<string, UserTaskPermissions>
+  files: FileItem[]
+  filesViewMode: FileViewMode
+  activeFileUserId: string
+  userFilePermissions: Record<string, UserFilePermissions>
   chatThreads: ChatThread[]
   notifications: AppNotification[]
   attendanceRecords: AttendanceRecord[]
@@ -371,6 +387,49 @@ export interface StoreContextValue {
   ) => ExportLog
   deleteExportLog: (id: string) => void
 
+  // File Management
+  addFiles: (items: FileItem[]) => void
+  renameFile: (id: string, name: string) => void
+  moveFile: (
+    id: string,
+    scope: FileScope,
+    scopeId: string,
+    meta?: { taskId?: string; projectId?: string; clientId?: string }
+  ) => void
+  deleteFiles: (ids: string[]) => void
+  setVisibility: (ids: string[], clientVisible: boolean) => void
+  setFilesViewMode: (mode: FileViewMode) => void
+  setActiveFileUserId: (userId: string) => void
+  setUserFilePermission: (
+    userId: string,
+    key: FilePermissionKey,
+    allowed: boolean
+  ) => void
+  setAllUserFilePermissions: (
+    userId: string,
+    permissions: UserFilePermissions
+  ) => void
+
+  // Task Bulk & Permission Management
+  deleteTasks: (ids: string[]) => void
+  bulkUpdateTaskStatus: (
+    ids: string[],
+    status: TaskStatus,
+    actorName?: string
+  ) => void
+  bulkUpdateTaskPriority: (ids: string[], priority: TaskPriority) => void
+  bulkAssignTasks: (ids: string[], assigneeIds: string[]) => void
+  setTasksViewMode: (mode: TasksViewMode) => void
+  setUserTaskPermission: (
+    userId: string,
+    key: TaskPermissionKey,
+    allowed: boolean
+  ) => void
+  setAllUserTaskPermissions: (
+    userId: string,
+    permissions: UserTaskPermissions
+  ) => void
+
   // Management
   loadDemoData: () => void
   clearAllData: () => void
@@ -417,6 +476,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       marketingSpends: store.marketingSpendings,
       projects: store.projects,
       tasks: store.tasks,
+      tasksViewMode: store.tasksViewMode,
+      userTaskPermissions: store.userTaskPermissions,
+      files: store.files,
+      filesViewMode: store.filesViewMode,
+      activeFileUserId: store.activeFileUserId,
+      userFilePermissions: store.userFilePermissions,
       chatThreads: store.chatThreads,
       notifications: store.notifications,
       attendanceRecords: store.attendanceRecords,
@@ -550,6 +615,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       createExportLog: storeManager.createExportLog.bind(storeManager),
       deleteExportLog: storeManager.deleteExportLog.bind(storeManager),
+
+      addFiles: storeManager.addFiles.bind(storeManager),
+      renameFile: storeManager.renameFile.bind(storeManager),
+      moveFile: storeManager.moveFile.bind(storeManager),
+      deleteFiles: storeManager.deleteFiles.bind(storeManager),
+      setVisibility: storeManager.setVisibility.bind(storeManager),
+      setFilesViewMode: storeManager.setFilesViewMode.bind(storeManager),
+      setActiveFileUserId: storeManager.setActiveFileUserId.bind(storeManager),
+      setUserFilePermission: storeManager.setUserFilePermission.bind(storeManager),
+      setAllUserFilePermissions:
+        storeManager.setAllUserFilePermissions.bind(storeManager),
+
+      deleteTasks: storeManager.deleteTasks.bind(storeManager),
+      bulkUpdateTaskStatus:
+        storeManager.bulkUpdateTaskStatus.bind(storeManager),
+      bulkUpdateTaskPriority:
+        storeManager.bulkUpdateTaskPriority.bind(storeManager),
+      bulkAssignTasks: storeManager.bulkAssignTasks.bind(storeManager),
+      setTasksViewMode: storeManager.setTasksViewMode.bind(storeManager),
+      setUserTaskPermission:
+        storeManager.setUserTaskPermission.bind(storeManager),
+      setAllUserTaskPermissions:
+        storeManager.setAllUserTaskPermissions.bind(storeManager),
 
       loadDemoData: storeManager.loadDemoData.bind(storeManager),
       clearAllData: storeManager.clearAllData.bind(storeManager),

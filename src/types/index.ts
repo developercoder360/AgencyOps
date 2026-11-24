@@ -1,3 +1,5 @@
+export * from "./files"
+
 export type Role =
   | "Super Admin"
   | "Sales/Account Manager"
@@ -581,3 +583,6 @@ export interface AppNotification {
   timestamp: string
   href: string
 }
+
+export * from "./files"
+export * from "./tasks"

@@ -6,6 +6,7 @@ import {
   type StoreData,
 } from "./types"
 import { sanitizeDoc } from "@/components/ui/rich-text-editor"
+import { getDemoDataset } from "@/demo-data"
 
 export interface StorageEstimate {
   usedBytes: number
@@ -158,12 +159,18 @@ export function loadStoredData(): StoreData {
   try {
     const raw = window.localStorage.getItem(STORE_STORAGE_KEY)
     if (!raw) {
-      return createInitialEmptyData()
+      const demo = getDemoDataset()
+      demo.version = STORE_VERSION
+      saveStoredData(demo)
+      return demo
     }
 
     const parsed = JSON.parse(raw) as Partial<StoreData>
-    if (!parsed || typeof parsed !== "object") {
-      return createInitialEmptyData()
+    if (!parsed || typeof parsed !== "object" || (!parsed.projects?.length && !parsed.brands?.length)) {
+      const demo = getDemoDataset()
+      demo.version = STORE_VERSION
+      saveStoredData(demo)
+      return demo
     }
 
     // Ensure all required array fields are present
@@ -184,6 +191,27 @@ export function loadStoredData(): StoreData {
       marketingSpendings: Array.isArray(parsed.marketingSpendings) ? parsed.marketingSpendings : base.marketingSpendings,
       projects: Array.isArray(parsed.projects) ? parsed.projects : base.projects,
       tasks: migratedTasks,
+      tasksViewMode:
+        parsed.tasksViewMode === "list" || parsed.tasksViewMode === "table"
+          ? parsed.tasksViewMode
+          : "board",
+      userTaskPermissions:
+        parsed.userTaskPermissions &&
+        typeof parsed.userTaskPermissions === "object"
+          ? parsed.userTaskPermissions
+          : base.userTaskPermissions,
+      files: Array.isArray(parsed.files) ? parsed.files : base.files,
+      filesViewMode: parsed.filesViewMode === "list" ? "list" : "grid",
+      activeFileUserId:
+        typeof parsed.activeFileUserId === "string" && parsed.activeFileUserId
+          ? parsed.activeFileUserId
+          : Array.isArray(parsed.users) && parsed.users[0]?.id
+            ? parsed.users[0].id
+            : base.activeFileUserId,
+      userFilePermissions:
+        parsed.userFilePermissions && typeof parsed.userFilePermissions === "object"
+          ? parsed.userFilePermissions
+          : base.userFilePermissions,
       chatThreads: Array.isArray(parsed.chatThreads) ? parsed.chatThreads : base.chatThreads,
       notifications: Array.isArray(parsed.notifications) ? parsed.notifications : base.notifications,
       attendanceRecords: Array.isArray(parsed.attendanceRecords) ? parsed.attendanceRecords : base.attendanceRecords,

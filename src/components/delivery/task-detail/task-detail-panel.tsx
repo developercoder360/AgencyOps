@@ -37,7 +37,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ALL_TASK_PERMISSIONS, CURRENT_USER } from "@/lib/permissions"
+import {
+  ALL_TASK_PERMISSIONS,
+  CURRENT_USER,
+  type TaskRolePermissions,
+} from "@/lib/permissions"
+import { useAppState } from "@/components/providers/app-state-provider"
 import { useStore } from "@/lib/store"
 import type {
   AttachmentFile,
@@ -45,8 +50,8 @@ import type {
   TaskStatus,
 } from "@/types"
 import { cn } from "cn"
+import { FilesTab } from "@/components/files"
 import { TaskActivitySidebar } from "./task-activity-sidebar"
-import { TaskAttachments } from "./task-attachments"
 import { TaskDescriptionEditor } from "./task-description-editor"
 import { TaskHeader } from "./task-header"
 import { TaskPropertiesGrid } from "./task-properties-grid"
@@ -70,11 +75,58 @@ export function TaskDetailPanel({
   onSelectTask,
   orderedTaskIds = [],
 }: TaskDetailPanelProps) {
-  const permissions = ALL_TASK_PERMISSIONS
-  const persona = CURRENT_USER
+  const { activeUser, hasTaskPermission } = useAppState()
+  const canEditDetails = hasTaskPermission("tasks.edit")
+  const canEditStatus = hasTaskPermission("tasks.manage_status")
+  const canEditAssignees = hasTaskPermission("tasks.assign")
+  const canDeleteOrMove = hasTaskPermission("tasks.delete")
+  const canCreateTask = hasTaskPermission("tasks.create")
+
+  const permissions = React.useMemo<TaskRolePermissions>(
+    () => ({
+      ...ALL_TASK_PERMISSIONS,
+      isReadOnly:
+        !canEditDetails &&
+        !canEditStatus &&
+        !canEditAssignees &&
+        !canDeleteOrMove,
+      canEditDetails,
+      canEditStatus,
+      canEditAssignees,
+      canDeleteOrMove,
+      canDuplicate: canCreateTask,
+      canPutOnHold: canEditStatus,
+      canSendToQa: canEditStatus,
+      canQaReview: canEditStatus,
+      canCreateTask,
+      canAddRevision: canEditDetails,
+      canEditRevision: canEditDetails,
+      canDeleteRevision: canDeleteOrMove,
+    }),
+    [
+      canEditDetails,
+      canEditStatus,
+      canEditAssignees,
+      canDeleteOrMove,
+      canCreateTask,
+    ]
+  )
+  const persona = React.useMemo(
+    () =>
+      activeUser
+        ? {
+            name: activeUser.name,
+            initials: activeUser.avatarInitials,
+            email: activeUser.email,
+            title: activeUser.department,
+          }
+        : CURRENT_USER,
+    [activeUser]
+  )
 
   const {
     isLoaded,
+    files,
     projects,
     users,
     signups,
@@ -94,7 +146,6 @@ export function TaskDetailPanel({
     deleteTaskComment,
     toggleCommentResolved,
     addTaskEvidence,
-    removeTaskEvidence,
     toggleTaskWatcher,
     recordQAReview,
     setTaskOnHold,
@@ -112,7 +163,8 @@ export function TaskDetailPanel({
 
   // Container UI states
   const [isExpanded, setIsExpanded] = React.useState(false)
-  const [mobileTab, setMobileTab] = React.useState<"details" | "activity">(
+  const [leftTab, setLeftTab] = React.useState<"details" | "files">("details")
+  const [mobileTab, setMobileTab] = React.useState<"details" | "files" | "activity">(
     "details"
   )
   const [editingTitle, setEditingTitle] = React.useState(false)
@@ -563,6 +615,13 @@ export function TaskDetailPanel({
   const totalActivityCount = task
     ? task.comments.length + (task.activity?.length ?? 0)
     : 0
+  const taskFilesCount = React.useMemo(
+    () =>
+      task
+        ? files.filter((f) => f.scope === "task" && f.scopeId === task.id).length
+        : 0,
+    [files, task]
+  )
 
   return (
     <>
@@ -681,7 +740,46 @@ export function TaskDetailPanel({
                 onClose={handleClose}
               />
 
-              {/* Mobile/Tablet Tabs (<900px): Details | Activity */}
+              {/* Desktop Left-Workspace Tabs (>=900px): Details | Files */}
+              <div
+                role="tablist"
+                aria-label="Task workspace sections"
+                className="hidden shrink-0 items-center gap-1 border-b border-border bg-muted/20 px-4 py-1.5 min-[900px]:flex"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={leftTab === "details"}
+                  onClick={() => setLeftTab("details")}
+                  className={cn(
+                    "rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                    leftTab === "details"
+                      ? "bg-background text-foreground shadow-xs font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Details
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={leftTab === "files"}
+                  onClick={() => setLeftTab("files")}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                    leftTab === "files"
+                      ? "bg-background text-foreground shadow-xs font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <span>Files</span>
+                  <span className="rounded-full bg-muted px-1.5 font-mono text-[10px] tabular-nums text-foreground">
+                    {taskFilesCount}
+                  </span>
+                </button>
+              </div>
+
+              {/* Mobile/Tablet Tabs (<900px): Details | Files | Activity */}
               <div
                 role="tablist"
                 aria-label="Task view sections"
@@ -693,7 +791,7 @@ export function TaskDetailPanel({
                   aria-selected={mobileTab === "details"}
                   onClick={() => setMobileTab("details")}
                   className={cn(
-                    "flex-1 border-b-2 px-4 py-2.5 text-xs font-semibold transition-colors",
+                    "flex-1 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors",
                     mobileTab === "details"
                       ? "border-primary text-foreground"
                       : "border-transparent text-muted-foreground"
@@ -704,10 +802,24 @@ export function TaskDetailPanel({
                 <button
                   type="button"
                   role="tab"
+                  aria-selected={mobileTab === "files"}
+                  onClick={() => setMobileTab("files")}
+                  className={cn(
+                    "flex-1 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors",
+                    mobileTab === "files"
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground"
+                  )}
+                >
+                  Files ({taskFilesCount})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
                   aria-selected={mobileTab === "activity"}
                   onClick={() => setMobileTab("activity")}
                   className={cn(
-                    "flex-1 border-b-2 px-4 py-2.5 text-xs font-semibold transition-colors",
+                    "flex-1 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors",
                     mobileTab === "activity"
                       ? "border-primary text-foreground"
                       : "border-transparent text-muted-foreground"
@@ -719,14 +831,45 @@ export function TaskDetailPanel({
 
               {/* Main 2-column Body */}
               <div className="flex min-h-0 flex-1 overflow-clip">
-                {/* LEFT COLUMN: Details + Sticky Workflow Bar */}
+                {/* LEFT COLUMN: Details or Files + Sticky Workflow Bar */}
                 <div
                   className={cn(
                     "min-h-0 min-w-0 flex-1 flex-col",
-                    mobileTab === "details" ? "flex" : "hidden min-[900px]:flex"
+                    mobileTab === "activity"
+                      ? "hidden min-[900px]:flex"
+                      : "flex"
                   )}
                 >
-                  <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+                  {/* Files Tab Content */}
+                  <div
+                    className={cn(
+                      "min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5",
+                      mobileTab === "files"
+                        ? "block"
+                        : leftTab === "files" && mobileTab !== "activity"
+                          ? "hidden min-[900px]:block"
+                          : "hidden"
+                    )}
+                  >
+                    <FilesTab
+                      scope="task"
+                      scopeId={task.id}
+                      compact
+                      onOpenTask={onSelectTask}
+                    />
+                  </div>
+
+                  {/* Details Tab Content */}
+                  <div
+                    className={cn(
+                      "min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5",
+                      mobileTab === "details"
+                        ? leftTab === "details"
+                          ? "block"
+                          : "block min-[900px]:hidden"
+                        : "hidden"
+                    )}
+                  >
                     {/* On Hold Banner */}
                     {task.status === "On Hold" && task.onHoldReason ? (
                       <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200">
@@ -882,37 +1025,6 @@ export function TaskDetailPanel({
                             detail: "Triggered by revision added to completed/QA task",
                           }
                         )
-                      }}
-                    />
-
-                    {/* Attachments / Evidence */}
-                    <TaskAttachments
-                      files={task.evidenceFiles}
-                      canUpload={permissions.canUploadEvidence}
-                      canDelete={permissions.canEditDetails}
-                      onUploadFiles={(uploaded) => {
-                        for (const f of uploaded) {
-                          addTaskEvidence(
-                            task.id,
-                            {
-                              name: f.name,
-                              size: f.size,
-                              type: f.type,
-                              uploadedBy: actorName,
-                              previewUrl: f.previewUrl,
-                            },
-                            actorName
-                          )
-                        }
-                        toast.success(
-                          uploaded.length === 1
-                            ? `Attached ${uploaded[0].name}`
-                            : `Attached ${uploaded.length} files`
-                        )
-                      }}
-                      onRemoveFile={(fileId) => {
-                        removeTaskEvidence(task.id, fileId, actorName)
-                        toast.success("Attachment removed")
                       }}
                     />
 

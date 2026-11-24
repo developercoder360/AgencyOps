@@ -4,7 +4,19 @@ import * as React from "react"
 import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
-import { ArrowUpRight, Globe, Mail, MapPin, Phone, Tag, Trash2 } from "lucide-react"
+import {
+  ArrowUpRight,
+  ExternalLink,
+  FileText,
+  Globe,
+  Mail,
+  MapPin,
+  Phone,
+  Tag,
+  Trash2,
+} from "lucide-react"
+import { FilesTab } from "@/components/files"
+import { getClientDetailHref } from "@/lib/files/client-resolver"
 import {
   DataTable,
   DataTableColumnHeader,
@@ -21,11 +33,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useStore } from "@/lib/store"
 import type { SignUp } from "@/types"
 
 export default function SignUpsPage() {
-  const { signUps, brands, convertSignUpToLead, deleteSignUp } = useStore()
+  const { signUps, brands, files, convertSignUpToLead, deleteSignUp } = useStore()
   const [selected, setSelected] = React.useState<SignUp | null>(null)
 
   // Delete dialog state
@@ -214,57 +227,90 @@ export default function SignUpsPage() {
         open={Boolean(selected)}
         onOpenChange={(open) => !open && setSelected(null)}
       >
-        <SheetContent side="right" className="overflow-y-auto sm:max-w-md">
+        <SheetContent side="right" className="overflow-y-auto sm:max-w-2xl">
           {selected ? (
             <>
               <SheetHeader className="border-b border-border pb-4">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="font-mono">
-                    {selected.code}
-                  </Badge>
-                  <Badge variant={selected.convertedToLead ? "default" : "secondary"}>
-                    {selected.convertedToLead ? "Converted to Lead" : "Pending"}
-                  </Badge>
+                <div className="flex flex-wrap items-center justify-between gap-2 pr-8">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono">
+                      {selected.code}
+                    </Badge>
+                    <Badge variant={selected.convertedToLead ? "default" : "secondary"}>
+                      {selected.convertedToLead ? "Converted to Lead" : "Pending"}
+                    </Badge>
+                  </div>
+                  <Button asChild variant="outline" size="xs" className="gap-1">
+                    <Link href={getClientDetailHref(selected.id)}>
+                      <span>Client Profile</span>
+                      <ExternalLink className="size-3" />
+                    </Link>
+                  </Button>
                 </div>
                 <SheetTitle className="mt-1">{selected.name}</SheetTitle>
                 <SheetDescription>{selected.serviceInterest}</SheetDescription>
               </SheetHeader>
 
-              <div className="space-y-4 p-4 text-sm">
-                <div className="space-y-2.5 rounded-lg border border-border bg-muted/30 p-3.5">
-                  <div className="flex items-center gap-2">
-                    <Mail className="size-4 text-muted-foreground" />
-                    <span>{selected.email}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="size-4 text-muted-foreground" />
-                    <span>{selected.phone}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin className="size-4 text-muted-foreground" />
-                    <span>{selected.city}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Tag className="size-4 text-muted-foreground" />
-                    <span>UTM: {selected.utmCampaign}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Globe className="size-4 text-muted-foreground" />
-                    <span className="font-mono text-xs">
-                      IP: {selected.ipAddress}
+              <Tabs defaultValue="details" className="flex-1 p-4">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="details">Details</TabsTrigger>
+                  <TabsTrigger value="files" className="gap-1.5">
+                    <FileText className="size-3.5" />
+                    <span>Files</span>
+                    <span className="rounded-full bg-muted px-1.5 font-mono text-[10px]">
+                      {
+                        files.filter(
+                          (f) => f.scope === "client" && f.scopeId === selected.id
+                        ).length
+                      }
                     </span>
-                  </div>
-                </div>
+                  </TabsTrigger>
+                </TabsList>
 
-                <div className="space-y-1.5">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Submitted Brief Notes
+                <TabsContent value="details" className="space-y-4 text-sm">
+                  <div className="space-y-2.5 rounded-lg border border-border bg-muted/30 p-3.5">
+                    <div className="flex items-center gap-2">
+                      <Mail className="size-4 text-muted-foreground" />
+                      <span>{selected.email}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Phone className="size-4 text-muted-foreground" />
+                      <span>{selected.phone}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="size-4 text-muted-foreground" />
+                      <span>{selected.city}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Tag className="size-4 text-muted-foreground" />
+                      <span>UTM: {selected.utmCampaign}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Globe className="size-4 text-muted-foreground" />
+                      <span className="font-mono text-xs">
+                        IP: {selected.ipAddress}
+                      </span>
+                    </div>
                   </div>
-                  <p className="rounded-lg border border-border p-3 text-muted-foreground">
-                    {selected.notes || "No additional notes provided."}
-                  </p>
-                </div>
-              </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Submitted Brief Notes
+                    </div>
+                    <p className="rounded-lg border border-border p-3 text-muted-foreground">
+                      {selected.notes || "No additional notes provided."}
+                    </p>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="files">
+                  <FilesTab
+                    scope="client"
+                    scopeId={selected.id}
+                    compact
+                  />
+                </TabsContent>
+              </Tabs>
 
               <SheetFooter className="flex-row justify-between border-t border-border pt-4 sm:justify-between">
                 <Button

@@ -1,4 +1,166 @@
-import type { PermissionModule, Role } from "@/types"
+import type {
+  FilePermissionKey,
+  PermissionModule,
+  Role,
+  TaskPermissionKey,
+  UserFilePermissions,
+  UserTaskPermissions,
+} from "@/types"
+
+export const FILE_PERMISSION_KEYS: readonly FilePermissionKey[] = [
+  "files.view",
+  "files.upload",
+  "files.download",
+  "files.delete",
+  "files.manage_visibility",
+] as const
+
+export const DEFAULT_FILE_PERMISSIONS: UserFilePermissions = {
+  "files.view": true,
+  "files.upload": true,
+  "files.download": true,
+  "files.delete": true,
+  "files.manage_visibility": true,
+}
+
+export const READ_ONLY_FILE_PERMISSIONS: UserFilePermissions = {
+  "files.view": true,
+  "files.upload": false,
+  "files.download": true,
+  "files.delete": false,
+  "files.manage_visibility": false,
+}
+
+export const FILE_PERMISSION_META: Record<
+  FilePermissionKey,
+  { label: string; description: string }
+> = {
+  "files.view": {
+    label: "View Files",
+    description: "Browse and preview files across tasks, projects, and clients",
+  },
+  "files.upload": {
+    label: "Upload Files",
+    description: "Upload new files, rename files, and move files between scopes",
+  },
+  "files.download": {
+    label: "Download Files",
+    description: "Download individual files and bulk ZIP archives",
+  },
+  "files.delete": {
+    label: "Delete Files",
+    description: "Permanently remove files from the workspace",
+  },
+  "files.manage_visibility": {
+    label: "Manage Client Visibility",
+    description: "Toggle Client visible vs Internal status on files",
+  },
+}
+
+/**
+ * Pure permission-based check (per-user permissions, independent of roles).
+ */
+export function hasFilePermission(
+  permissions: Partial<UserFilePermissions> | undefined,
+  key: FilePermissionKey
+): boolean {
+  if (!permissions) return true
+  return permissions[key] ?? true
+}
+
+export function resolveUserFilePermissions(
+  userPermissionsMap: Record<string, UserFilePermissions> | undefined,
+  userId: string | undefined
+): UserFilePermissions {
+  if (!userId || !userPermissionsMap || !userPermissionsMap[userId]) {
+    return { ...DEFAULT_FILE_PERMISSIONS }
+  }
+  return {
+    ...DEFAULT_FILE_PERMISSIONS,
+    ...userPermissionsMap[userId],
+  }
+}
+
+export const TASK_PERMISSION_KEYS: readonly TaskPermissionKey[] = [
+  "tasks.view",
+  "tasks.create",
+  "tasks.edit",
+  "tasks.delete",
+  "tasks.assign",
+  "tasks.manage_status",
+] as const
+
+export const DEFAULT_TASK_PERMISSIONS: UserTaskPermissions = {
+  "tasks.view": true,
+  "tasks.create": true,
+  "tasks.edit": true,
+  "tasks.delete": true,
+  "tasks.assign": true,
+  "tasks.manage_status": true,
+}
+
+export const READ_ONLY_TASK_PERMISSIONS: UserTaskPermissions = {
+  "tasks.view": true,
+  "tasks.create": false,
+  "tasks.edit": false,
+  "tasks.delete": false,
+  "tasks.assign": false,
+  "tasks.manage_status": false,
+}
+
+export const TASK_PERMISSION_META: Record<
+  TaskPermissionKey,
+  { label: string; description: string }
+> = {
+  "tasks.view": {
+    label: "View Tasks",
+    description: "Browse task boards, lists, tables, and task details",
+  },
+  "tasks.create": {
+    label: "Create Tasks",
+    description: "Create new tasks across projects and clients",
+  },
+  "tasks.edit": {
+    label: "Edit Tasks",
+    description: "Update task titles, descriptions, dates, and priorities",
+  },
+  "tasks.delete": {
+    label: "Delete Tasks",
+    description: "Permanently remove tasks from the workspace",
+  },
+  "tasks.assign": {
+    label: "Assign Members",
+    description: "Assign or reassign team members on tasks",
+  },
+  "tasks.manage_status": {
+    label: "Manage Status",
+    description: "Transition task workflow statuses and QA states",
+  },
+}
+
+/**
+ * Pure permission-based check for task actions (per-user, independent of roles).
+ */
+export function hasTaskPermission(
+  permissions: Partial<UserTaskPermissions> | undefined,
+  key: TaskPermissionKey
+): boolean {
+  if (!permissions) return true
+  return permissions[key] ?? true
+}
+
+export function resolveUserTaskPermissions(
+  userPermissionsMap: Record<string, UserTaskPermissions> | undefined,
+  userId: string | undefined
+): UserTaskPermissions {
+  if (!userId || !userPermissionsMap || !userPermissionsMap[userId]) {
+    return { ...DEFAULT_TASK_PERMISSIONS }
+  }
+  return {
+    ...DEFAULT_TASK_PERMISSIONS,
+    ...userPermissionsMap[userId],
+  }
+}
 
 export const CURRENT_USER = {
   name: "Marcus Vance",

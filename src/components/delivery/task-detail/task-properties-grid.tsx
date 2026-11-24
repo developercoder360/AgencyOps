@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
+import { getClientDetailHref } from "@/lib/files/client-resolver"
 import {
   Calendar as CalendarIcon,
   Check,
@@ -138,6 +140,7 @@ export function TaskPropertiesGrid({
   onDatesChange,
   onCompletedDateChange,
   onPriorityChange,
+  onNavigateClose,
   creatorName: propCreatorName,
 }: TaskPropertiesGridProps) {
   const [assigneeSearch, setAssigneeSearch] = React.useState("")
@@ -962,9 +965,13 @@ export function TaskPropertiesGrid({
             <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-cyan-100 text-[9px] font-bold text-cyan-700 dark:bg-cyan-950/80 dark:text-cyan-300">
               {getEntityInitials(clientName, 3) || "TDA"}
             </span>
-            <span className="truncate text-foreground/90 font-normal">
+            <Link
+              href={getClientDetailHref(currentClient?.id || clientName)}
+              onClick={() => onNavigateClose?.()}
+              className="truncate text-foreground/90 font-normal hover:text-primary hover:underline"
+            >
               {clientName}
-            </span>
+            </Link>
           </div>
         </div>
 

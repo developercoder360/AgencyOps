@@ -22,6 +22,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   transactions: "Transactions",
   "marketing-spendings": "Marketing Spendings",
   projects: "Projects",
+  clients: "Clients",
   tasks: "Tasks",
   chats: "Chats",
   hrm: "HR Management",
@@ -41,8 +42,9 @@ const SEGMENT_LABELS: Record<string, string> = {
 }
 
 function formatSegment(segment: string): string {
-  if (SEGMENT_LABELS[segment]) return SEGMENT_LABELS[segment]
-  return segment.toUpperCase()
+  const decoded = decodeURIComponent(segment)
+  if (SEGMENT_LABELS[decoded]) return SEGMENT_LABELS[decoded]
+  return decoded.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 export function AppBreadcrumbs() {
@@ -67,7 +69,7 @@ export function AppBreadcrumbs() {
           const href = `/${segments.slice(0, index + 1).join("/")}`
           const isLast = index === segments.length - 1
           const label = formatSegment(segment)
-          const nonRoutableGroup = segment === "hrm"
+          const nonRoutableGroup = segment === "hrm" || segment === "clients"
 
           return (
             <React.Fragment key={href}>
@@ -76,9 +78,13 @@ export function AppBreadcrumbs() {
                 {isLast ? (
                   <BreadcrumbPage>{label}</BreadcrumbPage>
                 ) : nonRoutableGroup ? (
-                  <BreadcrumbLink asChild>
-                    <Link href="/hrm/dashboard">{label}</Link>
-                  </BreadcrumbLink>
+                  segment === "hrm" ? (
+                    <BreadcrumbLink asChild>
+                      <Link href="/hrm/dashboard">{label}</Link>
+                    </BreadcrumbLink>
+                  ) : (
+                    <span className="text-muted-foreground">{label}</span>
+                  )
                 ) : (
                   <BreadcrumbLink asChild>
                     <Link href={href}>{label}</Link>

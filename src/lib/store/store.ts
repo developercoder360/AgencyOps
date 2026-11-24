@@ -35,6 +35,10 @@ import type {
   ChatThread,
   City,
   ExportLog,
+  FileItem,
+  FilePermissionKey,
+  FileScope,
+  FileViewMode,
   Holiday,
   Invoice,
   Lead,
@@ -55,11 +59,21 @@ import type {
   TaskActivityEvent,
   TaskComment,
   TaskFile,
+  TaskPermissionKey,
+  TaskPriority,
   TaskRevision,
+  TaskStatus,
+  TasksViewMode,
   Transaction,
+  UserFilePermissions,
+  UserTaskPermissions,
 } from "@/types"
 import { toast } from "sonner"
 import { getDemoDataset } from "@/demo-data"
+import {
+  DEFAULT_FILE_PERMISSIONS,
+  DEFAULT_TASK_PERMISSIONS,
+} from "@/lib/permissions"
 
 type Listener = () => void
 
@@ -616,12 +630,31 @@ export class StoreManager {
 
   public deleteProject(id: string): DeletionCheckResult {
     const check = checkProjectDeletion(this.data, id)
-    // Cascade delete tasks and chat threads
+    // Cascade delete tasks, chat threads, and associated task/project files
+    const projectTaskIds = new Set(
+      this.data.tasks.filter((t) => t.projectId === id).map((t) => t.id)
+    )
+    this.revokeBlobUrls(
+      this.data.files.filter(
+        (f) =>
+          (f.scope === "project" && f.scopeId === id) ||
+          f.projectId === id ||
+          (f.taskId && projectTaskIds.has(f.taskId))
+      )
+    )
     this.setAndPersist((s) => ({
       ...s,
       projects: s.projects.filter((p) => p.id !== id),
       tasks: s.tasks.filter((t) => t.projectId !== id),
       chatThreads: s.chatThreads.filter((c) => c.projectId !== id),
+      files: s.files.filter(
+        (f) =>
+          !(
+            (f.scope === "project" && f.scopeId === id) ||
+            f.projectId === id ||
+            (f.taskId && projectTaskIds.has(f.taskId))
+          )
+      ),
     }))
     return check
   }
@@ -766,9 +799,17 @@ export class StoreManager {
   }
 
   public deleteTask(id: string): void {
+    this.revokeBlobUrls(
+      this.data.files.filter(
+        (f) => (f.scope === "task" && f.scopeId === id) || f.taskId === id
+      )
+    )
     this.setAndPersist((s) => ({
       ...s,
       tasks: s.tasks.filter((t) => t.id !== id),
+      files: s.files.filter(
+        (f) => !((f.scope === "task" && f.scopeId === id) || f.taskId === id)
+      ),
     }))
   }
 
@@ -1972,6 +2013,255 @@ export class StoreManager {
     }))
   }
 
+  // --- File Management Actions ---
+  private revokeBlobUrls(items: FileItem[]): void {
+    if (typeof window === "undefined") return
+    for (const item of items) {
+      if (item.url.startsWith("blob:")) {
+        URL.revokeObjectURL(item.url)
+      }
+      if (item.thumbnailUrl && item.thumbnailUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(item.thumbnailUrl)
+      }
+    }
+  }
+
+  public addFiles(items: FileItem[]): void {
+    if (items.length === 0) return
+    this.setAndPersist((s) => ({
+      ...s,
+      files: [...items, ...s.files],
+    }))
+  }
+
+  public renameFile(id: string, name: string): void {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    this.setAndPersist((s) => ({
+      ...s,
+      files: s.files.map((f) => (f.id === id ? { ...f, name: trimmed } : f)),
+    }))
+  }
+
+  public moveFile(
+    id: string,
+    scope: FileScope,
+    scopeId: string,
+    meta?: { taskId?: string; projectId?: string; clientId?: string }
+  ): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      files: s.files.map((f) =>
+        f.id === id
+          ? {
+              ...f,
+              scope,
+              scopeId,
+              taskId: scope === "task" ? (meta?.taskId ?? scopeId) : undefined,
+              projectId:
+                scope === "project"
+                  ? (meta?.projectId ?? scopeId)
+                  : meta?.projectId,
+              clientId:
+                scope === "client"
+                  ? (meta?.clientId ?? scopeId)
+                  : meta?.clientId,
+            }
+          : f
+      ),
+    }))
+  }
+
+  public deleteFiles(ids: string[]): void {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    this.revokeBlobUrls(this.data.files.filter((f) => idSet.has(f.id)))
+    this.setAndPersist((s) => ({
+      ...s,
+      files: s.files.filter((f) => !idSet.has(f.id)),
+    }))
+  }
+
+  public setVisibility(ids: string[], clientVisible: boolean): void {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    this.setAndPersist((s) => ({
+      ...s,
+      files: s.files.map((f) =>
+        idSet.has(f.id) ? { ...f, clientVisible } : f
+      ),
+    }))
+  }
+
+  public setFilesViewMode(mode: FileViewMode): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      filesViewMode: mode,
+    }))
+  }
+
+  public setActiveFileUserId(userId: string): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      activeFileUserId: userId,
+    }))
+  }
+
+  public setUserFilePermission(
+    userId: string,
+    key: FilePermissionKey,
+    allowed: boolean
+  ): void {
+    this.setAndPersist((s) => {
+      const current = s.userFilePermissions[userId] ?? {
+        ...DEFAULT_FILE_PERMISSIONS,
+      }
+      return {
+        ...s,
+        userFilePermissions: {
+          ...s.userFilePermissions,
+          [userId]: {
+            ...current,
+            [key]: allowed,
+          },
+        },
+      }
+    })
+  }
+
+  public setAllUserFilePermissions(
+    userId: string,
+    permissions: UserFilePermissions
+  ): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      userFilePermissions: {
+        ...s.userFilePermissions,
+        [userId]: { ...permissions },
+      },
+    }))
+  }
+
+  // --- Bulk Task & Task Permission Actions ---
+  public deleteTasks(ids: string[]): void {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    this.revokeBlobUrls(
+      this.data.files.filter(
+        (f) =>
+          (f.scope === "task" && idSet.has(f.scopeId)) ||
+          (f.taskId && idSet.has(f.taskId))
+      )
+    )
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.filter((t) => !idSet.has(t.id)),
+      files: s.files.filter(
+        (f) =>
+          !(
+            (f.scope === "task" && idSet.has(f.scopeId)) ||
+            (f.taskId && idSet.has(f.taskId))
+          )
+      ),
+    }))
+  }
+
+  public bulkUpdateTaskStatus(
+    ids: string[],
+    status: TaskStatus,
+    actorName = "Current User"
+  ): void {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    const nowIso = new Date().toISOString()
+    const completedDate = status === "Complete" ? nowIso.slice(0, 10) : undefined
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) => {
+        if (!idSet.has(t.id)) return t
+        const entry: TaskActivityEvent = {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "system",
+          actorId: "usr-admin",
+          actorName,
+          action: "changed status",
+          detail: `${t.status} → ${status}`,
+          timestamp: nowIso,
+        }
+        return {
+          ...t,
+          status,
+          completedAt: status === "Complete" ? completedDate : undefined,
+          activity: [...(t.activity ?? []), entry],
+        }
+      }),
+    }))
+  }
+
+  public bulkUpdateTaskPriority(ids: string[], priority: TaskPriority): void {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) =>
+        idSet.has(t.id) ? { ...t, priority } : t
+      ),
+    }))
+  }
+
+  public bulkAssignTasks(ids: string[], assigneeIds: string[]): void {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    this.setAndPersist((s) => ({
+      ...s,
+      tasks: s.tasks.map((t) =>
+        idSet.has(t.id) ? { ...t, assigneeIds: [...assigneeIds] } : t
+      ),
+    }))
+  }
+
+  public setTasksViewMode(mode: TasksViewMode): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      tasksViewMode: mode,
+    }))
+  }
+
+  public setUserTaskPermission(
+    userId: string,
+    key: TaskPermissionKey,
+    allowed: boolean
+  ): void {
+    this.setAndPersist((s) => {
+      const current = s.userTaskPermissions[userId] ?? {
+        ...DEFAULT_TASK_PERMISSIONS,
+      }
+      return {
+        ...s,
+        userTaskPermissions: {
+          ...s.userTaskPermissions,
+          [userId]: {
+            ...current,
+            [key]: allowed,
+          },
+        },
+      }
+    })
+  }
+
+  public setAllUserTaskPermissions(
+    userId: string,
+    permissions: UserTaskPermissions
+  ): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      userTaskPermissions: {
+        ...s.userTaskPermissions,
+        [userId]: { ...permissions },
+      },
+    }))
+  }
+
   // --- Global Store Management ---
   public loadDemoData(): void {
     const demo = getDemoDataset()
@@ -2032,6 +2322,25 @@ export class StoreManager {
           : base.marketingSpendings,
         projects: Array.isArray(data.projects) ? data.projects : base.projects,
         tasks: migratedTasks,
+        tasksViewMode:
+          data.tasksViewMode === "list" || data.tasksViewMode === "table"
+            ? data.tasksViewMode
+            : "board",
+        userTaskPermissions:
+          data.userTaskPermissions &&
+          typeof data.userTaskPermissions === "object"
+            ? data.userTaskPermissions
+            : base.userTaskPermissions,
+        files: Array.isArray(data.files) ? data.files : base.files,
+        filesViewMode: data.filesViewMode === "list" ? "list" : "grid",
+        activeFileUserId:
+          typeof data.activeFileUserId === "string" && data.activeFileUserId
+            ? data.activeFileUserId
+            : base.activeFileUserId,
+        userFilePermissions:
+          data.userFilePermissions && typeof data.userFilePermissions === "object"
+            ? data.userFilePermissions
+            : base.userFilePermissions,
         chatThreads: Array.isArray(data.chatThreads) ? data.chatThreads : base.chatThreads,
         notifications: Array.isArray(data.notifications) ? data.notifications : base.notifications,
         attendanceRecords: Array.isArray(data.attendanceRecords)

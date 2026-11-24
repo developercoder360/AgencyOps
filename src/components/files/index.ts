@@ -1,0 +1,8 @@
+export { FilesTab, type FilesTabProps } from "./FilesTab"
+export { FileUploadDialog } from "./FileUploadDialog"
+export { FilePreviewDialog } from "./FilePreviewDialog"
+export { FileGrid, type FileDisplayEntry } from "./FileGrid"
+export { FileTable } from "./FileTable"
+export { FileBulkBar } from "./FileBulkBar"
+export { FileVisibilityBadge } from "./FileVisibilityBadge"
+export { FileTypeIcon } from "./FileTypeIcon"

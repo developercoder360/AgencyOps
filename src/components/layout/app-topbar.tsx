@@ -18,11 +18,36 @@ import {
   MessageSquare,
   Moon,
   Settings,
+  Shield,
   Sun,
   User,
 } from "lucide-react"
 import { useAppState } from "@/components/providers/app-state-provider"
-import { CURRENT_USER } from "@/lib/permissions"
+import {
+  CURRENT_USER,
+  DEFAULT_FILE_PERMISSIONS,
+  DEFAULT_TASK_PERMISSIONS,
+  FILE_PERMISSION_KEYS,
+  FILE_PERMISSION_META,
+  READ_ONLY_FILE_PERMISSIONS,
+  READ_ONLY_TASK_PERMISSIONS,
+  TASK_PERMISSION_KEYS,
+  TASK_PERMISSION_META,
+} from "@/lib/permissions"
+import { useStore } from "@/lib/store"
+import { Switch } from "@/components/ui/switch"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -114,7 +139,17 @@ interface AppTopbarProps {
 
 export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
   const { setTheme, resolvedTheme } = useTheme()
+  const { users } = useStore()
   const {
+    activeUserId,
+    activeUser,
+    setActiveUserId,
+    filePermissions,
+    setFilePermission,
+    setAllFilePermissions,
+    taskPermissions,
+    setTaskPermission,
+    setAllTaskPermissions,
     notifications,
     unreadNotificationsCount,
     markAllNotificationsRead,
@@ -125,6 +160,16 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
   const [bankingOpen, setBankingOpen] = React.useState(false)
   const [notifOpen, setNotifOpen] = React.useState(false)
   const [passwordOpen, setPasswordOpen] = React.useState(false)
+  const [permScope, setPermScope] = React.useState<"files" | "tasks">("files")
+
+  const enabledFileCount = FILE_PERMISSION_KEYS.filter(
+    (k) => filePermissions[k]
+  ).length
+  const enabledTaskCount = TASK_PERMISSION_KEYS.filter(
+    (k) => taskPermissions[k]
+  ).length
+  const totalPermKeys = FILE_PERMISSION_KEYS.length + TASK_PERMISSION_KEYS.length
+  const totalEnabledCount = enabledFileCount + enabledTaskCount
 
   const persona = CURRENT_USER
 
@@ -179,6 +224,237 @@ export function AppTopbar({ onOpenMobileSidebar }: AppTopbarProps) {
         </div>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          {/* Per-User Permissions Switcher (Files & Tasks) */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                aria-label="User file permissions switcher"
+              >
+                <Shield className="size-3.5 text-primary" />
+                <span className="hidden sm:inline">Permissions</span>
+                <Badge
+                  variant={
+                    totalEnabledCount === totalPermKeys ? "secondary" : "outline"
+                  }
+                  className="h-4 px-1.5 font-mono text-[10px]"
+                >
+                  {totalEnabledCount}/{totalPermKeys}
+                </Badge>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-84 p-3.5">
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-semibold text-foreground">
+                      User Permissions
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Toggle per-user access permissions for Files and Tasks.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  role="tablist"
+                  aria-label="Permission modules"
+                  className="grid grid-cols-2 rounded-lg border border-border bg-muted/50 p-0.5"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={permScope === "files"}
+                    onClick={() => setPermScope("files")}
+                    className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                      permScope === "files"
+                        ? "bg-background text-foreground shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Files ({enabledFileCount}/{FILE_PERMISSION_KEYS.length})
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={permScope === "tasks"}
+                    onClick={() => setPermScope("tasks")}
+                    className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                      permScope === "tasks"
+                        ? "bg-background text-foreground shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Tasks ({enabledTaskCount}/{TASK_PERMISSION_KEYS.length})
+                  </button>
+                </div>
+
+                {users.length > 0 && (
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="perm-user-select"
+                      className="text-[11px] text-muted-foreground"
+                    >
+                      Active User
+                    </Label>
+                    <Select
+                      value={activeUser?.id ?? activeUserId}
+                      onValueChange={(nextId) => {
+                        setActiveUserId(nextId)
+                        const chosen = users.find((u) => u.id === nextId)
+                        if (chosen) {
+                          toast.info(`Switched active permissions user to ${chosen.name}`)
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="perm-user-select" className="h-8 w-full text-xs">
+                        <SelectValue placeholder="Select user" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            <span className="truncate">{u.name}</span>
+                            <span className="ml-1 text-muted-foreground">
+                              ({u.email})
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="max-h-64 space-y-2 overflow-y-auto border-t border-border pt-2.5 pr-0.5">
+                  {permScope === "files"
+                    ? FILE_PERMISSION_KEYS.map((key) => {
+                        const meta = FILE_PERMISSION_META[key]
+                        const checked = Boolean(filePermissions[key])
+                        return (
+                          <div
+                            key={key}
+                            className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-medium text-foreground">
+                                  {meta.label}
+                                </span>
+                                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                  {key}
+                                </code>
+                              </div>
+                              <p className="mt-0.5 text-[10px] text-muted-foreground leading-tight">
+                                {meta.description}
+                              </p>
+                            </div>
+                            <Switch
+                              size="sm"
+                              checked={checked}
+                              onCheckedChange={(next) => setFilePermission(key, next)}
+                              aria-label={`Toggle ${key}`}
+                            />
+                          </div>
+                        )
+                      })
+                    : TASK_PERMISSION_KEYS.map((key) => {
+                        const meta = TASK_PERMISSION_META[key]
+                        const checked = Boolean(taskPermissions[key])
+                        return (
+                          <div
+                            key={key}
+                            className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-medium text-foreground">
+                                  {meta.label}
+                                </span>
+                                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                  {key}
+                                </code>
+                              </div>
+                              <p className="mt-0.5 text-[10px] text-muted-foreground leading-tight">
+                                {meta.description}
+                              </p>
+                            </div>
+                            <Switch
+                              size="sm"
+                              checked={checked}
+                              onCheckedChange={(next) => setTaskPermission(key, next)}
+                              aria-label={`Toggle ${key}`}
+                            />
+                          </div>
+                        )
+                      })}
+                </div>
+
+                <div className="flex items-center justify-between gap-1.5 border-t border-border pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    className="flex-1 text-[11px]"
+                    onClick={() => {
+                      if (permScope === "files") {
+                        setAllFilePermissions({ ...DEFAULT_FILE_PERMISSIONS })
+                      } else {
+                        setAllTaskPermissions({ ...DEFAULT_TASK_PERMISSIONS })
+                      }
+                    }}
+                  >
+                    Grant All
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    className="flex-1 text-[11px]"
+                    onClick={() => {
+                      if (permScope === "files") {
+                        setAllFilePermissions({ ...READ_ONLY_FILE_PERMISSIONS })
+                      } else {
+                        setAllTaskPermissions({ ...READ_ONLY_TASK_PERMISSIONS })
+                      }
+                    }}
+                  >
+                    View Only
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    className="flex-1 text-[11px] text-destructive hover:text-destructive"
+                    onClick={() => {
+                      if (permScope === "files") {
+                        setAllFilePermissions({
+                          "files.view": false,
+                          "files.upload": false,
+                          "files.download": false,
+                          "files.delete": false,
+                          "files.manage_visibility": false,
+                        })
+                      } else {
+                        setAllTaskPermissions({
+                          "tasks.view": false,
+                          "tasks.create": false,
+                          "tasks.edit": false,
+                          "tasks.delete": false,
+                          "tasks.assign": false,
+                          "tasks.manage_status": false,
+                        })
+                      }
+                    }}
+                  >
+                    Revoke All
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
           {/* Banking button */}
           <Button
             type="button"

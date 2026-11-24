@@ -1,12 +1,38 @@
 "use client"
 
 import * as React from "react"
-import type { AppNotification, Role } from "@/types"
+import type {
+  AppNotification,
+  FilePermissionKey,
+  Role,
+  StaffUser,
+  TaskPermissionKey,
+  UserFilePermissions,
+  UserTaskPermissions,
+} from "@/types"
 import { useStore } from "@/lib/store"
+import {
+  DEFAULT_FILE_PERMISSIONS,
+  hasFilePermission,
+  hasTaskPermission as checkTaskPermission,
+  resolveUserFilePermissions,
+  resolveUserTaskPermissions,
+} from "@/lib/permissions"
 
 interface AppStateContextValue {
   role: Role
   setRole: (role: Role) => void
+  activeUserId: string
+  activeUser: StaffUser | undefined
+  setActiveUserId: (userId: string) => void
+  filePermissions: UserFilePermissions
+  hasPermission: (key: FilePermissionKey) => boolean
+  setFilePermission: (key: FilePermissionKey, allowed: boolean) => void
+  setAllFilePermissions: (permissions: UserFilePermissions) => void
+  taskPermissions: UserTaskPermissions
+  hasTaskPermission: (key: TaskPermissionKey) => boolean
+  setTaskPermission: (key: TaskPermissionKey, allowed: boolean) => void
+  setAllTaskPermissions: (permissions: UserTaskPermissions) => void
   celebrationDismissed: boolean
   dismissCelebration: () => void
   notifications: AppNotification[]
@@ -27,6 +53,69 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const [celebrationDismissed, setCelebrationDismissed] = React.useState(false)
 
+  const activeUser = React.useMemo(() => {
+    return (
+      store.users.find((u) => u.id === store.activeFileUserId) ?? store.users[0]
+    )
+  }, [store.users, store.activeFileUserId])
+
+  const activeUserId = activeUser?.id ?? store.activeFileUserId ?? "usr-admin"
+
+  const filePermissions = React.useMemo<UserFilePermissions>(
+    () => resolveUserFilePermissions(store.userFilePermissions, activeUserId),
+    [store.userFilePermissions, activeUserId]
+  )
+
+  const hasPermission = React.useCallback(
+    (key: FilePermissionKey) => hasFilePermission(filePermissions, key),
+    [filePermissions]
+  )
+
+  const setActiveUserId = React.useCallback(
+    (userId: string) => {
+      store.setActiveFileUserId(userId)
+    },
+    [store]
+  )
+
+  const setFilePermission = React.useCallback(
+    (key: FilePermissionKey, allowed: boolean) => {
+      store.setUserFilePermission(activeUserId, key, allowed)
+    },
+    [store, activeUserId]
+  )
+
+  const setAllFilePermissions = React.useCallback(
+    (permissions: UserFilePermissions) => {
+      store.setAllUserFilePermissions(activeUserId, permissions)
+    },
+    [store, activeUserId]
+  )
+
+  const taskPermissions = React.useMemo<UserTaskPermissions>(
+    () => resolveUserTaskPermissions(store.userTaskPermissions, activeUserId),
+    [store.userTaskPermissions, activeUserId]
+  )
+
+  const hasTaskPermission = React.useCallback(
+    (key: TaskPermissionKey) => checkTaskPermission(taskPermissions, key),
+    [taskPermissions]
+  )
+
+  const setTaskPermission = React.useCallback(
+    (key: TaskPermissionKey, allowed: boolean) => {
+      store.setUserTaskPermission(activeUserId, key, allowed)
+    },
+    [store, activeUserId]
+  )
+
+  const setAllTaskPermissions = React.useCallback(
+    (permissions: UserTaskPermissions) => {
+      store.setAllUserTaskPermissions(activeUserId, permissions)
+    },
+    [store, activeUserId]
+  )
+
   const notifications = store.notifications
   const unreadNotificationsCount = React.useMemo(
     () => notifications.filter((n) => !n.read).length,
@@ -38,10 +127,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [store.chatThreads]
   )
 
-  const [manualUnreadMessagesCount, setUnreadMessagesCount] = React.useState<number | null>(null)
+  const [manualUnreadMessagesCount, setUnreadMessagesCount] = React.useState<
+    number | null
+  >(null)
 
   const unreadMessagesCount =
-    manualUnreadMessagesCount !== null ? manualUnreadMessagesCount : computedUnreadMessages
+    manualUnreadMessagesCount !== null
+      ? manualUnreadMessagesCount
+      : computedUnreadMessages
 
   const markAllNotificationsRead = React.useCallback(() => {
     store.markAllNotificationsRead()
@@ -62,6 +155,17 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     () => ({
       role,
       setRole,
+      activeUserId,
+      activeUser,
+      setActiveUserId,
+      filePermissions: filePermissions ?? DEFAULT_FILE_PERMISSIONS,
+      hasPermission,
+      setFilePermission,
+      setAllFilePermissions,
+      taskPermissions,
+      hasTaskPermission,
+      setTaskPermission,
+      setAllTaskPermissions,
       celebrationDismissed,
       dismissCelebration,
       notifications,
@@ -76,6 +180,17 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [
       role,
       setRole,
+      activeUserId,
+      activeUser,
+      setActiveUserId,
+      filePermissions,
+      hasPermission,
+      setFilePermission,
+      setAllFilePermissions,
+      taskPermissions,
+      hasTaskPermission,
+      setTaskPermission,
+      setAllTaskPermissions,
       celebrationDismissed,
       dismissCelebration,
       notifications,

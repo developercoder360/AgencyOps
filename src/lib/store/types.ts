@@ -5,6 +5,8 @@ import type {
   City,
   CurrencyCode,
   ExportLog,
+  FileItem,
+  FileViewMode,
   Holiday,
   Invoice,
   Lead,
@@ -22,8 +24,12 @@ import type {
   SignUp,
   StaffUser,
   Task,
+  TaskPermissionKey,
+  TasksViewMode,
   ChatThread,
   Transaction,
+  UserFilePermissions,
+  UserTaskPermissions,
 } from "@/types"
 
 export interface StoreData {
@@ -39,6 +45,12 @@ export interface StoreData {
   marketingSpendings: MarketingSpend[]
   projects: Project[]
   tasks: Task[]
+  tasksViewMode: TasksViewMode
+  userTaskPermissions: Record<string, UserTaskPermissions>
+  files: FileItem[]
+  filesViewMode: FileViewMode
+  activeFileUserId: string
+  userFilePermissions: Record<string, UserFilePermissions>
   chatThreads: ChatThread[]
   notifications: AppNotification[]
   attendanceRecords: AttendanceRecord[]
@@ -63,7 +75,7 @@ export interface Team {
 }
 
 export const STORE_STORAGE_KEY = "agencyops:data:v1"
-export const STORE_VERSION = 5
+export const STORE_VERSION = 7
 
 export const REFERENCE_CURRENCIES: CurrencyCode[] = ["USD", "GBP", "CAD", "AED"]
 
@@ -272,6 +284,12 @@ export function createInitialEmptyData(): StoreData {
     marketingSpendings: [],
     projects: [],
     tasks: [],
+    tasksViewMode: "board",
+    userTaskPermissions: {},
+    files: [],
+    filesViewMode: "grid",
+    activeFileUserId: DEFAULT_ADMIN_USER.id,
+    userFilePermissions: {},
     chatThreads: [],
     notifications: [],
     attendanceRecords: [],
