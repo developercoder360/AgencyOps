@@ -1,4 +1,4 @@
-import type { Brand, City, Invoice, Lead, Project, SignUp, Task, TaskRevision } from "@/types"
+import type { Brand, City, Invoice, Lead, Project, SignUp, StaffUser, Task, TaskRevision } from "@/types"
 import {
   createInitialEmptyData,
   STORE_STORAGE_KEY,
@@ -186,13 +186,27 @@ export function migrateLead(rawLead: unknown, index: number): Lead {
   return ld as unknown as Lead
 }
 
-export function migrateInvoice(rawInvoice: unknown, index: number): Invoice {
+export function migrateInvoice(
+  rawInvoice: unknown,
+  index: number,
+  users: StaffUser[]
+): Invoice {
   if (!rawInvoice || typeof rawInvoice !== "object") {
     return rawInvoice as Invoice
   }
   const inv = { ...(rawInvoice as Record<string, unknown>) }
   if (!inv.leadId) {
     inv.leadId = `lead-${(index % 8) + 1}`
+  }
+  if (!inv.createdAt && typeof inv.issuedAt === "string") {
+    inv.createdAt = inv.issuedAt
+  }
+  if (!inv.createdBy) {
+    const rep =
+      typeof inv.salesRepId === "string"
+        ? users.find((u) => u.id === inv.salesRepId)
+        : undefined
+    inv.createdBy = rep?.name ?? users[0]?.name ?? "Marcus Vance"
   }
   return inv as unknown as Invoice
 }
@@ -286,8 +300,14 @@ export function loadStoredData(): StoreData {
     const migratedSignUps = rawSignUps.map((su, idx) =>
       migrateSignUp(su, idx, migratedLeads, migratedBrands, rawCities)
     )
+    const rawUsers =
+      Array.isArray(parsed.users) && parsed.users.length > 0
+        ? parsed.users
+        : base.users
     const rawInvoices = Array.isArray(parsed.invoices) ? parsed.invoices : base.invoices
-    const migratedInvoices = rawInvoices.map(migrateInvoice)
+    const migratedInvoices = rawInvoices.map((inv, idx) =>
+      migrateInvoice(inv, idx, rawUsers)
+    )
     const rawProjects = Array.isArray(parsed.projects) ? parsed.projects : base.projects
     const migratedProjects = rawProjects.map(migrateProject)
 

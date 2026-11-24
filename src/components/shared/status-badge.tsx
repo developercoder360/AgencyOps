@@ -104,6 +104,12 @@ const STATUS_STYLE_MAP: Record<string, StatusConfig> = {
       "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30",
     dotClass: "bg-rose-500",
   },
+  expired: {
+    label: "Expired",
+    classes:
+      "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
+    dotClass: "bg-amber-500",
+  },
   "refund requested": {
     label: "Refund Requested",
     classes:

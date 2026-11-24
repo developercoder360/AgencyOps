@@ -10,8 +10,6 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
-  CreditCard,
-  Landmark,
   Lock,
   ShieldCheck,
   Upload,
@@ -29,10 +27,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency, formatUsdEquivalent, toUsd } from "@/lib/currency"
+import { isOfflineMerchant } from "@/lib/gateways"
 import { useStore } from "@/lib/store"
-import type { Invoice } from "@/types"
+import type { AttachmentFile, Invoice, PaymentGateway } from "@/types"
 
 const cardSchema = z.object({
   cardholder: z.string().min(2, "Cardholder name required"),
@@ -46,16 +44,35 @@ const cardSchema = z.object({
 
 type CardFormValues = z.infer<typeof cardSchema>
 
+function getOfflineMerchantInstructions(
+  gateway: PaymentGateway,
+  invoiceNumber: string
+): string {
+  switch (gateway) {
+    case "ACH Routing":
+      return `Beneficiary: AgencyOps Digital LLC • ABA Routing: 021000021 • Account: 9810 4429 1182 • Ref: ${invoiceNumber}`
+    case "Zelle":
+      return `Send Zelle transfer to billing@agencyops.io (AgencyOps Digital LLC) • Memo: ${invoiceNumber}`
+    case "Wise":
+      return `Send Wise transfer to @agencyops (billing@agencyops.io) • Reference: ${invoiceNumber}`
+    default:
+      return `Beneficiary: AgencyOps Digital LLC • Routing: 021000021 • Account: 9810 4429 1182 • Ref: ${invoiceNumber}`
+  }
+}
+
 export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
   const { updateInvoice, createTransaction } = useStore()
+  const offlineOnly = isOfflineMerchant(invoice.gateway)
 
   const [paymentOutcome, setPaymentOutcome] = React.useState<
     "idle" | "success" | "failed"
   >(invoice.status === "Success" ? "success" : "idle")
   const [simulateDecline, setSimulateDecline] = React.useState(false)
-  const [uploadedProofName, setUploadedProofName] = React.useState<string | null>(
-    null
-  )
+  const [selectedProofFile, setSelectedProofFile] = React.useState<{
+    name: string
+    size: string
+    type: string
+  } | null>(null)
   const [proofSubmitted, setProofSubmitted] = React.useState(false)
 
   const form = useForm<CardFormValues>({
@@ -111,13 +128,24 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
   }
 
   function handleProofSubmit() {
-    if (!uploadedProofName) {
-      toast.error("Attach a wire receipt or screenshot first.")
+    if (!selectedProofFile) {
+      toast.error("Attach a payment receipt or proof file first.")
       return
     }
+    const newAttachment: AttachmentFile = {
+      id: `att-${crypto.randomUUID().slice(0, 8)}`,
+      name: selectedProofFile.name,
+      size: selectedProofFile.size,
+      type: selectedProofFile.type,
+      uploadedBy: invoice.clientName,
+      uploadedAt: new Date().toISOString().slice(0, 10),
+    }
     setProofSubmitted(true)
-    updateInvoice(invoice.id, { status: "Processing" })
-    toast.success("Bank transfer proof uploaded for treasury verification")
+    updateInvoice(invoice.id, {
+      status: "Processing",
+      attachments: [...invoice.attachments, newAttachment],
+    })
+    toast.success(`${invoice.gateway} proof uploaded for verification`)
   }
 
   return (
@@ -217,7 +245,7 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
-                    Tax ({invoice.taxRate}%)
+                    {invoice.taxRate > 0 ? `Tax (${invoice.taxRate}%)` : "Tax"}
                   </span>
                   <span className="tabular-nums">
                     {formatCurrency(invoice.taxAmount, invoice.currency)}
@@ -242,16 +270,19 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
             </CardContent>
           </Card>
 
-          {/* Right: Payment Form & Bank Transfer Proof UI */}
+          {/* Right: Payment Form or File Attachment Proof UI */}
           <Card className="lg:col-span-7">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Lock className="size-4 text-primary" />
-                Complete Payment
+                {offlineOnly
+                  ? `Submit Payment Proof (${invoice.gateway})`
+                  : "Complete Payment"}
               </CardTitle>
               <CardDescription>
-                Interactive checkout prototype — toggle success/failure outcome
-                or upload a wire receipt.
+                {offlineOnly
+                  ? `Direct link payment is disabled for ${invoice.gateway}. Upload your transfer receipt or evidence for verification.`
+                  : "Interactive checkout prototype — toggle success/failure outcome or submit card payment."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -281,192 +312,183 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <Tabs
-                  defaultValue={
-                    invoice.gateway === "Bank Transfer" ? "bank" : "card"
-                  }
-                >
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="card" className="gap-1.5">
-                      <CreditCard className="size-4" />
-                      Card ({invoice.gateway})
-                    </TabsTrigger>
-                    <TabsTrigger value="bank" className="gap-1.5">
-                      <Landmark className="size-4" />
-                      Bank Transfer Proof
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="card" className="mt-4 space-y-4">
-                    {paymentOutcome === "failed" ? (
-                      <div className="flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-200">
-                        <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                        <div>
-                          <div className="font-semibold">
-                            Authorization Declined (Code: do_not_honor)
-                          </div>
-                          <p className="text-xs opacity-90">
-                            Your issuing bank declined this card charge. Retry
-                            with another card or switch to Bank Transfer.
-                          </p>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* Demo state switcher */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 text-xs">
-                      <span className="text-muted-foreground">
-                        Demo Outcome Simulator:
-                      </span>
-                      <div className="flex gap-1.5">
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant={!simulateDecline ? "default" : "outline"}
-                          onClick={() => setSimulateDecline(false)}
-                        >
-                          Simulate Success
-                        </Button>
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant={simulateDecline ? "destructive" : "outline"}
-                          onClick={() => setSimulateDecline(true)}
-                        >
-                          Simulate Decline
-                        </Button>
-                      </div>
+              ) : offlineOnly ? (
+                <div className="space-y-4">
+                  <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-3.5 text-xs">
+                    <div className="font-semibold text-foreground">
+                      {invoice.gateway} Instructions ({invoice.currency})
                     </div>
+                    <p className="text-muted-foreground">
+                      {getOfflineMerchantInstructions(
+                        invoice.gateway,
+                        invoice.invoiceNumber
+                      )}
+                    </p>
+                  </div>
 
-                    <form
-                      onSubmit={form.handleSubmit(onPayCard)}
-                      className="space-y-4"
-                    >
-                      <div className="space-y-1.5">
-                        <Label htmlFor="cardholder">Cardholder Name</Label>
-                        <Input
-                          id="cardholder"
-                          {...form.register("cardholder")}
-                        />
-                        {form.formState.errors.cardholder ? (
-                          <p className="text-xs text-destructive">
-                            {form.formState.errors.cardholder.message}
-                          </p>
-                        ) : null}
+                  {proofSubmitted ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200">
+                      <div className="font-semibold">
+                        Payment proof submitted: {selectedProofFile?.name}
                       </div>
-
-                      <div className="space-y-1.5">
-                        <Label htmlFor="cardNumber">Card Number</Label>
-                        <Input
-                          id="cardNumber"
-                          className="font-mono"
-                          {...form.register("cardNumber")}
-                        />
-                        {form.formState.errors.cardNumber ? (
-                          <p className="text-xs text-destructive">
-                            {form.formState.errors.cardNumber.message}
-                          </p>
-                        ) : null}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="expiry">Expiry (MM/YY)</Label>
-                          <Input
-                            id="expiry"
-                            placeholder="08/29"
-                            {...form.register("expiry")}
-                          />
-                          {form.formState.errors.expiry ? (
-                            <p className="text-xs text-destructive">
-                              {form.formState.errors.expiry.message}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="cvc">CVC</Label>
-                          <Input
-                            id="cvc"
-                            placeholder="842"
-                            {...form.register("cvc")}
-                          />
-                          {form.formState.errors.cvc ? (
-                            <p className="text-xs text-destructive">
-                              {form.formState.errors.cvc.message}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <Button type="submit" className="w-full gap-2" size="lg">
-                        <ShieldCheck className="size-4" />
-                        Pay {formatCurrency(invoice.total, invoice.currency)}
-                      </Button>
-                    </form>
-                  </TabsContent>
-
-                  <TabsContent value="bank" className="mt-4 space-y-4">
-                    <div className="rounded-lg border border-border bg-muted/30 p-3.5 text-xs space-y-1.5">
-                      <div className="font-semibold text-foreground">
-                        Wire / ACH Settlement Instructions ({invoice.currency})
-                      </div>
-                      <p className="text-muted-foreground">
-                        Beneficiary: AgencyOps Digital LLC • Routing: 021000021
-                        • Acct: 9810 4429 1182 • Ref: {invoice.invoiceNumber}
+                      <p className="mt-1 text-xs">
+                        Invoice status is Processing while finance verifies your
+                        evidence.
                       </p>
                     </div>
-
-                    {proofSubmitted ? (
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200">
-                        <div className="font-semibold">
-                          Transfer proof submitted: {uploadedProofName}
+                  ) : (
+                    <div className="space-y-3">
+                      <Label
+                        htmlFor="offline-proof-input"
+                        className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/20 p-6 text-center transition-colors hover:border-primary/50 hover:bg-muted/40"
+                      >
+                        <Upload className="size-6 text-primary" />
+                        <div className="text-sm font-medium text-foreground">
+                          {selectedProofFile?.name ??
+                            `Click to attach ${invoice.gateway} receipt (PDF, PNG, JPG)`}
                         </div>
-                        <p className="mt-1 text-xs">
-                          Finance team will verify settlement within 1 business
-                          day.
+                        <div className="text-xs text-muted-foreground">
+                          Max 10 MB • Include reference {invoice.invoiceNumber}
+                        </div>
+                        <input
+                          id="offline-proof-input"
+                          type="file"
+                          className="sr-only"
+                          accept=".pdf,.png,.jpg,.jpeg,.webp"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            const kb = Math.max(1, Math.round(file.size / 1024))
+                            setSelectedProofFile({
+                              name: file.name,
+                              size:
+                                kb >= 1024
+                                  ? `${(kb / 1024).toFixed(1)} MB`
+                                  : `${kb} KB`,
+                              type: file.type || "application/octet-stream",
+                            })
+                          }}
+                        />
+                      </Label>
+
+                      <Button
+                        type="button"
+                        onClick={handleProofSubmit}
+                        className="w-full"
+                      >
+                        Submit {invoice.gateway} Proof
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {paymentOutcome === "failed" ? (
+                    <div className="flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-200">
+                      <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                      <div>
+                        <div className="font-semibold">
+                          Authorization Declined (Code: do_not_honor)
+                        </div>
+                        <p className="text-xs opacity-90">
+                          Your issuing bank declined this card charge. Please
+                          retry with another card.
                         </p>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <Label
-                          htmlFor="wire-proof-input"
-                          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/20 p-6 text-center transition-colors hover:border-primary/50 hover:bg-muted/40"
-                        >
-                          <Upload className="size-6 text-primary" />
-                          <div className="text-sm font-medium text-foreground">
-                            {uploadedProofName ??
-                              "Click to attach wire receipt (PDF, PNG, JPG)"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Max 10 MB • Include reference{" "}
-                            {invoice.invoiceNumber}
-                          </div>
-                          <input
-                            id="wire-proof-input"
-                            type="file"
-                            className="sr-only"
-                            accept=".pdf,.png,.jpg,.jpeg"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0]
-                              setUploadedProofName(
-                                file?.name ?? "wire-transfer-receipt.pdf"
-                              )
-                            }}
-                          />
-                        </Label>
+                    </div>
+                  ) : null}
 
-                        <Button
-                          type="button"
-                          onClick={handleProofSubmit}
-                          className="w-full"
-                        >
-                          Submit Transfer Proof
-                        </Button>
+                  {/* Demo state switcher */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">
+                      Demo Outcome Simulator:
+                    </span>
+                    <div className="flex gap-1.5">
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant={!simulateDecline ? "default" : "outline"}
+                        onClick={() => setSimulateDecline(false)}
+                      >
+                        Simulate Success
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant={simulateDecline ? "destructive" : "outline"}
+                        onClick={() => setSimulateDecline(true)}
+                      >
+                        Simulate Decline
+                      </Button>
+                    </div>
+                  </div>
+
+                  <form
+                    onSubmit={form.handleSubmit(onPayCard)}
+                    className="space-y-4"
+                  >
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cardholder">Cardholder Name</Label>
+                      <Input
+                        id="cardholder"
+                        {...form.register("cardholder")}
+                      />
+                      {form.formState.errors.cardholder ? (
+                        <p className="text-xs text-destructive">
+                          {form.formState.errors.cardholder.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cardNumber">Card Number</Label>
+                      <Input
+                        id="cardNumber"
+                        className="font-mono"
+                        {...form.register("cardNumber")}
+                      />
+                      {form.formState.errors.cardNumber ? (
+                        <p className="text-xs text-destructive">
+                          {form.formState.errors.cardNumber.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="expiry">Expiry (MM/YY)</Label>
+                        <Input
+                          id="expiry"
+                          placeholder="08/29"
+                          {...form.register("expiry")}
+                        />
+                        {form.formState.errors.expiry ? (
+                          <p className="text-xs text-destructive">
+                            {form.formState.errors.expiry.message}
+                          </p>
+                        ) : null}
                       </div>
-                    )}
-                  </TabsContent>
-                </Tabs>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="cvc">CVC</Label>
+                        <Input
+                          id="cvc"
+                          placeholder="842"
+                          {...form.register("cvc")}
+                        />
+                        {form.formState.errors.cvc ? (
+                          <p className="text-xs text-destructive">
+                            {form.formState.errors.cvc.message}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <Button type="submit" className="w-full gap-2" size="lg">
+                      <ShieldCheck className="size-4" />
+                      Pay {formatCurrency(invoice.total, invoice.currency)}
+                    </Button>
+                  </form>
+                </div>
               )}
             </CardContent>
           </Card>

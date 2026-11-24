@@ -72,7 +72,10 @@ export const REFERENCE_GATEWAYS: PaymentGateway[] = [
   "Square",
   "Authorize.Net",
   "NMI",
+  "ACH Routing",
   "Bank Transfer",
+  "Zelle",
+  "Wise",
 ]
 
 export const REFERENCE_LEAD_SOURCES: LeadSource[] = [

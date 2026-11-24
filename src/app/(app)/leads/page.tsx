@@ -30,6 +30,7 @@ import {
 import { LEAD_SOURCES, LeadFormSheet } from "@/components/leads/lead-form-sheet"
 import {
   AvatarGroup,
+  BrandBadge,
   ConfirmDeleteDialog,
   GatewayBadge,
   PageHeader,
@@ -201,28 +202,13 @@ export default function LeadsPage() {
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Brand" />
         ),
-        cell: ({ row }) => {
-          const brand = brands.find(
-            (b) => b.id === row.original.brandId || b.name === row.original.brandName
-          )
-          const color = brand?.primaryColor || "#2563EB"
-          return (
-            <span
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs font-medium border"
-              style={{
-                backgroundColor: `${color}15`,
-                color: color,
-                borderColor: `${color}35`,
-              }}
-            >
-              <span
-                className="size-1.5 rounded-full shrink-0"
-                style={{ backgroundColor: color }}
-              />
-              {row.original.brandName}
-            </span>
-          )
-        },
+        cell: ({ row }) => (
+          <BrandBadge
+            brandId={row.original.brandId}
+            brandName={row.original.brandName}
+            brands={brands}
+          />
+        ),
       },
       
       {
@@ -408,21 +394,11 @@ export default function LeadsPage() {
                   <Badge variant="outline" className="font-mono">
                     {selectedLead.code}
                   </Badge>
-                  {/* Brand as a badge with own primary color */}
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs font-medium border"
-                    style={{
-                      backgroundColor: `${selectedLeadBrandColor}15`,
-                      color: selectedLeadBrandColor,
-                      borderColor: `${selectedLeadBrandColor}35`,
-                    }}
-                  >
-                    <span
-                      className="size-1.5 rounded-full shrink-0"
-                      style={{ backgroundColor: selectedLeadBrandColor }}
-                    />
-                    {selectedLead.brandName}
-                  </span>
+                  <BrandBadge
+                    brandId={selectedLead.brandId}
+                    brandName={selectedLead.brandName}
+                    brands={brands}
+                  />
                 </div>
                 <SheetTitle className="mt-1 text-xl">
                   {selectedLead.name}

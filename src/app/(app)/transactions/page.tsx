@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/currency"
+import { ALL_GATEWAYS } from "@/lib/gateways"
 import { useStore } from "@/lib/store"
 import type { PaymentGateway, PaymentStatus, Transaction } from "@/types"
 
@@ -39,18 +40,13 @@ const TX_STATUSES: PaymentStatus[] = [
   "Processing",
   "Viewed",
   "Denied",
+  "Expired",
   "Refund Requested",
   "Refunded",
   "Chargeback",
 ]
 
-const GATEWAYS: PaymentGateway[] = [
-  "Stripe",
-  "Square",
-  "Authorize.Net",
-  "NMI",
-  "Bank Transfer",
-]
+const GATEWAYS: PaymentGateway[] = ALL_GATEWAYS
 
 export default function TransactionsPage() {
   const { transactions, brands, updateTransaction, deleteTransaction } = useStore()

@@ -31,6 +31,7 @@ export type PaymentStatus =
   | "Processing"
   | "Success"
   | "Denied"
+  | "Expired"
   | "Refund Requested"
   | "Refunded"
   | "Chargeback"
@@ -71,6 +72,9 @@ export type PaymentGateway =
   | "Authorize.Net"
   | "NMI"
   | "Bank Transfer"
+  | "ACH Routing"
+  | "Zelle"
+  | "Wise"
 
 export type PermissionModule =
   | "dashboard"
@@ -292,6 +296,8 @@ export interface Invoice {
   status: PaymentStatus
   dueDate: string
   issuedAt: string
+  createdAt?: string
+  createdBy?: string
   paidAt?: string
   salesRepId: string
   attachments: AttachmentFile[]

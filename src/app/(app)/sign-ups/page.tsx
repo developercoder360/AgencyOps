@@ -31,6 +31,7 @@ import {
 } from "@/components/leads/lead-form-sheet"
 import {
   AvatarGroup,
+  BrandBadge,
   ConfirmDeleteDialog,
   PageHeader,
 } from "@/components/shared"
@@ -45,36 +46,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { useStore } from "@/lib/store"
-import type { Brand, SignUp } from "@/types"
-
-function BrandBadge({
-  brandId,
-  brandName,
-  brands,
-}: {
-  brandId: string
-  brandName: string
-  brands: Brand[]
-}) {
-  const brand = brands.find((b) => b.id === brandId || b.name === brandName)
-  const color = brand?.primaryColor || "#2563EB"
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-0.5 text-xs font-medium"
-      style={{
-        backgroundColor: `${color}15`,
-        color,
-        borderColor: `${color}35`,
-      }}
-    >
-      <span
-        className="size-1.5 shrink-0 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      {brandName}
-    </span>
-  )
-}
+import type { SignUp } from "@/types"
 
 function formatSignupDateTime(value: string): string {
   if (!value) return "—"

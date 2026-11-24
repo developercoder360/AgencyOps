@@ -452,11 +452,19 @@ export class StoreManager {
   ): Invoice {
     const invoiceNumber =
       inv.invoiceNumber || `INV-2026-${String(this.data.invoices.length + 1060).padStart(4, "0")}`
+    const nowTimestamp = new Date().toISOString().replace("T", " ").slice(0, 16)
+    const creatorName =
+      inv.createdBy ||
+      this.data.users.find((u) => u.id === inv.salesRepId)?.name ||
+      this.data.users[0]?.name ||
+      "Marcus Vance"
     const newInvoice: Invoice = {
       ...inv,
       id: inv.id || `inv-${crypto.randomUUID().slice(0, 8)}`,
       invoiceNumber,
-      issuedAt: inv.issuedAt || new Date().toISOString().slice(0, 10),
+      issuedAt: inv.issuedAt || nowTimestamp.slice(0, 10),
+      createdAt: inv.createdAt || nowTimestamp,
+      createdBy: creatorName,
     }
     this.setAndPersist((s) => ({
       ...s,

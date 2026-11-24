@@ -7,26 +7,21 @@ import type {
   Transaction,
 } from "@/types"
 import { toUsd } from "@/lib/currency"
+import { ALL_GATEWAYS, isOfflineMerchant } from "@/lib/gateways"
 import { MOCK_BRANDS } from "./brands"
 import { MOCK_USERS } from "./users"
 import { createSeededRandom, intBetween, pickFrom } from "./seed"
 
-const GATEWAYS: PaymentGateway[] = [
-  "Stripe",
-  "Square",
-  "Authorize.Net",
-  "NMI",
-  "Bank Transfer",
-]
+const GATEWAYS: PaymentGateway[] = ALL_GATEWAYS
 
 const STATUSES: PaymentStatus[] = [
-  "Success",
   "Success",
   "Success",
   "Success",
   "Processing",
   "Viewed",
   "Created",
+  "Expired",
   "Denied",
   "Refund Requested",
   "Refunded",
@@ -78,7 +73,12 @@ function generateBilling() {
     const brand = MOCK_BRANDS[i % MOCK_BRANDS.length]
     const gateway = GATEWAYS[i % GATEWAYS.length]
     const currency = CURRENCIES[i % CURRENCIES.length]
-    const status = STATUSES[i % STATUSES.length]
+    const rawStatus = STATUSES[i % STATUSES.length]
+    const status: PaymentStatus = isOfflineMerchant(gateway)
+      ? i % 2 === 0
+        ? "Processing"
+        : "Success"
+      : rawStatus
     const daysBack = i < 44 ? intBetween(rng, 0, 175) : intBetween(rng, 180, 355)
     const issuedAt = makeDateOffset(daysBack)
     const dueDate = makeDateOffset(Math.max(-14, daysBack - 14))
@@ -104,6 +104,12 @@ function generateBilling() {
     const total = Math.max(200, subtotal + taxAmount - discountAmount)
     const invoiceNumber = `INV-2026-${1001 + i}`
     const invoiceId = `inv-${i + 1}`
+    const salesRepId = SALES_IDS[i % SALES_IDS.length]
+    const createdBy =
+      MOCK_USERS.find((u) => u.id === salesRepId)?.name ?? "Marcus Vance"
+    const createdHour = String(intBetween(rng, 8, 19)).padStart(2, "0")
+    const createdMin = String(intBetween(rng, 0, 59)).padStart(2, "0")
+    const createdAt = `${issuedAt} ${createdHour}:${createdMin}`
 
     invoices.push({
       id: invoiceId,
@@ -129,8 +135,10 @@ function generateBilling() {
       status,
       dueDate,
       issuedAt,
+      createdAt,
+      createdBy,
       paidAt: status === "Success" ? issuedAt : undefined,
-      salesRepId: SALES_IDS[i % SALES_IDS.length],
+      salesRepId,
       attachments: [
         {
           id: `att-${i}-1`,
@@ -140,11 +148,11 @@ function generateBilling() {
           uploadedBy: "Elena Rostova",
           uploadedAt: issuedAt,
         },
-        ...(gateway === "Bank Transfer"
+        ...(isOfflineMerchant(gateway)
           ? [
               {
                 id: `att-${i}-2`,
-                name: `wire-receipt-${1001 + i}.png`,
+                name: `${gateway.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-proof-${1001 + i}.png`,
                 size: "1.1 MB",
                 type: "image/png",
                 uploadedBy: client.name,
@@ -183,10 +191,9 @@ function generateBilling() {
           id: `evt-${i}-3`,
           status: "Processing" as PaymentStatus,
           title: `Authorization submitted (${gateway})`,
-          detail:
-            gateway === "Bank Transfer"
-              ? "ACH/Wire proof uploaded for treasury verification"
-              : `${cardBrand} ending in ${cardLast4} 3DS verified`,
+          detail: isOfflineMerchant(gateway)
+            ? `${gateway} proof uploaded for verification`
+            : `${cardBrand} ending in ${cardLast4} 3DS verified`,
           actor: gateway,
           timestamp: `${issuedAt} 11:25`,
         })
@@ -232,8 +239,8 @@ function generateBilling() {
         amount: total,
         amountUsd: toUsd(total, currency),
         status,
-        cardLast4: gateway === "Bank Transfer" ? undefined : cardLast4,
-        cardBrand: gateway === "Bank Transfer" ? undefined : cardBrand,
+        cardLast4: isOfflineMerchant(gateway) ? undefined : cardLast4,
+        cardBrand: isOfflineMerchant(gateway) ? undefined : cardBrand,
         createdAt: issuedAt,
         events,
       })
