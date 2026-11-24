@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import {
-  Clock,
   Copy,
   Edit3,
   Flag,
@@ -14,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { PRIORITY_META, TASK_STATUSES } from "@/components/delivery/task-detail"
+import { resolveTaskTimeline } from "@/lib/tasks/timeline"
 import { AvatarGroup, StatusBadge } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -114,6 +114,7 @@ export function TaskBoard({
                     task.status !== "Complete" && task.dueDate < todayIso
                   const pMeta = PRIORITY_META[task.priority]
                   const isSelected = selectedIds.has(task.id)
+                  const tl = resolveTaskTimeline(task)
 
                   return (
                     <div
@@ -235,7 +236,36 @@ export function TaskBoard({
                         </div>
                       )}
 
-                      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+                      <div className="mt-2.5 space-y-0.5 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 text-[10px] tabular-nums">
+                        <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                          <span className="font-medium text-foreground/70">Start</span>
+                          <span>{tl.start}</span>
+                        </div>
+                        <div
+                          className={cn(
+                            "flex items-center justify-between gap-2",
+                            overdue
+                              ? "font-semibold text-rose-600 dark:text-rose-400"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          <span className="font-medium">End</span>
+                          <span>{tl.end}</span>
+                        </div>
+                        <div
+                          className={cn(
+                            "flex items-center justify-between gap-2",
+                            task.completedAt
+                              ? "font-medium text-emerald-600 dark:text-emerald-400"
+                              : "text-muted-foreground/70"
+                          )}
+                        >
+                          <span className="font-medium">Complete</span>
+                          <span>{tl.complete}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
                         <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
                           <span className="inline-flex items-center gap-0.5 tabular-nums">
                             <RotateCcw className="size-3" />
@@ -251,20 +281,7 @@ export function TaskBoard({
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              "inline-flex items-center gap-1 text-[11px] tabular-nums",
-                              overdue
-                                ? "font-semibold text-rose-600 dark:text-rose-400"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            <Clock className="size-3" />
-                            {task.dueDate}
-                          </span>
-                          <AvatarGroup people={assignees} max={2} />
-                        </div>
+                        <AvatarGroup people={assignees} max={2} />
                       </div>
                     </div>
                   )

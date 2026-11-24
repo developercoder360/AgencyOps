@@ -1,26 +1,30 @@
 "use client"
 
 import * as React from "react"
+import { format } from "date-fns"
+import type { DateRange } from "react-day-picker"
 import { toast } from "sonner"
 import { ProgressBar } from "@/components/tremor"
 import { Card } from "@/components/ui/card"
 import {
   ArrowDownAZ,
   ArrowUpAZ,
+  Calendar as CalendarIcon,
+  Check,
   CheckSquare,
+  ChevronsUpDown,
   Flag,
   Kanban,
   List,
   Lock,
   Plus,
+  RotateCcw,
   Search,
   Table2,
-  X,
 } from "lucide-react"
 import { TaskGroupedList } from "@/components/delivery/task-grouped-list"
 import {
   TASK_PRIORITIES,
-  TASK_STATUSES,
   getTodayIsoFromNow,
   useClientNow,
 } from "@/components/delivery/task-detail"
@@ -36,7 +40,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -92,6 +102,152 @@ const STATUS_RANK: Record<TaskStatus, number> = {
   Complete: 6,
 }
 
+const MAX_FILTER_OPTIONS = 5
+
+function toIsoDate(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
+interface FilterOption {
+  id: string
+  label: string
+  sublabel?: string
+}
+
+function SearchableFilterSelect({
+  value,
+  onChange,
+  options,
+  allLabel,
+  searchPlaceholder,
+  ariaLabel,
+  widthClass = "w-40",
+}: {
+  value: string
+  onChange: (next: string) => void
+  options: FilterOption[]
+  allLabel: string
+  searchPlaceholder: string
+  ariaLabel: string
+  widthClass?: string
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState("")
+
+  const selected = React.useMemo(
+    () => options.find((o) => o.id === value),
+    [options, value]
+  )
+
+  const matched = React.useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return options
+    return options.filter((o) =>
+      `${o.label} ${o.sublabel ?? ""}`.toLowerCase().includes(q)
+    )
+  }, [options, query])
+
+  const visible = React.useMemo(
+    () => matched.slice(0, MAX_FILTER_OPTIONS),
+    [matched]
+  )
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setQuery("")
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          role="combobox"
+          aria-expanded={open}
+          aria-label={ariaLabel}
+          className={cn(
+            "h-8 justify-between px-2.5 text-xs font-normal",
+            widthClass
+          )}
+        >
+          <span className="truncate">{selected ? selected.label : allLabel}</span>
+          <ChevronsUpDown className="ml-1.5 size-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-2">
+        <div className="space-y-1.5">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="h-7.5 pl-7.5 text-xs"
+            />
+          </div>
+          <div className="space-y-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                onChange("all")
+                setOpen(false)
+              }}
+              className={cn(
+                "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted",
+                value === "all" && "bg-primary/10 font-medium text-primary"
+              )}
+            >
+              <span>{allLabel}</span>
+              {value === "all" && <Check className="size-3.5 shrink-0" />}
+            </button>
+            {visible.length === 0 ? (
+              <div className="py-3 text-center text-[11px] text-muted-foreground">
+                No matches found.
+              </div>
+            ) : (
+              visible.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(opt.id)
+                    setOpen(false)
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted",
+                    value === opt.id && "bg-primary/10 font-medium text-primary"
+                  )}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">{opt.label}</div>
+                    {opt.sublabel && (
+                      <div className="truncate text-[10px] text-muted-foreground">
+                        {opt.sublabel}
+                      </div>
+                    )}
+                  </div>
+                  {value === opt.id && <Check className="size-3.5 shrink-0" />}
+                </button>
+              ))
+            )}
+          </div>
+          {matched.length > MAX_FILTER_OPTIONS && (
+            <div className="border-t border-border px-1 pt-1 text-[10px] text-muted-foreground">
+              Showing {MAX_FILTER_OPTIONS} of {matched.length} — type to filter
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function TasksTabSkeleton() {
   return (
     <div className="space-y-4">
@@ -126,6 +282,7 @@ function TasksTabInner({
     isLoaded,
     tasks,
     projects,
+    brands,
     users,
     signups,
     leads,
@@ -157,7 +314,12 @@ function TasksTabInner({
   const [priorityFilter, setPriorityFilter] = React.useState<
     TaskPriority | "all"
   >("all")
+  const [brandFilter, setBrandFilter] = React.useState<string>("all")
   const [assigneeFilter, setAssigneeFilter] = React.useState<string>("all")
+  const [dateRange, setDateRange] = React.useState<DateRange | undefined>(
+    undefined
+  )
+  const [dateRangeOpen, setDateRangeOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
   const [sortField, setSortField] = React.useState<TaskSortField>("dueDate")
   const [sortDir, setSortDir] = React.useState<TaskSortDirection>("asc")
@@ -231,11 +393,22 @@ function TasksTabInner({
       if (priorityFilter !== "all" && t.priority !== priorityFilter) {
         return false
       }
+      if (brandFilter !== "all" && t.brandId !== brandFilter) {
+        return false
+      }
       if (
         assigneeFilter !== "all" &&
         !(t.assigneeIds || []).includes(assigneeFilter)
       ) {
         return false
+      }
+      if (dateRange?.from) {
+        const fromIso = toIsoDate(dateRange.from)
+        const toIso = dateRange.to ? toIsoDate(dateRange.to) : fromIso
+        const taskStart = t.startDate || t.dueDate
+        if (t.dueDate < fromIso || taskStart > toIso) {
+          return false
+        }
       }
       if (q) {
         const hay =
@@ -266,7 +439,9 @@ function TasksTabInner({
     scopedTasks,
     statusFilter,
     priorityFilter,
+    brandFilter,
     assigneeFilter,
+    dateRange,
     searchQuery,
     sortField,
     sortDir,
@@ -276,14 +451,22 @@ function TasksTabInner({
   const hasActiveFilters =
     statusFilter !== "all" ||
     priorityFilter !== "all" ||
+    brandFilter !== "all" ||
     assigneeFilter !== "all" ||
-    searchQuery.trim().length > 0
+    Boolean(dateRange?.from) ||
+    searchQuery.trim().length > 0 ||
+    sortField !== "dueDate" ||
+    sortDir !== "asc"
 
   function clearFilters() {
     setStatusFilter("all")
     setPriorityFilter("all")
+    setBrandFilter("all")
     setAssigneeFilter("all")
+    setDateRange(undefined)
     setSearchQuery("")
+    setSortField("dueDate")
+    setSortDir("asc")
   }
 
   function toggleSelect(taskId: string, checked: boolean) {
@@ -660,25 +843,86 @@ function TasksTabInner({
           </Select>
 
           {!compact && (
-            <Select
-              value={assigneeFilter}
-              onValueChange={setAssigneeFilter}
-            >
-              <SelectTrigger
-                className="h-8 w-40 text-xs"
-                aria-label="Filter by assignee"
-              >
-                <SelectValue placeholder="Assignee" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Assignees</SelectItem>
-                {users.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <>
+              <SearchableFilterSelect
+                value={brandFilter}
+                onChange={setBrandFilter}
+                options={brands.map((b) => ({
+                  id: b.id,
+                  label: b.name,
+                }))}
+                allLabel="All Brands"
+                searchPlaceholder="Search brands..."
+                ariaLabel="Filter by brand"
+                widthClass="w-36"
+              />
+
+              <SearchableFilterSelect
+                value={assigneeFilter}
+                onChange={setAssigneeFilter}
+                options={users.map((u) => ({
+                  id: u.id,
+                  label: u.name,
+                  sublabel: u.email,
+                }))}
+                allLabel="All Assignees"
+                searchPlaceholder="Search assignees..."
+                ariaLabel="Filter by assignee"
+                widthClass="w-40"
+              />
+
+              <Popover open={dateRangeOpen} onOpenChange={setDateRangeOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-label="Filter by start and end date range"
+                    className={cn(
+                      "h-8 justify-start px-2.5 text-xs font-normal",
+                      !dateRange?.from && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-1.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <span>
+                      {dateRange?.from
+                        ? dateRange.to
+                          ? `${format(dateRange.from, "MMM d")} – ${format(dateRange.to, "MMM d, yyyy")}`
+                          : format(dateRange.from, "MMM d, yyyy")
+                        : "Start – End Date"}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-auto p-2">
+                  <Calendar
+                    mode="range"
+                    numberOfMonths={1}
+                    selected={dateRange}
+                    defaultMonth={dateRange?.from ?? new Date()}
+                    onSelect={setDateRange}
+                  />
+                  <div className="mt-1 flex items-center justify-between border-t border-border pt-1.5">
+                    <span className="text-[10px] text-muted-foreground">
+                      Filters tasks overlapping range
+                    </span>
+                    {dateRange?.from && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        className="text-[11px]"
+                        onClick={() => {
+                          setDateRange(undefined)
+                          setDateRangeOpen(false)
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </>
           )}
 
           {summary.flagged > 0 && (
@@ -699,18 +943,17 @@ function TasksTabInner({
             </Button>
           )}
 
-          {hasActiveFilters && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={clearFilters}
-            >
-              <X className="size-3.5" />
-              Clear filters
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            disabled={!hasActiveFilters}
+            onClick={clearFilters}
+          >
+            <RotateCcw className="size-3.5" />
+            Reset
+          </Button>
         </div>
       </div>
 
@@ -744,7 +987,8 @@ function TasksTabInner({
             className="mt-3 text-xs"
             onClick={clearFilters}
           >
-            Clear filters
+            <RotateCcw className="size-3.5" />
+            Reset filters
           </Button>
         </div>
       ) : tasksViewMode === "board" ? (

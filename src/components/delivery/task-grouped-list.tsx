@@ -4,7 +4,6 @@ import * as React from "react"
 import {
   ChevronDown,
   ChevronRight,
-  Clock,
   Flag,
   RotateCcw,
   MessageSquare,
@@ -14,6 +13,7 @@ import {
 import { AvatarGroup, StatusBadge } from "@/components/shared"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { resolveTaskTimeline } from "@/lib/tasks/timeline"
 import type { StaffUser, Task, TaskStatus } from "@/types"
 import { cn } from "cn"
 import { PRIORITY_META, TASK_STATUSES } from "./task-detail"
@@ -86,7 +86,7 @@ export function TaskGroupedList({
                 </span>
               </div>
               <span className="hidden text-[11px] font-medium text-muted-foreground sm:inline">
-                {isCollapsed ? "Expand group" : "Assignee • Due • Priority"}
+                {isCollapsed ? "Expand group" : "Start • End • Complete • Assignee"}
               </span>
             </button>
 
@@ -109,6 +109,7 @@ export function TaskGroupedList({
                     const overdue =
                       task.status !== "Complete" && task.dueDate < todayIso
                     const pMeta = PRIORITY_META[task.priority]
+                    const tl = resolveTaskTimeline(task)
 
                     return (
                       <button
@@ -183,18 +184,31 @@ export function TaskGroupedList({
                             </span>
                           </div>
 
-                          {/* Due date */}
-                          <span
-                            className={cn(
-                              "inline-flex min-w-[66px] items-center gap-1 text-[11px] tabular-nums",
-                              overdue
-                                ? "font-semibold text-rose-600 dark:text-rose-400"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            <Clock className="size-3 shrink-0" />
-                            {task.dueDate.slice(5)}
-                          </span>
+                          {/* Timeline: Start / End / Complete */}
+                          <div className="min-w-44 space-y-0.5 text-[10px] tabular-nums">
+                            <div className="text-muted-foreground">
+                              <span className="font-medium text-foreground/70">Start:</span>{" "}
+                              {tl.start}
+                            </div>
+                            <div
+                              className={cn(
+                                overdue
+                                  ? "font-semibold text-rose-600 dark:text-rose-400"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              <span className="font-medium">End:</span> {tl.end}
+                            </div>
+                            <div
+                              className={cn(
+                                task.completedAt
+                                  ? "font-medium text-emerald-600 dark:text-emerald-400"
+                                  : "text-muted-foreground/70"
+                              )}
+                            >
+                              <span className="font-medium">Complete:</span> {tl.complete}
+                            </div>
+                          </div>
 
                           {/* Assignees */}
                           <div className="w-[68px] flex justify-end">

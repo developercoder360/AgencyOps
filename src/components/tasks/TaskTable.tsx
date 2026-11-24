@@ -4,13 +4,17 @@ import * as React from "react"
 import {
   flexRender,
   getCoreRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table"
 import {
-  Clock,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Copy,
   Edit3,
   Flag,
@@ -37,6 +41,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Table,
   TableBody,
   TableCell,
@@ -44,6 +55,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { resolveTaskTimeline } from "@/lib/tasks/timeline"
 import type { StaffUser, Task, TaskStatus } from "@/types"
 import { cn } from "cn"
 
@@ -245,26 +257,63 @@ export function TaskTable({
         },
       },
       {
-        id: "dueDate",
+        id: "members",
+        accessorFn: (row) => (row.memberIds || []).length,
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Members" />
+        ),
+        cell: ({ row }) => {
+          const members = users.filter((u) =>
+            (row.original.memberIds || []).includes(u.id)
+          )
+          return members.length > 0 ? (
+            <AvatarGroup people={members} max={3} />
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )
+        },
+      },
+      {
+        id: "timeline",
         accessorFn: (row) => row.dueDate,
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Due Date" />
+          <DataTableColumnHeader column={column} title="Timeline" />
         ),
         cell: ({ row }) => {
           const t = row.original
           const overdue = t.status !== "Complete" && t.dueDate < todayIso
+          const tl = resolveTaskTimeline(t)
           return (
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 text-xs tabular-nums",
-                overdue
-                  ? "font-semibold text-rose-600 dark:text-rose-400"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Clock className="size-3" />
-              {t.dueDate}
-            </span>
+            <div className="min-w-44 space-y-0.5 text-[11px] tabular-nums">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="w-14 shrink-0 font-medium text-foreground/70">
+                  Start:
+                </span>
+                <span>{tl.start}</span>
+              </div>
+              <div
+                className={cn(
+                  "flex items-center gap-1.5",
+                  overdue
+                    ? "font-semibold text-rose-600 dark:text-rose-400"
+                    : "text-muted-foreground"
+                )}
+              >
+                <span className="w-14 shrink-0 font-medium">End:</span>
+                <span>{tl.end}</span>
+              </div>
+              <div
+                className={cn(
+                  "flex items-center gap-1.5",
+                  t.completedAt
+                    ? "font-medium text-emerald-600 dark:text-emerald-400"
+                    : "text-muted-foreground/70"
+                )}
+              >
+                <span className="w-14 shrink-0 font-medium">Complete:</span>
+                <span>{tl.complete}</span>
+              </div>
+            </div>
           )
         },
       },
@@ -363,13 +412,22 @@ export function TaskTable({
     data: tasks,
     columns,
     state: { sorting },
+    initialState: { pagination: { pageSize: 10 } },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   })
 
+  const pageIndex = table.getState().pagination.pageIndex
+  const pageSize = table.getState().pagination.pageSize
+  const totalCount = tasks.length
+  const startItem = totalCount === 0 ? 0 : pageIndex * pageSize + 1
+  const endItem = Math.min((pageIndex + 1) * pageSize, totalCount)
+  const pageRows = table.getRowModel().rows
+
   return (
-    <>
+    <div className="space-y-3">
       {/* Desktop Table */}
       <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
         <Table>
@@ -390,7 +448,7 @@ export function TaskTable({
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.map((row) => (
+            {pageRows.map((row) => (
               <TableRow
                 key={row.id}
                 data-state={selectedIds.has(row.original.id) ? "selected" : undefined}
@@ -408,10 +466,12 @@ export function TaskTable({
 
       {/* Mobile Card Fallback */}
       <div className="space-y-2 md:hidden">
-        {tasks.map((t) => {
+        {pageRows.map((row) => {
+          const t = row.original
           const overdue = t.status !== "Complete" && t.dueDate < todayIso
           const isSelected = selectedIds.has(t.id)
           const pMeta = PRIORITY_META[t.priority]
+          const tl = resolveTaskTimeline(t)
 
           return (
             <div
@@ -454,21 +514,115 @@ export function TaskTable({
               >
                 {t.title}
               </button>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="truncate">{t.projectName}</span>
-                <span
+              <div className="space-y-0.5 text-[11px] text-muted-foreground tabular-nums">
+                <div className="truncate font-sans">{t.projectName}</div>
+                <div>Start: {tl.start}</div>
+                <div
                   className={cn(
-                    "shrink-0 tabular-nums",
                     overdue && "font-semibold text-rose-600 dark:text-rose-400"
                   )}
                 >
-                  {t.dueDate}
-                </span>
+                  End: {tl.end}
+                </div>
+                {t.completedAt && (
+                  <div className="text-emerald-600 dark:text-emerald-400">
+                    Complete: {tl.complete}
+                  </div>
+                )}
               </div>
             </div>
           )
         })}
       </div>
-    </>
+
+      {/* Pagination Footer */}
+      {totalCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs">
+          <div className="text-muted-foreground tabular-nums">
+            Showing <span className="font-medium text-foreground">{startItem}</span>
+            –<span className="font-medium text-foreground">{endItem}</span> of{" "}
+            <span className="font-medium text-foreground">{totalCount}</span> tasks
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">Rows</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => table.setPageSize(Number(v))}
+              >
+                <SelectTrigger
+                  className="h-7.5 w-16 text-xs"
+                  aria-label="Rows per page"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[5, 10, 20, 50].map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <span className="text-muted-foreground tabular-nums">
+              Page{" "}
+              <span className="font-medium text-foreground">
+                {pageIndex + 1}
+              </span>{" "}
+              of{" "}
+              <span className="font-medium text-foreground">
+                {Math.max(1, table.getPageCount())}
+              </span>
+            </span>
+
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-xs"
+                aria-label="First page"
+                disabled={!table.getCanPreviousPage()}
+                onClick={() => table.setPageIndex(0)}
+              >
+                <ChevronsLeft className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-xs"
+                aria-label="Previous page"
+                disabled={!table.getCanPreviousPage()}
+                onClick={() => table.previousPage()}
+              >
+                <ChevronLeft className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-xs"
+                aria-label="Next page"
+                disabled={!table.getCanNextPage()}
+                onClick={() => table.nextPage()}
+              >
+                <ChevronRight className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-xs"
+                aria-label="Last page"
+                disabled={!table.getCanNextPage()}
+                onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+              >
+                <ChevronsRight className="size-3.5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
