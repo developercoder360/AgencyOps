@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { format } from "date-fns"
 import dynamic from "next/dynamic"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -490,141 +491,113 @@ export function TaskRevisions({
                 key={rev.id}
                 id={`rev-row-${rev.id}`}
                 className={cn(
-                  "overflow-hidden rounded-lg border transition-all",
+                  "overflow-hidden rounded-xl border transition-all",
                   isExpanded
-                    ? "border-primary/50 bg-card shadow-2xs"
-                    : "border-border bg-card/60 hover:border-border hover:bg-card"
+                    ? "border-primary/40 bg-card shadow-xs ring-1 ring-primary/10"
+                    : "border-border bg-card/70 hover:border-border hover:bg-card"
                 )}
               >
-                {/* Collapsed Header / Click-to-Expand Row */}
+                {/* Clean 2-Line Revision Card Header */}
                 <button
                   type="button"
                   onClick={() => setExpandedId(isExpanded ? null : rev.id)}
                   aria-expanded={isExpanded}
-                  className="flex min-h-[44px] w-full items-center justify-between gap-2 p-2.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex w-full flex-col gap-2 p-3 text-left transition-colors hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    {/* Chevron */}
-                    {isExpanded ? (
-                      <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
-                    )}
+                  {/* Line 1: Number Badge + Readable Title + Status + Chevron */}
+                  <div className="flex w-full items-start justify-between gap-2.5">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span
+                        className={cn(
+                          "inline-flex shrink-0 items-center justify-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-bold",
+                          isRedraw
+                            ? "border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                            : "border-border bg-muted text-foreground"
+                        )}
+                      >
+                        {revPrefix}{rev.number}
+                      </span>
+                      <span className="truncate text-xs font-semibold text-foreground sm:text-[13px]">
+                        {rev.title}
+                      </span>
+                    </div>
 
-                    {/* Type badge + Number */}
-                    <span
-                      className={cn(
-                        "flex shrink-0 items-center justify-center rounded-full px-2 py-0.5 font-mono text-[10px] font-bold border",
-                        isRedraw
-                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30"
-                          : "bg-muted text-foreground border-border"
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <StatusBadge status={rev.status} />
+                      {isExpanded ? (
+                        <ChevronDown className="size-3.5 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="size-3.5 text-muted-foreground" />
                       )}
-                    >
-                      {revPrefix}{rev.number}
-                    </span>
-
-                    {/* Title */}
-                    <span className="truncate text-xs font-semibold text-foreground flex-1 min-w-0">
-                      {rev.title}
-                    </span>
+                    </div>
                   </div>
 
-                  {/* Metadata columns aligned */}
-                  <div className="flex shrink-0 items-center gap-2.5 text-xs">
-                    {/* Priority Flag Icon */}
-                    <span
-                      title={`Priority: ${rev.priority || "regular"}`}
-                      className="inline-flex items-center"
-                    >
-                      <Flag
+                  {/* Line 2: Clean Metadata Strip */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pl-7 text-[11px] text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-3">
+                      {/* Priority */}
+                      <span
                         className={cn(
-                          "size-3 shrink-0",
+                          "inline-flex items-center gap-1 font-medium capitalize",
                           rev.priority === "urgent"
-                            ? "text-rose-600 dark:text-rose-400 fill-rose-600/30"
+                            ? "text-rose-600 dark:text-rose-400"
                             : rev.priority === "high"
-                            ? "text-amber-600 dark:text-amber-400 fill-amber-600/30"
-                            : "text-muted-foreground/40"
-                        )}
-                      />
-                    </span>
-
-                    {/* Assignee avatars */}
-                    {revAssignees.length > 0 ? (
-                      <div className="hidden sm:flex items-center">
-                        <AvatarGroup people={revAssignees} max={2} />
-                      </div>
-                    ) : null}
-
-                    {/* Flagged Staff */}
-                    {revFlaggedUsers.length > 0 ? (
-                      <div
-                        title={`Flagged: ${revFlaggedUsers.map((u) => u.name).join(", ")}`}
-                        className="flex items-center gap-1 text-[11px] text-destructive font-medium shrink-0"
-                      >
-                        <Flag className="size-3 shrink-0 text-destructive fill-destructive" />
-                        <div className="flex -space-x-1.5 overflow-hidden">
-                          {revFlaggedUsers.slice(0, 2).map((u) => (
-                            <span
-                              key={u.id}
-                              className={cn(
-                                "flex size-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white ring-1 ring-background",
-                                u.avatarColor || "bg-destructive"
-                              )}
-                            >
-                              {u.avatarInitials}
-                            </span>
-                          ))}
-                        </div>
-                        {revFlaggedUsers.length > 2 && (
-                          <span className="text-[10px] text-destructive font-mono font-bold">
-                            +{revFlaggedUsers.length - 2}
-                          </span>
-                        )}
-                      </div>
-                    ) : null}
-
-                    {/* Files count */}
-                    {rev.files && rev.files.length > 0 ? (
-                      <span
-                        title={`${rev.files.length} reference file(s)`}
-                        className="hidden sm:flex items-center gap-0.5 text-[11px] text-muted-foreground"
-                      >
-                        <Paperclip className="size-3" />
-                        <span>{rev.files.length}</span>
-                      </span>
-                    ) : null}
-
-                    {/* Due Date */}
-                    {rev.dueDate ? (
-                      <span
-                        title={`Due ${rev.dueDate}`}
-                        className={cn(
-                          "hidden sm:flex items-center gap-1 text-[11px] tabular-nums",
-                          isOverdue
-                            ? "font-semibold text-rose-600 dark:text-rose-400"
+                            ? "text-amber-600 dark:text-amber-400"
                             : "text-muted-foreground"
                         )}
                       >
-                        <Calendar className="size-3" />
-                        <span>{rev.dueDate.slice(5)}</span>
+                        <Flag className="size-3 shrink-0" />
+                        {rev.priority || "regular"}
                       </span>
-                    ) : null}
 
-                    {/* Status badge */}
-                    <StatusBadge status={rev.status} />
+                      {/* Due Date */}
+                      {rev.dueDate ? (
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 tabular-nums",
+                            isOverdue && "font-semibold text-rose-600 dark:text-rose-400"
+                          )}
+                        >
+                          <Calendar className="size-3 shrink-0" />
+                          <span>{rev.dueDate}</span>
+                        </span>
+                      ) : null}
+
+                      {/* Attachments */}
+                      {rev.files && rev.files.length > 0 ? (
+                        <span className="inline-flex items-center gap-1 tabular-nums">
+                          <Paperclip className="size-3 shrink-0" />
+                          <span>
+                            {rev.files.length} file{rev.files.length === 1 ? "" : "s"}
+                          </span>
+                        </span>
+                      ) : null}
+
+                      {/* Flagged Staff */}
+                      {revFlaggedUsers.length > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                          <Flag className="size-2.5 fill-destructive" />
+                          {revFlaggedUsers.length} flagged
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* Assignees */}
+                    {revAssignees.length > 0 ? (
+                      <AvatarGroup people={revAssignees} max={2} />
+                    ) : null}
                   </div>
                 </button>
 
-                {/* Expanded Inline Accordion */}
+                {/* Expanded Clean Panel */}
                 {isExpanded ? (
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="space-y-3.5 border-t border-border/60 border-l-2 border-l-primary/40 bg-muted/10 p-3.5 pl-4 ml-2 mr-2 mb-2 rounded-r-md"
+                    className="space-y-3.5 border-t border-border/70 bg-muted/15 p-3.5"
                   >
-                    {/* Type, Title & Status */}
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4">
-                      {/* Type select */}
-                      <div className="space-y-1">
+                    {/* Top Row: Type, Title, Status, Delete */}
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
+                      <div className="space-y-1 sm:col-span-3">
                         <Label className="text-[11px] text-muted-foreground">Type</Label>
                         <Select
                           value={rev.type}
@@ -633,7 +606,7 @@ export function TaskRevisions({
                             onUpdateRevision(rev.id, { type: val })
                           }
                         >
-                          <SelectTrigger aria-label="Revision type" className="h-8 text-xs">
+                          <SelectTrigger aria-label="Revision type" className="h-8 bg-background text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -643,8 +616,7 @@ export function TaskRevisions({
                         </Select>
                       </div>
 
-                      {/* Title */}
-                      <div className="space-y-1 sm:col-span-2">
+                      <div className="space-y-1 sm:col-span-5">
                         <Label className="text-[11px] text-muted-foreground">Title</Label>
                         <Input
                           value={rev.title}
@@ -652,13 +624,26 @@ export function TaskRevisions({
                           onChange={(e) =>
                             onUpdateRevision(rev.id, { title: e.target.value })
                           }
-                          className="h-8 text-xs"
+                          className="h-8 bg-background text-xs"
                         />
                       </div>
 
-                      {/* Status */}
-                      <div className="space-y-1">
-                        <Label className="text-[11px] text-muted-foreground">Status</Label>
+                      <div className="space-y-1 sm:col-span-4">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] text-muted-foreground">Status</Label>
+                          {permissions.canDeleteRevision ? (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTargetId(rev.id)}
+                              title={`Delete ${revPrefix}${rev.number}`}
+                              aria-label={`Delete ${revPrefix}${rev.number}`}
+                              className="inline-flex items-center gap-0.5 text-[10px] font-medium text-destructive hover:underline"
+                            >
+                              <Trash2 className="size-2.5" />
+                              Delete
+                            </button>
+                          ) : null}
+                        </div>
                         <Select
                           value={rev.status}
                           disabled={!userCanChangeStatus}
@@ -666,7 +651,7 @@ export function TaskRevisions({
                             onSetRevisionStatus(rev.id, val)
                           }
                         >
-                          <SelectTrigger aria-label="Revision status" className="h-8 text-xs">
+                          <SelectTrigger aria-label="Revision status" className="h-8 bg-background text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -685,18 +670,19 @@ export function TaskRevisions({
                       <Label className="text-[11px] text-muted-foreground">
                         Change Details
                       </Label>
-                      <RichTextEditor
-                        value={rev.details}
-                        readOnly={!permissions.canEditRevision}
-                        placeholder="Specific feedback or rework instructions..."
-                        onChange={(doc) => onUpdateRevision(rev.id, { details: doc })}
-                        minHeight="80px"
-                      />
+                      <div className="rounded-lg bg-background">
+                        <RichTextEditor
+                          value={rev.details}
+                          readOnly={!permissions.canEditRevision}
+                          placeholder="Specific feedback or rework instructions..."
+                          onChange={(doc) => onUpdateRevision(rev.id, { details: doc })}
+                          minHeight="76px"
+                        />
+                      </div>
                     </div>
 
-                    {/* Assignees, Priority, Flags Grid */}
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      {/* Multiple Assignees */}
+                    {/* Properties Grid: Assignees, Priority, Flagged Staff, Due Date */}
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground">Assignees</Label>
                         <RevisionAssigneePicker
@@ -707,7 +693,6 @@ export function TaskRevisions({
                         />
                       </div>
 
-                      {/* Priority Select */}
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground">Priority</Label>
                         <Select
@@ -717,7 +702,7 @@ export function TaskRevisions({
                             onUpdateRevision(rev.id, { priority: val })
                           }
                         >
-                          <SelectTrigger className="h-8 text-xs">
+                          <SelectTrigger className="h-8 bg-background text-xs">
                             <div className="flex items-center gap-1.5">
                               <Flag
                                 className={cn(
@@ -733,29 +718,13 @@ export function TaskRevisions({
                             </div>
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="regular">
-                              <div className="flex items-center gap-1.5">
-                                <Flag className="size-3 text-muted-foreground/50" />
-                                <span>Regular</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="high">
-                              <div className="flex items-center gap-1.5">
-                                <Flag className="size-3 text-amber-600 dark:text-amber-400 fill-amber-600/30" />
-                                <span>High</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="urgent">
-                              <div className="flex items-center gap-1.5">
-                                <Flag className="size-3 text-rose-600 dark:text-rose-400 fill-rose-600/30" />
-                                <span>Urgent</span>
-                              </div>
-                            </SelectItem>
+                            <SelectItem value="regular">Regular</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="urgent">Urgent</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
-                      {/* Flagged Staff Picker */}
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
                           <Flag className="size-3 text-destructive fill-destructive" />
@@ -769,99 +738,106 @@ export function TaskRevisions({
                           onChange={(flaggedUserIds) => onUpdateRevision(rev.id, { flaggedUserIds })}
                         />
                       </div>
-                    </div>
 
-                    {/* Due Date & Attachments */}
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground">Due Date</Label>
-                        <Input
-                          type="date"
-                          value={rev.dueDate || ""}
-                          disabled={!permissions.canEditRevision}
-                          onChange={(e) =>
-                            onUpdateRevision(rev.id, { dueDate: e.target.value || undefined })
-                          }
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      {/* Reference Attachments header and trigger */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[11px] text-muted-foreground">
-                            Reference Attachments ({rev.files?.length || 0})
-                          </Label>
-                          {permissions.canEditRevision ? (
-                            <>
-                              <input
-                                type="file"
-                                multiple
-                                ref={(el) => {
-                                  rowFileInputRefs.current[rev.id] = el
-                                }}
-                                className="hidden"
-                                onChange={(e) =>
-                                  handleRowFileSelection(e, (files) =>
-                                    onAddRevisionFiles(rev.id, files)
-                                  )
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={!permissions.canEditRevision}
+                              className={cn(
+                                "h-8 w-full justify-start bg-background px-2.5 text-left text-xs font-normal",
+                                !rev.dueDate && "text-muted-foreground"
+                              )}
+                            >
+                              <Calendar className="mr-1.5 size-3.5 shrink-0 text-muted-foreground" />
+                              <span>
+                                {rev.dueDate
+                                  ? format(new Date(`${rev.dueDate}T00:00:00`), "MMM d, yyyy")
+                                  : "Pick due date"}
+                              </span>
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="start" className="w-auto p-2">
+                            <CalendarPicker
+                              mode="single"
+                              selected={
+                                rev.dueDate ? new Date(`${rev.dueDate}T00:00:00`) : undefined
+                              }
+                              defaultMonth={
+                                rev.dueDate ? new Date(`${rev.dueDate}T00:00:00`) : new Date()
+                              }
+                              onSelect={(date) => {
+                                if (date) {
+                                  const y = date.getFullYear()
+                                  const m = String(date.getMonth() + 1).padStart(2, "0")
+                                  const d = String(date.getDate()).padStart(2, "0")
+                                  onUpdateRevision(rev.id, { dueDate: `${y}-${m}-${d}` })
                                 }
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="xs"
-                                onClick={() => rowFileInputRefs.current[rev.id]?.click()}
-                                className="h-6 gap-1 text-[11px] text-primary"
-                              >
-                                <Upload className="size-3" />
-                                <span>Attach file</span>
-                              </Button>
-                            </>
-                          ) : null}
-                        </div>
-                        {rev.files && rev.files.length > 0 ? (
-                          <div className="grid grid-cols-1 gap-1 max-h-24 overflow-y-auto pr-1">
-                            {rev.files.map((file) => (
-                              <div
-                                key={file.id}
-                                className="flex items-center justify-between gap-1.5 rounded border border-border/60 bg-background/80 p-1.5 text-xs"
-                              >
-                                <div className="flex min-w-0 items-center gap-1.5">
-                                  <Paperclip className="size-3 shrink-0 text-muted-foreground" />
-                                  <span className="truncate text-[11px]">{file.name}</span>
-                                </div>
-                                <span className="shrink-0 text-[10px] text-muted-foreground">
-                                  {file.size}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-[11px] text-muted-foreground/70 italic pt-1">
-                            No reference files attached.
-                          </p>
-                        )}
+                              }}
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     </div>
 
-                    {/* Delete Revision Action */}
-                    {permissions.canDeleteRevision ? (
-                      <div className="flex justify-end border-t border-border/50 pt-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => setDeleteTargetId(rev.id)}
-                          className="gap-1 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        >
-                          <Trash2 className="size-3" />
-                          <span>
-                            Delete {isRedraw ? "re-draw" : "revision"} {revPrefix}{rev.number}
-                          </span>
-                        </Button>
+                    {/* Reference Attachments */}
+                    <div className="space-y-1.5 rounded-lg border border-border/60 bg-background/70 p-2.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[11px] text-muted-foreground">
+                          Reference Attachments ({rev.files?.length || 0})
+                        </Label>
+                        {permissions.canEditRevision ? (
+                          <>
+                            <input
+                              type="file"
+                              multiple
+                              ref={(el) => {
+                                rowFileInputRefs.current[rev.id] = el
+                              }}
+                              className="hidden"
+                              onChange={(e) =>
+                                handleRowFileSelection(e, (files) =>
+                                  onAddRevisionFiles(rev.id, files)
+                                )
+                              }
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => rowFileInputRefs.current[rev.id]?.click()}
+                              className="h-6 gap-1 text-[11px] text-primary"
+                            >
+                              <Upload className="size-3" />
+                              <span>Attach file</span>
+                            </Button>
+                          </>
+                        ) : null}
                       </div>
-                    ) : null}
+                      {rev.files && rev.files.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {rev.files.map((file) => (
+                            <div
+                              key={file.id}
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-[11px]"
+                            >
+                              <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+                              <span className="max-w-44 truncate">{file.name}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {file.size}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground/70">
+                          No reference files attached.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ) : null}
               </div>

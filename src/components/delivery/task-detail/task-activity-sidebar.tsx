@@ -4,12 +4,17 @@ import * as React from "react"
 import {
   Activity,
   AtSign,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Circle,
+  CornerDownRight,
   History,
   MessageSquare,
   Paperclip,
   Pencil,
+  Reply,
   Send,
   ShieldAlert,
   Trash2,
@@ -17,11 +22,6 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
 import type { TaskRolePermissions } from "@/lib/permissions"
 import type {
@@ -35,7 +35,7 @@ import type {
 import { cn } from "cn"
 import { formatRelativeTimestamp, parseTimestampMs } from "./types"
 
-type ActivityFilter = "all" | "comments" | "status"
+type ActivityFilter = "all" | "comments" | "status" | "qa"
 
 interface TimelineItem {
   id: string
@@ -56,6 +56,7 @@ interface TaskActivitySidebarProps {
   nowMs: number | null
   onAddComment: (payload: {
     content: string
+    parentId?: string
     mentions: string[]
     attachments: AttachmentFile[]
     isQaRelated: boolean
@@ -104,16 +105,55 @@ export function TaskActivitySidebar({
   const [pendingMentions, setPendingMentions] = React.useState<string[]>([])
   const [mentionOpen, setMentionOpen] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState("")
+  const [activeMentionIndex, setActiveMentionIndex] = React.useState(0)
   const [isQaNote, setIsQaNote] = React.useState(false)
   const [editingCommentId, setEditingCommentId] = React.useState<string | null>(
     null
   )
   const [editDraft, setEditDraft] = React.useState("")
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(
+    null
+  )
+  const [replyingTo, setReplyingTo] = React.useState<{
+    parentId: string
+    authorName: string
+    preview: string
+  } | null>(null)
+  const [collapsedThreads, setCollapsedThreads] = React.useState<
+    Record<string, boolean>
+  >({})
 
   const feedScrollRef = React.useRef<HTMLDivElement | null>(null)
   const isNearBottomRef = React.useRef(true)
   const composerRef = React.useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const { topLevelComments, repliesByParentId } = React.useMemo(() => {
+    const commentIds = new Set(task.comments.map((c) => c.id))
+    const roots: TaskComment[] = []
+    const replyMap = new Map<string, TaskComment[]>()
+
+    for (const c of task.comments) {
+      if (c.parentId && commentIds.has(c.parentId)) {
+        const list = replyMap.get(c.parentId) ?? []
+        list.push(c)
+        replyMap.set(c.parentId, list)
+      } else {
+        roots.push(c)
+      }
+    }
+
+    for (const [parentId, list] of replyMap) {
+      replyMap.set(
+        parentId,
+        [...list].sort(
+          (a, b) => parseTimestampMs(a.createdAt) - parseTimestampMs(b.createdAt)
+        )
+      )
+    }
+
+    return { topLevelComments: roots, repliesByParentId: replyMap }
+  }, [task.comments])
 
   // Build unified chronological timeline (oldest → newest at bottom)
   const allItems = React.useMemo<TimelineItem[]>(() => {
@@ -127,7 +167,7 @@ export function TaskActivitySidebar({
         event: ev,
       })
     }
-    for (const c of task.comments) {
+    for (const c of topLevelComments) {
       items.push({
         id: c.id,
         kind: "comment",
@@ -137,22 +177,31 @@ export function TaskActivitySidebar({
       })
     }
     return items.sort((a, b) => a.sortMs - b.sortMs)
-  }, [task.activity, task.comments])
+  }, [task.activity, topLevelComments])
 
   const visibleItems = React.useMemo(() => {
     if (filter === "comments") return allItems.filter((i) => i.kind === "comment")
     if (filter === "status")
       return allItems.filter((i) => i.kind === "system" || i.kind === "qa")
+    if (filter === "qa")
+      return allItems.filter((i) => {
+        if (i.kind !== "comment" || !i.comment) return false
+        const replies = repliesByParentId.get(i.comment.id) ?? []
+        const hasOpenRoot = i.comment.isQaRelated && !i.comment.resolved
+        const hasOpenReply = replies.some((r) => r.isQaRelated && !r.resolved)
+        return hasOpenRoot || hasOpenReply
+      })
     return allItems
-  }, [allItems, filter])
+  }, [allItems, filter, repliesByParentId])
 
-  const commentCount = React.useMemo(
-    () => allItems.filter((i) => i.kind === "comment").length,
-    [allItems]
-  )
+  const commentCount = task.comments.length
   const statusHistoryCount = React.useMemo(
     () => allItems.filter((i) => i.kind === "system" || i.kind === "qa").length,
     [allItems]
+  )
+  const openQaCount = React.useMemo(
+    () => task.comments.filter((c) => c.isQaRelated && !c.resolved).length,
+    [task.comments]
   )
 
   const prevFeedRef = React.useRef({
@@ -195,10 +244,12 @@ export function TaskActivitySidebar({
     const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(next)
     if (match) {
       setMentionQuery(match[1])
+      setActiveMentionIndex(0)
       setMentionOpen(true)
     } else if (mentionOpen && !next.endsWith("@")) {
       setMentionOpen(false)
       setMentionQuery("")
+      setActiveMentionIndex(0)
     }
     // Auto-grow textarea height
     const el = composerRef.current
@@ -219,25 +270,38 @@ export function TaskActivitySidebar({
     )
     setMentionOpen(false)
     setMentionQuery("")
+    setActiveMentionIndex(0)
     requestAnimationFrame(() => {
       composerRef.current?.focus({ preventScroll: true })
     })
   }
 
   function handleAttachCommentFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
     const nowDate = new Date().toISOString().slice(0, 10)
-    const attached: AttachmentFile = {
+    const attached: AttachmentFile[] = files.map((file) => ({
       id: `ca-${crypto.randomUUID().slice(0, 8)}`,
       name: file.name,
       size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
       type: file.type || "application/octet-stream",
       uploadedBy: currentActorName,
       uploadedAt: nowDate,
-    }
-    setPendingAttachments((prev) => [...prev, attached])
+    }))
+    setPendingAttachments((prev) => [...prev, ...attached])
     e.target.value = ""
+  }
+
+  function startReply(c: TaskComment, rootParentId: string) {
+    setReplyingTo({
+      parentId: rootParentId,
+      authorName: c.authorName,
+      preview: c.content.replace(/\s+/g, " ").trim().slice(0, 72),
+    })
+    setCollapsedThreads((prev) => ({ ...prev, [rootParentId]: false }))
+    requestAnimationFrame(() => {
+      composerRef.current?.focus({ preventScroll: true })
+    })
   }
 
   function handleSubmit(e?: React.FormEvent) {
@@ -246,6 +310,7 @@ export function TaskActivitySidebar({
     if (!trimmed && pendingAttachments.length === 0) return
     onAddComment({
       content: trimmed || `Attached ${pendingAttachments.map((a) => a.name).join(", ")}`,
+      parentId: replyingTo?.parentId,
       mentions: pendingMentions,
       attachments: pendingAttachments,
       isQaRelated:
@@ -255,6 +320,7 @@ export function TaskActivitySidebar({
         task.status === "Re-Draw",
     })
     setDraft("")
+    setReplyingTo(null)
     setPendingAttachments([])
     setPendingMentions([])
     if (composerRef.current) {
@@ -291,45 +357,315 @@ export function TaskActivitySidebar({
     return found?.avatarColor ?? "bg-primary"
   }
 
+  const safeMentionIndex =
+    filteredStaff.length > 0
+      ? Math.min(activeMentionIndex, filteredStaff.length - 1)
+      : 0
+
+  function renderCommentNode(
+    c: TaskComment,
+    rootParentId: string,
+    isReply = false
+  ) {
+    const isOwn =
+      c.authorName === currentActorName || currentRole === "Super Admin"
+    const isEditing = editingCommentId === c.id
+    const isConfirmingDelete = confirmDeleteId === c.id
+
+    return (
+      <div
+        key={c.id}
+        className={cn(
+          "group/comment transition-colors",
+          isReply
+            ? cn(
+                "rounded-lg border p-2.5 text-xs",
+                c.resolved
+                  ? "border-emerald-500/25 bg-emerald-500/[0.03]"
+                  : c.isQaRelated
+                    ? "border-violet-500/25 bg-violet-500/[0.03]"
+                    : "border-border/70 bg-muted/25 hover:border-border"
+              )
+            : ""
+        )}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className={cn(
+                "flex shrink-0 items-center justify-center rounded-full font-bold text-white ring-1 ring-black/5",
+                isReply ? "size-5 text-[9px]" : "size-6 text-[10px]",
+                getAvatarColor(c.authorName)
+              )}
+            >
+              {getInitials(c.authorName)}
+            </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <span className="truncate font-semibold text-foreground">
+                {c.authorName}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                · {formatRelativeTimestamp(c.createdAt, nowMs)}
+                {c.editedAt ? " (edited)" : ""}
+              </span>
+              {c.isQaRelated ? (
+                <Badge
+                  variant={c.resolved ? "secondary" : "outline"}
+                  className={cn(
+                    "h-4 px-1.5 text-[9px] font-semibold",
+                    c.resolved
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                      : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                  )}
+                >
+                  {c.resolved ? "QA Resolved" : "QA"}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Comment actions */}
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-0.5 transition-opacity",
+              isConfirmingDelete || c.isQaRelated
+                ? "opacity-100"
+                : "opacity-0 group-hover/comment:opacity-100 focus-within:opacity-100"
+            )}
+          >
+            {permissions.canComment ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => startReply(c, rootParentId)}
+                aria-label={`Reply to ${c.authorName}`}
+                title="Reply"
+              >
+                <Reply className="size-3 text-muted-foreground hover:text-foreground" />
+              </Button>
+            ) : null}
+
+            {c.isQaRelated && permissions.canResolveQaComment ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => onToggleResolved(c.id)}
+                aria-label={
+                  c.resolved ? "Reopen QA comment" : "Mark QA comment resolved"
+                }
+                title={
+                  c.resolved
+                    ? "Resolved (click to reopen)"
+                    : "Mark as resolved"
+                }
+              >
+                {c.resolved ? (
+                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <Circle className="size-3.5 text-muted-foreground hover:text-emerald-600" />
+                )}
+              </Button>
+            ) : null}
+
+            {isOwn && permissions.canComment ? (
+              isConfirmingDelete ? (
+                <div className="flex items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDeleteComment(c.id)
+                      setConfirmDeleteId(null)
+                    }}
+                    className="text-[10px] font-semibold text-destructive hover:underline"
+                  >
+                    Delete
+                  </button>
+                  <span className="text-muted-foreground/50">/</span>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => startEditComment(c)}
+                    aria-label="Edit comment"
+                    title="Edit"
+                  >
+                    <Pencil className="size-3 text-muted-foreground" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setConfirmDeleteId(c.id)}
+                    aria-label="Delete comment"
+                    title="Delete"
+                  >
+                    <Trash2 className="size-3 text-muted-foreground hover:text-destructive" />
+                  </Button>
+                </>
+              )
+            ) : null}
+          </div>
+        </div>
+
+        {isEditing ? (
+          <div className="mt-2.5 space-y-2 rounded-lg border border-border bg-background p-2">
+            <Textarea
+              autoFocus
+              value={editDraft}
+              onChange={(e) => setEditDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.stopPropagation()
+                  setEditingCommentId(null)
+                } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault()
+                  commitEditComment(c.id)
+                }
+              }}
+              rows={2}
+              className="min-h-[54px] resize-none border-0 bg-transparent p-0 text-xs shadow-none focus-visible:ring-0"
+            />
+            <div className="flex items-center justify-between border-t border-border/60 pt-1.5">
+              <span className="text-[10px] text-muted-foreground">
+                Esc to cancel · Ctrl+Enter to save
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setEditingCommentId(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  onClick={() => commitEditComment(c.id)}
+                  className="gap-1"
+                >
+                  <Check className="size-3" />
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p
+            className={cn(
+              "mt-1.5 whitespace-pre-wrap leading-relaxed text-foreground/90",
+              isReply ? "pl-7" : "pl-8",
+              c.resolved && "text-muted-foreground line-through"
+            )}
+          >
+            {renderCommentWithMentions(c.content)}
+          </p>
+        )}
+
+        {c.attachments && c.attachments.length > 0 ? (
+          <div
+            className={cn(
+              "mt-2 flex flex-wrap gap-1.5",
+              isReply ? "pl-7" : "pl-8"
+            )}
+          >
+            {c.attachments.map((att) => (
+              <span
+                key={att.id}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-[11px] text-foreground/85"
+              >
+                <Paperclip className="size-3 text-primary" />
+                <span className="max-w-[150px] truncate font-medium">
+                  {att.name}
+                </span>
+                {att.size ? (
+                  <span className="text-[10px] text-muted-foreground">
+                    {att.size}
+                  </span>
+                ) : null}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <aside
       aria-label="Task activity and comments"
-      className="flex h-full min-h-0 flex-col bg-muted/30"
+      className="flex h-full min-h-0 flex-col bg-muted/20"
     >
-      {/* Header & filter tabs */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3.5 py-2.5">
-        <span className="text-xs font-semibold text-foreground">Activity</span>
-        <div
-          role="tablist"
-          aria-label="Activity filter"
-          className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 text-[11px]"
-        >
-          {(
-            [
-              { id: "all", label: "All", count: allItems.length },
-              { id: "comments", label: "Comments", count: commentCount },
-              { id: "status", label: "Status History", count: statusHistoryCount },
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={filter === tab.id}
-              onClick={() => setFilter(tab.id)}
-              className={cn(
-                "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                filter === tab.id
-                  ? "bg-background text-foreground shadow-2xs"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <span>{tab.label}</span>
-              <span className="font-mono text-[10px] opacity-75">
-                {tab.count}
-              </span>
-            </button>
-          ))}
+      {/* Header & segmented filter */}
+      <div className="shrink-0 border-b border-border bg-card px-4 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-xs font-semibold tracking-tight text-foreground">
+              Activity
+            </span>
+            {openQaCount > 0 ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setFilter((prev) => (prev === "qa" ? "all" : "qa"))
+                }
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors",
+                  filter === "qa"
+                    ? "border-violet-500/40 bg-violet-500/15 text-violet-700 dark:text-violet-300"
+                    : "border-violet-500/25 bg-violet-500/5 text-violet-700 hover:bg-violet-500/15 dark:text-violet-300"
+                )}
+              >
+                <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />
+                {openQaCount} open QA
+              </button>
+            ) : null}
+          </div>
+
+          <div
+            role="tablist"
+            aria-label="Activity filter"
+            className="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 text-[11px]"
+          >
+            {(
+              [
+                { id: "all", label: "All", count: allItems.length },
+                { id: "comments", label: "Comments", count: commentCount },
+                { id: "status", label: "History", count: statusHistoryCount },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={filter === tab.id}
+                onClick={() => setFilter(tab.id)}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  filter === tab.id
+                    ? "bg-background text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span>{tab.label}</span>
+                <span className="font-mono text-[10px] opacity-65">
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -337,22 +673,35 @@ export function TaskActivitySidebar({
       <div
         ref={feedScrollRef}
         onScroll={handleFeedScroll}
-        className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-3.5"
       >
         {visibleItems.length === 0 ? (
-          <div className="flex h-full min-h-[180px] flex-col items-center justify-center gap-2 text-center">
-            {filter === "comments" ? (
-              <MessageSquare className="size-6 text-muted-foreground/50" />
-            ) : (
-              <History className="size-6 text-muted-foreground/50" />
-            )}
-            <p className="text-xs text-muted-foreground">
-              {filter === "comments"
-                ? "No comments yet. Start the conversation below."
-                : filter === "status"
-                  ? "No status history recorded yet."
-                  : "No activity recorded yet."}
-            </p>
+          <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2.5 text-center">
+            <div className="flex size-10 items-center justify-center rounded-full border border-border bg-card text-muted-foreground/70 shadow-2xs">
+              {filter === "comments" || filter === "qa" ? (
+                <MessageSquare className="size-4" />
+              ) : (
+                <History className="size-4" />
+              )}
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs font-medium text-foreground">
+                {filter === "qa"
+                  ? "No open QA notes"
+                  : filter === "comments"
+                    ? "No comments yet"
+                    : filter === "status"
+                      ? "No status history yet"
+                      : "No activity yet"}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {filter === "comments"
+                  ? "Leave a note or @mention a teammate below."
+                  : filter === "qa"
+                    ? "All QA comments on this task are resolved."
+                    : "Updates and comments will appear here."}
+              </p>
+            </div>
             {filter === "comments" && permissions.canComment ? (
               <Button
                 type="button"
@@ -360,7 +709,7 @@ export function TaskActivitySidebar({
                 size="xs"
                 onClick={() => composerRef.current?.focus({ preventScroll: true })}
               >
-                Write first comment
+                Start discussion
               </Button>
             ) : null}
           </div>
@@ -369,169 +718,55 @@ export function TaskActivitySidebar({
             {visibleItems.map((item) => {
               if (item.kind === "comment" && item.comment) {
                 const c = item.comment
-                const isOwn =
-                  c.authorName === currentActorName ||
-                  currentRole === "Super Admin"
-                const isEditing = editingCommentId === c.id
+                const replies = repliesByParentId.get(c.id) ?? []
+                const isCollapsed = Boolean(collapsedThreads[c.id])
 
                 return (
-                  <div
+                  <article
                     key={c.id}
                     className={cn(
-                      "rounded-lg border p-2.5 text-xs transition-colors",
+                      "rounded-xl border p-3 text-xs shadow-2xs transition-colors",
                       c.resolved
-                        ? "border-emerald-500/30 bg-emerald-500/5"
-                        : "border-border bg-card"
+                        ? "border-emerald-500/25 bg-emerald-500/[0.03]"
+                        : c.isQaRelated
+                          ? "border-violet-500/30 bg-violet-500/[0.03]"
+                          : "border-border bg-card hover:border-border/90"
                     )}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span
-                          className={cn(
-                            "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
-                            getAvatarColor(c.authorName)
-                          )}
+                    {renderCommentNode(c, c.id, false)}
+
+                    {replies.length > 0 ? (
+                      <div className="mt-2.5 ml-3 border-l-2 border-border/70 pl-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCollapsedThreads((prev) => ({
+                              ...prev,
+                              [c.id]: !prev[c.id],
+                            }))
+                          }
+                          className="mb-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
                         >
-                          {getInitials(c.authorName)}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="truncate font-semibold text-foreground">
-                              {c.authorName}
-                            </span>
-                            {c.isQaRelated ? (
-                              <Badge
-                                variant={c.resolved ? "secondary" : "outline"}
-                                className="h-4 px-1 text-[9px]"
-                              >
-                                QA
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {formatRelativeTimestamp(c.createdAt, nowMs)}
-                            {c.editedAt ? " (edited)" : ""}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Comment actions */}
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        {c.isQaRelated && permissions.canResolveQaComment ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => onToggleResolved(c.id)}
-                            aria-label={
-                              c.resolved
-                                ? "Reopen QA comment"
-                                : "Mark QA comment resolved"
-                            }
-                            title={
-                              c.resolved
-                                ? "Resolved (click to reopen)"
-                                : "Mark as resolved"
-                            }
-                          >
-                            {c.resolved ? (
-                              <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                            ) : (
-                              <Circle className="size-3.5 text-muted-foreground" />
-                            )}
-                          </Button>
-                        ) : null}
-                        {isOwn && permissions.canComment ? (
-                          <>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() => startEditComment(c)}
-                              aria-label="Edit comment"
-                            >
-                              <Pencil className="size-3 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() => onDeleteComment(c.id)}
-                              aria-label="Delete comment"
-                            >
-                              <Trash2 className="size-3 text-muted-foreground hover:text-destructive" />
-                            </Button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {isEditing ? (
-                      <div className="mt-2 space-y-1.5">
-                        <Textarea
-                          autoFocus
-                          value={editDraft}
-                          onChange={(e) => setEditDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") {
-                              e.stopPropagation()
-                              setEditingCommentId(null)
-                            } else if (
-                              (e.metaKey || e.ctrlKey) &&
-                              e.key === "Enter"
-                            ) {
-                              e.preventDefault()
-                              commitEditComment(c.id)
-                            }
-                          }}
-                          rows={2}
-                          className="text-xs"
-                        />
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="xs"
-                            onClick={() => setEditingCommentId(null)}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="button"
-                            size="xs"
-                            onClick={() => commitEditComment(c.id)}
-                          >
-                            Save
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p
-                        className={cn(
-                          "mt-2 whitespace-pre-wrap leading-relaxed text-foreground/90",
-                          c.resolved && "text-muted-foreground line-through"
-                        )}
-                      >
-                        {renderCommentWithMentions(c.content)}
-                      </p>
-                    )}
-
-                    {c.attachments && c.attachments.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {c.attachments.map((att) => (
-                          <span
-                            key={att.id}
-                            className="inline-flex items-center gap-1 rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                          >
-                            <Paperclip className="size-2.5" />
-                            <span className="max-w-[140px] truncate">
-                              {att.name}
-                            </span>
+                          {isCollapsed ? (
+                            <ChevronRight className="size-3" />
+                          ) : (
+                            <ChevronDown className="size-3" />
+                          )}
+                          <span>
+                            {replies.length}{" "}
+                            {replies.length === 1 ? "reply" : "replies"}
                           </span>
-                        ))}
+                        </button>
+                        {!isCollapsed ? (
+                          <div className="space-y-2">
+                            {replies.map((reply) =>
+                              renderCommentNode(reply, c.id, true)
+                            )}
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
-                  </div>
+                  </article>
                 )
               }
 
@@ -541,14 +776,14 @@ export function TaskActivitySidebar({
               return (
                 <div
                   key={ev.id}
-                  className="flex items-start gap-2 px-1 text-[11px] leading-snug text-muted-foreground"
+                  className="flex items-start gap-2.5 px-1.5 py-0.5 text-[11px] leading-snug text-muted-foreground"
                 >
                   <div
                     className={cn(
                       "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border",
                       isQa
                         ? "border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                        : "border-border bg-background text-muted-foreground"
+                        : "border-border bg-card text-muted-foreground"
                     )}
                   >
                     {isQa ? (
@@ -558,35 +793,35 @@ export function TaskActivitySidebar({
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div>
+                    <div className="flex flex-wrap items-baseline gap-x-1">
                       <span className="font-medium text-foreground">
                         {ev.actorName}
-                      </span>{" "}
+                      </span>
                       <span>{ev.action}</span>
                       {ev.fromValue && ev.toValue ? (
-                        <span className="ml-1 inline-flex flex-wrap items-center gap-1">
-                          <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                        <span className="inline-flex flex-wrap items-center gap-1">
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                             {ev.fromValue}
                           </span>
                           <span>→</span>
-                          <span className="rounded bg-primary/10 px-1 py-0.5 text-[10px] font-medium text-primary">
+                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                             {ev.toValue}
                           </span>
                         </span>
                       ) : ev.toValue ? (
-                        <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[10px] font-medium text-foreground">
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-foreground">
                           {ev.toValue}
                         </span>
                       ) : null}
+                      <span className="text-[10px] text-muted-foreground/75">
+                        · {formatRelativeTimestamp(ev.timestamp, nowMs)}
+                      </span>
                     </div>
                     {ev.detail ? (
-                      <p className="mt-0.5 rounded border border-border/60 bg-background/70 px-2 py-1 text-[11px] text-foreground/80">
+                      <p className="mt-1 rounded-md border border-border/60 bg-card/80 px-2.5 py-1.5 text-[11px] text-foreground/80">
                         {ev.detail}
                       </p>
                     ) : null}
-                    <div className="mt-0.5 text-[10px] text-muted-foreground/80">
-                      {formatRelativeTimestamp(ev.timestamp, nowMs)}
-                    </div>
                   </div>
                 </div>
               )
@@ -598,165 +833,265 @@ export function TaskActivitySidebar({
       {/* Pinned Comment Composer */}
       <form
         onSubmit={handleSubmit}
-        className="shrink-0 border-t border-border bg-card p-3"
+        className="relative shrink-0 border-t border-border bg-card p-3.5"
       >
-          {pendingAttachments.length > 0 ? (
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {pendingAttachments.map((att) => (
-                <span
-                  key={att.id}
-                  className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[11px]"
-                >
-                  <Paperclip className="size-3 text-primary" />
-                  <span className="max-w-[140px] truncate">{att.name}</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPendingAttachments((prev) =>
-                        prev.filter((a) => a.id !== att.id)
-                      )
-                    }
-                    aria-label={`Remove attachment ${att.name}`}
-                    className="hover:text-destructive"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
+        {!permissions.canComment ? (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2.5 text-center text-[11px] text-muted-foreground">
+            You have read-only access to comments on this task.
+          </div>
+        ) : (
+          <>
+            {/* Inline keyboard-navigable @mention menu */}
+            {mentionOpen ? (
+              <div
+                role="listbox"
+                aria-label="Mention teammate"
+                className="absolute right-3.5 bottom-full left-3.5 z-30 mb-1.5 overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-lg"
+              >
+                <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <span>Mention teammate</span>
+                  <span>↑↓ · Enter</span>
+                </div>
+                <div className="max-h-44 space-y-0.5 overflow-y-auto">
+                  {filteredStaff.length === 0 ? (
+                    <p className="py-2.5 text-center text-xs text-muted-foreground">
+                      No teammate matched
+                    </p>
+                  ) : (
+                    filteredStaff.map((u, idx) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        role="option"
+                        aria-selected={idx === safeMentionIndex}
+                        onMouseEnter={() => setActiveMentionIndex(idx)}
+                        onClick={() => insertMention(u)}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
+                          idx === safeMentionIndex
+                            ? "bg-accent text-accent-foreground"
+                            : "hover:bg-muted"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
+                            u.avatarColor
+                          )}
+                        >
+                          {u.avatarInitials}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium">{u.name}</div>
+                        </div>
+                        <span className="truncate text-[10px] text-muted-foreground">
+                          {u.role}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
 
-          <div className="rounded-lg border border-border bg-background focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
-            <Textarea
-              ref={composerRef}
-              value={draft}
-              onChange={(e) => handleDraftChange(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                  e.preventDefault()
-                  handleSubmit()
-                } else if (e.key === "Escape" && mentionOpen) {
-                  e.stopPropagation()
-                  setMentionOpen(false)
-                }
-              }}
-              placeholder="Write a comment… Use @ to mention"
-              aria-label="Add comment"
-              rows={2}
-              className="min-h-[54px] resize-none border-0 bg-transparent px-2.5 py-2 text-xs shadow-none focus-visible:ring-0"
-            />
-
-            <div className="flex items-center justify-between gap-1 border-t border-border/60 px-2 py-1.5">
-              <div className="flex items-center gap-1">
-                {/* @mention picker */}
-                <Popover open={mentionOpen} onOpenChange={setMentionOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Mention teammate"
-                      title="Mention teammate (@)"
-                    >
-                      <AtSign className="size-3.5 text-muted-foreground" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="start"
-                    side="top"
-                    className="w-56 p-1.5"
-                  >
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Mention Staff
-                    </div>
-                    <div className="max-h-44 space-y-0.5 overflow-y-auto">
-                      {filteredStaff.length === 0 ? (
-                        <p className="py-2 text-center text-xs text-muted-foreground">
-                          No staff matched
-                        </p>
-                      ) : (
-                        filteredStaff.map((u) => (
-                          <button
-                            key={u.id}
-                            type="button"
-                            onClick={() => insertMention(u)}
-                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            <span
-                              className={cn(
-                                "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
-                                u.avatarColor
-                              )}
-                            >
-                              {u.avatarInitials}
-                            </span>
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">
-                                {u.name}
-                              </div>
-                              <div className="truncate text-[10px] text-muted-foreground">
-                                {u.role}
-                              </div>
-                            </div>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                {/* Attach file */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Attach file to comment"
-                  title="Attach file"
-                >
-                  <Paperclip className="size-3.5 text-muted-foreground" />
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="sr-only"
-                  onChange={handleAttachCommentFile}
-                />
-
-                {/* QA comment toggle */}
+            {replyingTo ? (
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/5 px-2.5 py-1.5 text-[11px]">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <CornerDownRight className="size-3 shrink-0 text-primary" />
+                  <span className="shrink-0 font-semibold text-foreground">
+                    Replying to {replyingTo.authorName}
+                  </span>
+                  {replyingTo.preview ? (
+                    <span className="truncate text-muted-foreground">
+                      “{replyingTo.preview}”
+                    </span>
+                  ) : null}
+                </div>
                 <button
                   type="button"
-                  onClick={() => setIsQaNote((v) => !v)}
-                  aria-pressed={isQaNote}
-                  title="Tag as QA comment (supports Resolved toggle)"
-                  className={cn(
-                    "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    isQaNote
-                      ? "bg-violet-500/15 text-violet-700 dark:text-violet-300"
-                      : "text-muted-foreground hover:bg-muted"
-                  )}
+                  onClick={() => setReplyingTo(null)}
+                  aria-label="Cancel reply"
+                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
                 >
-                  QA Note
+                  <X className="size-3" />
                 </button>
               </div>
+            ) : null}
 
-              <div className="flex items-center gap-1.5">
-                <span className="hidden text-[10px] text-muted-foreground sm:inline">
-                  {currentActorInitials}
-                </span>
-                <Button
-                  type="submit"
-                  size="xs"
-                  disabled={!draft.trim() && pendingAttachments.length === 0}
-                  className="gap-1"
-                >
-                  <Send className="size-3" />
-                  Send
-                </Button>
+            {pendingAttachments.length > 0 ? (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {pendingAttachments.map((att) => (
+                  <span
+                    key={att.id}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 py-1 text-[11px]"
+                  >
+                    <Paperclip className="size-3 text-primary" />
+                    <span className="max-w-[140px] truncate font-medium">
+                      {att.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPendingAttachments((prev) =>
+                          prev.filter((a) => a.id !== att.id)
+                        )
+                      }
+                      aria-label={`Remove attachment ${att.name}`}
+                      className="rounded p-0.5 text-muted-foreground hover:bg-background hover:text-destructive"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="rounded-xl border border-border bg-background shadow-2xs transition-all focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
+              <Textarea
+                ref={composerRef}
+                value={draft}
+                onChange={(e) => handleDraftChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (mentionOpen && filteredStaff.length > 0) {
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault()
+                      setActiveMentionIndex(
+                        (prev) => (prev + 1) % filteredStaff.length
+                      )
+                      return
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault()
+                      setActiveMentionIndex(
+                        (prev) =>
+                          (prev - 1 + filteredStaff.length) %
+                          filteredStaff.length
+                      )
+                      return
+                    }
+                    if (e.key === "Enter" || e.key === "Tab") {
+                      e.preventDefault()
+                      insertMention(filteredStaff[safeMentionIndex])
+                      return
+                    }
+                  }
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault()
+                    handleSubmit()
+                  } else if (e.key === "Escape" && mentionOpen) {
+                    e.stopPropagation()
+                    setMentionOpen(false)
+                  } else if (e.key === "Escape" && replyingTo && !draft.trim()) {
+                    e.stopPropagation()
+                    setReplyingTo(null)
+                  }
+                }}
+                placeholder={
+                  replyingTo
+                    ? `Reply to ${replyingTo.authorName}… Type @ to mention`
+                    : "Write a comment… Type @ to mention"
+                }
+                aria-label="Add comment"
+                rows={2}
+                className="min-h-[56px] resize-none border-0 bg-transparent px-3 py-2.5 text-xs shadow-none focus-visible:ring-0"
+              />
+
+              <div className="flex items-center justify-between gap-2 border-t border-border/60 px-2.5 py-1.5">
+                <div className="flex items-center gap-1">
+                  {/* @mention trigger */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => {
+                      if (!mentionOpen) {
+                        const needsSpace =
+                          draft.length > 0 && !/\s$/.test(draft)
+                        const next = `${draft}${needsSpace ? " @" : "@"}`
+                        handleDraftChange(next)
+                      } else {
+                        setMentionOpen(false)
+                      }
+                      requestAnimationFrame(() =>
+                        composerRef.current?.focus({ preventScroll: true })
+                      )
+                    }}
+                    aria-label="Mention teammate"
+                    title="Mention teammate (@)"
+                  >
+                    <AtSign className="size-3.5 text-muted-foreground" />
+                  </Button>
+
+                  {/* Attach file(s) */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Attach file to comment"
+                    title="Attach files"
+                  >
+                    <Paperclip className="size-3.5 text-muted-foreground" />
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="sr-only"
+                    onChange={handleAttachCommentFile}
+                  />
+
+                  {/* QA comment toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setIsQaNote((v) => !v)}
+                    aria-pressed={isQaNote}
+                    title="Tag as QA note (supports Resolved toggle)"
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      isQaNote
+                        ? "bg-violet-500/15 text-violet-700 dark:text-violet-300"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "size-1.5 rounded-full",
+                        isQaNote ? "bg-violet-500" : "bg-muted-foreground/40"
+                      )}
+                    />
+                    QA Note
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    title={`Commenting as ${currentActorName}`}
+                    className={cn(
+                      "hidden size-5 items-center justify-center rounded-full text-[9px] font-bold text-white sm:inline-flex",
+                      getAvatarColor(currentActorName)
+                    )}
+                  >
+                    {currentActorInitials}
+                  </span>
+                  <span className="hidden text-[10px] text-muted-foreground/80 sm:inline">
+                    Ctrl+Enter
+                  </span>
+                  <Button
+                    type="submit"
+                    size="xs"
+                    disabled={!draft.trim() && pendingAttachments.length === 0}
+                    className="gap-1 px-2.5"
+                  >
+                    <Send className="size-3" />
+                    Send
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        </form>
+          </>
+        )}
+      </form>
     </aside>
   )
 }

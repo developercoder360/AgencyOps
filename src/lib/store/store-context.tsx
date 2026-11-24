@@ -293,6 +293,7 @@ export interface StoreContextValue {
     authorId?: string,
     options?: {
       authorName?: string
+      parentId?: string
       mentions?: string[]
       attachments?: AttachmentFile[]
       isQaRelated?: boolean

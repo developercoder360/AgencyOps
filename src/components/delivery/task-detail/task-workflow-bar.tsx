@@ -5,12 +5,15 @@ import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import {
+  Clock,
   PauseCircle,
   PlayCircle,
   SendHorizontal,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react"
+import { StatusBadge } from "@/components/shared"
+import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -52,6 +55,7 @@ interface TaskWorkflowBarProps {
   task: Task
   users: StaffUser[]
   permissions: TaskRolePermissions
+  todayIso?: string
   holdDialogOpen: boolean
   onHoldDialogOpenChange: (open: boolean) => void
   onSubmitOnHold: (reason: string) => void
@@ -70,6 +74,7 @@ export function TaskWorkflowBar({
   task,
   users,
   permissions,
+  todayIso,
   holdDialogOpen,
   onHoldDialogOpenChange,
   onSubmitOnHold,
@@ -147,14 +152,33 @@ export function TaskWorkflowBar({
   }
 
   const taskAssignees = users.filter((u) => task.assigneeIds.includes(u.id))
+  const overdue =
+    Boolean(todayIso) &&
+    task.status !== "Complete" &&
+    task.dueDate < (todayIso ?? "")
 
   return (
     <>
-      {hasAnyAction ? (
-        <div
-          aria-label="Workflow actions"
-          className="flex h-12 shrink-0 items-center justify-between gap-2 border-t border-border bg-card/95 px-4 backdrop-blur-xs"
-        >
+      <div
+        aria-label="Workflow actions"
+        className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border bg-card/95 px-4 py-2 backdrop-blur-xs"
+      >
+        <div className="flex items-center gap-2.5">
+          <StatusBadge status={task.status} />
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 text-[11px] tabular-nums",
+              overdue
+                ? "font-semibold text-rose-600 dark:text-rose-400"
+                : "text-muted-foreground"
+            )}
+          >
+            <Clock className="size-3 shrink-0" />
+            <span>{overdue ? `Overdue (${task.dueDate})` : `Due ${task.dueDate}`}</span>
+          </span>
+        </div>
+
+        {hasAnyAction ? (
           <div className="flex flex-wrap items-center gap-2">
             {showPutOnHold ? (
               <Button
@@ -194,33 +218,33 @@ export function TaskWorkflowBar({
                 Send to QA
               </Button>
             ) : null}
-          </div>
 
-          {showQaActions ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                onClick={openQaFail}
-                className="gap-1.5 text-xs"
-              >
-                <ShieldAlert className="size-3.5" />
-                QA Fail
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={onQaPass}
-                className="gap-1.5 bg-emerald-600 text-xs text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-              >
-                <ShieldCheck className="size-3.5" />
-                QA Pass
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+            {showQaActions ? (
+              <>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={openQaFail}
+                  className="gap-1.5 text-xs"
+                >
+                  <ShieldAlert className="size-3.5" />
+                  QA Fail
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={onQaPass}
+                  className="gap-1.5 bg-emerald-600 text-xs text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                >
+                  <ShieldCheck className="size-3.5" />
+                  QA Pass
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       {/* On Hold Dialog */}
       <Dialog open={holdDialogOpen} onOpenChange={onHoldDialogOpenChange}>

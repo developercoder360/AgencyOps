@@ -910,19 +910,31 @@ function FilesTabInner({
   return (
     <div className="space-y-4">
       {/* Storage Summary Strip (Tremor Tracker + metrics) */}
-      <Card className="p-3.5 sm:p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2.5">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+      <Card className={compact ? "p-2.5 sm:p-3" : "p-3.5 sm:p-4"}>
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "flex items-center justify-center rounded-lg bg-primary/10 text-primary",
+                  compact ? "size-7" : "size-9"
+                )}
+              >
                 <HardDrive className="size-4" />
               </div>
               <div>
-                <div className="text-[11px] font-medium text-muted-foreground">
-                  Storage Summary
-                </div>
+                {!compact && (
+                  <div className="text-[11px] font-medium text-muted-foreground">
+                    Storage Summary
+                  </div>
+                )}
                 <div className="flex items-baseline gap-2">
-                  <span className="text-base font-bold tabular-nums text-foreground">
+                  <span
+                    className={cn(
+                      "font-bold tabular-nums text-foreground",
+                      compact ? "text-sm" : "text-base"
+                    )}
+                  >
                     {summary.totalFiles}{" "}
                     {summary.totalFiles === 1 ? "file" : "files"}
                   </span>

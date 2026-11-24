@@ -1343,6 +1343,7 @@ export class StoreManager {
     authorId?: string,
     options?: {
       authorName?: string
+      parentId?: string
       mentions?: string[]
       attachments?: AttachmentFile[]
       isQaRelated?: boolean
@@ -1356,6 +1357,7 @@ export class StoreManager {
 
     const newComment: TaskComment = {
       id: `tc-${crypto.randomUUID().slice(0, 8)}`,
+      parentId: options?.parentId,
       authorId: authorId || matched?.id || fallback.id,
       authorName: options?.authorName || matched?.name || fallback.name,
       content,
@@ -1396,7 +1398,12 @@ export class StoreManager {
       ...s,
       tasks: s.tasks.map((t) =>
         t.id === taskId
-          ? { ...t, comments: t.comments.filter((c) => c.id !== commentId) }
+          ? {
+              ...t,
+              comments: t.comments.filter(
+                (c) => c.id !== commentId && c.parentId !== commentId
+              ),
+            }
           : t
       ),
     }))

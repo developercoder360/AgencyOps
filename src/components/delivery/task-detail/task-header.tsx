@@ -5,7 +5,9 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Copy,
   FolderInput,
   Link2,
@@ -55,10 +57,10 @@ export function TaskHeader({
   isWatching: _isWatching,
   watcherCount: _watcherCount,
   isExpanded,
-  hasPrev: _hasPrev,
-  hasNext: _hasNext,
-  onPrev: _onPrev,
-  onNext: _onNext,
+  hasPrev,
+  hasNext,
+  onPrev,
+  onNext,
   onToggleWatch: _onToggleWatch,
   onDuplicate,
   onOpenMoveProject,
@@ -123,6 +125,40 @@ export function TaskHeader({
 
       {/* Right actions */}
       <div className="flex shrink-0 items-center gap-1">
+        {/* Previous / Next Task */}
+        <div className="mr-0.5 hidden items-center rounded-md border border-border bg-muted/40 p-0.5 sm:inline-flex">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                disabled={!hasPrev}
+                onClick={onPrev}
+                aria-label="Previous task"
+              >
+                <ChevronUp className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs">Previous task (Alt+K)</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                disabled={!hasNext}
+                onClick={onNext}
+                aria-label="Next task"
+              >
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs">Next task (Alt+J)</TooltipContent>
+          </Tooltip>
+        </div>
+
         {/* Copy link */}
         <Tooltip>
           <TooltipTrigger asChild>

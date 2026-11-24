@@ -163,10 +163,10 @@ export function TaskDetailPanel({
 
   // Container UI states
   const [isExpanded, setIsExpanded] = React.useState(false)
-  const [leftTab, setLeftTab] = React.useState<"details" | "files">("details")
-  const [mobileTab, setMobileTab] = React.useState<"details" | "files" | "activity">(
-    "details"
-  )
+  const [leftTab, setLeftTab] = React.useState<"details" | "revisions" | "files">("details")
+  const [mobileTab, setMobileTab] = React.useState<
+    "details" | "revisions" | "files" | "activity"
+  >("details")
   const [editingTitle, setEditingTitle] = React.useState(false)
   const [titleDraft, setTitleDraft] = React.useState("")
   const [holdDialogOpen, setHoldDialogOpen] = React.useState(false)
@@ -658,10 +658,10 @@ export function TaskDetailPanel({
             "flex flex-col gap-0 overflow-clip p-0 transition-all duration-200",
             // Mobile: full-screen viewport height (100dvh)
             "inset-0 h-dvh max-h-dvh w-full sm:w-full max-w-none sm:max-w-none border-0",
-            // Desktop: wide right panel (960px, max 90vw, full 100dvh) OR expanded centered modal
+            // Desktop: wide right panel (1120px, max 94vw, full 100dvh) OR expanded centered modal
             isExpanded
-              ? "md:inset-auto md:top-1/2 md:left-1/2 md:h-[90dvh] md:max-h-[90dvh] md:w-[92vw] md:max-w-[1140px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:border md:border-border md:shadow-2xl"
-              : "md:inset-y-0 md:top-0 md:right-0 md:bottom-0 md:left-auto md:h-dvh md:max-h-dvh md:w-[960px] md:max-w-[90vw] md:border-l md:border-border"
+              ? "md:inset-auto md:top-1/2 md:left-1/2 md:h-[92dvh] md:max-h-[92dvh] md:w-[95vw] md:max-w-[1360px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:border md:border-border md:shadow-2xl"
+              : "md:inset-y-0 md:top-0 md:right-0 md:bottom-0 md:left-auto md:h-dvh md:max-h-dvh md:w-[1120px] md:max-w-[94vw] md:border-l md:border-border"
           )}
         >
           {/* Screen-reader accessible title & description for Radix Dialog semantics */}
@@ -681,7 +681,7 @@ export function TaskDetailPanel({
                 <Skeleton className="h-5 w-60" />
                 <Skeleton className="h-6 w-24" />
               </div>
-              <div className="grid flex-1 grid-cols-1 md:grid-cols-[1fr_340px]">
+              <div className="grid flex-1 grid-cols-1 md:grid-cols-[1fr_390px] xl:grid-cols-[1fr_420px]">
                 <div className="space-y-5 p-5">
                   <Skeleton className="h-8 w-3/4" />
                   <Skeleton className="h-36 w-full rounded-xl" />
@@ -740,98 +740,91 @@ export function TaskDetailPanel({
                 onClose={handleClose}
               />
 
-              {/* Desktop Left-Workspace Tabs (>=900px): Details | Files */}
+              {/* Desktop Left-Workspace Tabs (>=900px): Details | Revisions | Files */}
               <div
                 role="tablist"
                 aria-label="Task workspace sections"
-                className="hidden shrink-0 items-center gap-1 border-b border-border bg-muted/20 px-4 py-1.5 min-[900px]:flex"
+                className="hidden shrink-0 items-center gap-1 border-b border-border bg-card px-4 min-[900px]:flex"
               >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={leftTab === "details"}
-                  onClick={() => setLeftTab("details")}
-                  className={cn(
-                    "rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
-                    leftTab === "details"
-                      ? "bg-background text-foreground shadow-xs font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  Details
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={leftTab === "files"}
-                  onClick={() => setLeftTab("files")}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
-                    leftTab === "files"
-                      ? "bg-background text-foreground shadow-xs font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <span>Files</span>
-                  <span className="rounded-full bg-muted px-1.5 font-mono text-[10px] tabular-nums text-foreground">
-                    {taskFilesCount}
-                  </span>
-                </button>
+                {(
+                  [
+                    { id: "details", label: "Details" },
+                    {
+                      id: "revisions",
+                      label: "Revisions",
+                      count: (task.revisions || []).length,
+                    },
+                    {
+                      id: "files",
+                      label: "Files",
+                      count: taskFilesCount,
+                    },
+                  ] as const
+                ).map((tab) => {
+                  const active = leftTab === tab.id
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setLeftTab(tab.id)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors cursor-pointer",
+                        active
+                          ? "border-primary text-foreground font-semibold"
+                          : "border-transparent text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <span>{tab.label}</span>
+                      {"count" in tab ? (
+                        <span className="rounded-full bg-muted px-1.5 font-mono text-[10px] tabular-nums text-foreground">
+                          {tab.count}
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
               </div>
 
-              {/* Mobile/Tablet Tabs (<900px): Details | Files | Activity */}
+              {/* Mobile/Tablet Tabs (<900px): Details | Revisions | Files | Activity */}
               <div
                 role="tablist"
                 aria-label="Task view sections"
                 className="flex shrink-0 border-b border-border bg-muted/30 min-[900px]:hidden"
               >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mobileTab === "details"}
-                  onClick={() => setMobileTab("details")}
-                  className={cn(
-                    "flex-1 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors",
-                    mobileTab === "details"
-                      ? "border-primary text-foreground"
-                      : "border-transparent text-muted-foreground"
-                  )}
-                >
-                  Details
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mobileTab === "files"}
-                  onClick={() => setMobileTab("files")}
-                  className={cn(
-                    "flex-1 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors",
-                    mobileTab === "files"
-                      ? "border-primary text-foreground"
-                      : "border-transparent text-muted-foreground"
-                  )}
-                >
-                  Files ({taskFilesCount})
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mobileTab === "activity"}
-                  onClick={() => setMobileTab("activity")}
-                  className={cn(
-                    "flex-1 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors",
-                    mobileTab === "activity"
-                      ? "border-primary text-foreground"
-                      : "border-transparent text-muted-foreground"
-                  )}
-                >
-                  Activity ({totalActivityCount})
-                </button>
+                {(
+                  [
+                    { id: "details", label: "Details" },
+                    {
+                      id: "revisions",
+                      label: `Revisions (${(task.revisions || []).length})`,
+                    },
+                    { id: "files", label: `Files (${taskFilesCount})` },
+                    { id: "activity", label: `Activity (${totalActivityCount})` },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={mobileTab === tab.id}
+                    onClick={() => setMobileTab(tab.id)}
+                    className={cn(
+                      "flex-1 border-b-2 px-2 py-2.5 text-xs font-semibold transition-colors",
+                      mobileTab === tab.id
+                        ? "border-primary text-foreground"
+                        : "border-transparent text-muted-foreground"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
               {/* Main 2-column Body */}
               <div className="flex min-h-0 flex-1 overflow-clip">
-                {/* LEFT COLUMN: Details or Files + Sticky Workflow Bar */}
+                {/* LEFT COLUMN: Details, Revisions, or Files + Sticky Workflow Bar */}
                 <div
                   className={cn(
                     "min-h-0 min-w-0 flex-1 flex-col",
@@ -856,6 +849,73 @@ export function TaskDetailPanel({
                       scopeId={task.id}
                       compact
                       onOpenTask={onSelectTask}
+                    />
+                  </div>
+
+                  {/* Revisions Tab Content */}
+                  <div
+                    className={cn(
+                      "min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5",
+                      mobileTab === "revisions"
+                        ? "block"
+                        : leftTab === "revisions" && mobileTab !== "activity"
+                          ? "hidden min-[900px]:block"
+                          : "hidden"
+                    )}
+                  >
+                    <TaskRevisions
+                      taskId={task.id}
+                      taskStatus={task.status}
+                      revisions={task.revisions || []}
+                      users={users}
+                      taskAssigneeIds={task.assigneeIds}
+                      currentUserRole="Super Admin"
+                      currentUserId="usr-admin"
+                      permissions={permissions}
+                      todayIso={todayIso}
+                      defaultDueDate={task.dueDate}
+                      defaultAssigneeIds={
+                        task.assigneeIds.length > 0
+                          ? task.assigneeIds
+                          : users[0]?.id
+                          ? [users[0].id]
+                          : ["usr-admin"]
+                      }
+                      nextRevisionNumber={task.nextRevisionNumber}
+                      nextRedrawNumber={task.nextRedrawNumber}
+                      onAddRevision={(data) => {
+                        return addRevision(task.id, data, actorName)
+                      }}
+                      onUpdateRevision={(revisionId, updates) => {
+                        updateRevision(task.id, revisionId, updates, actorName)
+                        toast.success("Saved")
+                      }}
+                      onSetRevisionStatus={(revisionId, status) => {
+                        setRevisionStatus(task.id, revisionId, status, actorName)
+                        toast.success("Saved")
+                      }}
+                      onRemoveRevision={(revisionId) => {
+                        removeRevision(task.id, revisionId, actorName)
+                      }}
+                      onAddRevisionFiles={(revisionId, files) => {
+                        addRevisionFiles(task.id, revisionId, files, actorName)
+                        toast.success("Reference file attached")
+                      }}
+                      onMoveToReDraw={() => {
+                        updateTask(
+                          task.id,
+                          { status: "Re-Draw" },
+                          {
+                            type: "system",
+                            actorId: "usr-actor",
+                            actorName,
+                            action: "moved task to Re-Draw",
+                            fromValue: task.status,
+                            toValue: "Re-Draw",
+                            detail: "Triggered by revision added to completed/QA task",
+                          }
+                        )
+                      }}
                     />
                   </div>
 
@@ -972,62 +1032,6 @@ export function TaskDetailPanel({
                       onSave={handleDescriptionSave}
                     />
 
-                    {/* Revisions */}
-                    <TaskRevisions
-                      taskId={task.id}
-                      taskStatus={task.status}
-                      revisions={task.revisions || []}
-                      users={users}
-                      taskAssigneeIds={task.assigneeIds}
-                      currentUserRole="Super Admin"
-                      currentUserId="usr-admin"
-                      permissions={permissions}
-                      todayIso={todayIso}
-                      defaultDueDate={task.dueDate}
-                      defaultAssigneeIds={
-                        task.assigneeIds.length > 0
-                          ? task.assigneeIds
-                          : users[0]?.id
-                          ? [users[0].id]
-                          : ["usr-admin"]
-                      }
-                      nextRevisionNumber={task.nextRevisionNumber}
-                      nextRedrawNumber={task.nextRedrawNumber}
-                      onAddRevision={(data) => {
-                        return addRevision(task.id, data, actorName)
-                      }}
-                      onUpdateRevision={(revisionId, updates) => {
-                        updateRevision(task.id, revisionId, updates, actorName)
-                        toast.success("Saved")
-                      }}
-                      onSetRevisionStatus={(revisionId, status) => {
-                        setRevisionStatus(task.id, revisionId, status, actorName)
-                        toast.success("Saved")
-                      }}
-                      onRemoveRevision={(revisionId) => {
-                        removeRevision(task.id, revisionId, actorName)
-                      }}
-                      onAddRevisionFiles={(revisionId, files) => {
-                        addRevisionFiles(task.id, revisionId, files, actorName)
-                        toast.success("Reference file attached")
-                      }}
-                      onMoveToReDraw={() => {
-                        updateTask(
-                          task.id,
-                          { status: "Re-Draw" },
-                          {
-                            type: "system",
-                            actorId: "usr-actor",
-                            actorName,
-                            action: "moved task to Re-Draw",
-                            fromValue: task.status,
-                            toValue: "Re-Draw",
-                            detail: "Triggered by revision added to completed/QA task",
-                          }
-                        )
-                      }}
-                    />
-
                     {/* QA Review History */}
                     {task.qaHistory.length > 0 ? (
                       <section
@@ -1083,6 +1087,7 @@ export function TaskDetailPanel({
                     task={task}
                     users={users}
                     permissions={permissions}
+                    todayIso={todayIso}
                     holdDialogOpen={holdDialogOpen}
                     onHoldDialogOpenChange={setHoldDialogOpen}
                     onSubmitOnHold={handleSubmitOnHold}
@@ -1093,10 +1098,10 @@ export function TaskDetailPanel({
                   />
                 </div>
 
-                {/* RIGHT COLUMN: Activity & Comments (320px desktop) */}
+                {/* RIGHT COLUMN: Activity & Comments (390px-420px desktop) */}
                 <div
                   className={cn(
-                    "min-h-0 flex-col border-border bg-muted/30 min-[900px]:w-[320px] min-[900px]:shrink-0 min-[900px]:border-l",
+                    "min-h-0 flex-col border-border bg-muted/30 min-[900px]:w-[390px] xl:w-[420px] min-[900px]:shrink-0 min-[900px]:border-l",
                     mobileTab === "activity"
                       ? "flex w-full"
                       : "hidden min-[900px]:flex"
@@ -1112,17 +1117,20 @@ export function TaskDetailPanel({
                     nowMs={nowMs}
                     onAddComment={({
                       content,
+                      parentId,
                       mentions,
                       attachments,
                       isQaRelated,
                     }: {
                       content: string
+                      parentId?: string
                       mentions: string[]
                       attachments: AttachmentFile[]
                       isQaRelated: boolean
                     }) => {
                       addTaskComment(task.id, content, actorId, {
                         authorName: actorName,
+                        parentId,
                         mentions,
                         attachments,
                         isQaRelated,
@@ -1130,7 +1138,7 @@ export function TaskDetailPanel({
                       for (const att of attachments) {
                         addTaskEvidence(task.id, att, actorName)
                       }
-                      toast.success("Comment posted")
+                      toast.success(parentId ? "Reply posted" : "Comment posted")
                     }}
                     onEditComment={(commentId, content) => {
                       editTaskComment(task.id, commentId, content)

@@ -384,6 +384,7 @@ export interface TaskActivityEvent {
 
 export interface TaskComment {
   id: string
+  parentId?: string
   authorId: string
   authorName: string
   content: string
