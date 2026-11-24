@@ -1,4 +1,4 @@
-import type { Task, TaskRevision } from "@/types"
+import type { Brand, Invoice, Lead, Project, Task, TaskRevision } from "@/types"
 import {
   createInitialEmptyData,
   STORE_STORAGE_KEY,
@@ -150,6 +150,64 @@ export function migrateTask(rawTask: unknown): Task {
   return task as unknown as Task
 }
 
+export function migrateBrand(rawBrand: unknown): Brand {
+  if (!rawBrand || typeof rawBrand !== "object") {
+    return rawBrand as Brand
+  }
+  const b = { ...(rawBrand as Record<string, unknown>) }
+  if (!b.address && typeof b.tagline === "string") {
+    b.address = "100 Montgomery St, Suite 1200, San Francisco, CA 94104"
+  } else if (!b.address) {
+    b.address = ""
+  }
+  if (!b.merchantKeys || typeof b.merchantKeys !== "object") {
+    b.merchantKeys = {}
+  }
+  return b as unknown as Brand
+}
+
+export function migrateLead(rawLead: unknown, index: number): Lead {
+  if (!rawLead || typeof rawLead !== "object") {
+    return rawLead as Lead
+  }
+  const ld = { ...(rawLead as Record<string, unknown>) }
+  if (!ld.address) {
+    ld.address = "120 Broadway, Suite 1400"
+  }
+  if (!ld.zipCode) {
+    ld.zipCode = "10005"
+  }
+  if (!Array.isArray(ld.services) || ld.services.length === 0) {
+    ld.services = ["Website Design & Development", "Brand Identity"]
+  }
+  if (!ld.description && typeof ld.notes === "string") {
+    ld.description = ld.notes
+  }
+  return ld as unknown as Lead
+}
+
+export function migrateInvoice(rawInvoice: unknown, index: number): Invoice {
+  if (!rawInvoice || typeof rawInvoice !== "object") {
+    return rawInvoice as Invoice
+  }
+  const inv = { ...(rawInvoice as Record<string, unknown>) }
+  if (!inv.leadId) {
+    inv.leadId = `lead-${(index % 8) + 1}`
+  }
+  return inv as unknown as Invoice
+}
+
+export function migrateProject(rawProject: unknown, index: number): Project {
+  if (!rawProject || typeof rawProject !== "object") {
+    return rawProject as Project
+  }
+  const prj = { ...(rawProject as Record<string, unknown>) }
+  if (!prj.leadId) {
+    prj.leadId = `lead-${(index % 8) + 1}`
+  }
+  return prj as unknown as Project
+}
+
 export function loadStoredData(): StoreData {
   if (typeof window === "undefined") {
     return createInitialEmptyData()
@@ -170,19 +228,27 @@ export function loadStoredData(): StoreData {
     const base = createInitialEmptyData()
     const rawTasks = Array.isArray(parsed.tasks) ? parsed.tasks : base.tasks
     const migratedTasks = rawTasks.map(migrateTask)
+    const rawBrands = Array.isArray(parsed.brands) ? parsed.brands : base.brands
+    const migratedBrands = rawBrands.map(migrateBrand)
+    const rawLeads = Array.isArray(parsed.leads) ? parsed.leads : base.leads
+    const migratedLeads = rawLeads.map(migrateLead)
+    const rawInvoices = Array.isArray(parsed.invoices) ? parsed.invoices : base.invoices
+    const migratedInvoices = rawInvoices.map(migrateInvoice)
+    const rawProjects = Array.isArray(parsed.projects) ? parsed.projects : base.projects
+    const migratedProjects = rawProjects.map(migrateProject)
 
     const result: StoreData = {
       version: STORE_VERSION,
-      brands: Array.isArray(parsed.brands) ? parsed.brands : base.brands,
+      brands: migratedBrands,
       cities: Array.isArray(parsed.cities) ? parsed.cities : base.cities,
       teams: Array.isArray(parsed.teams) ? parsed.teams : base.teams,
       users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : base.users,
-      leads: Array.isArray(parsed.leads) ? parsed.leads : base.leads,
+      leads: migratedLeads,
       signups: Array.isArray(parsed.signups) ? parsed.signups : base.signups,
-      invoices: Array.isArray(parsed.invoices) ? parsed.invoices : base.invoices,
+      invoices: migratedInvoices,
       transactions: Array.isArray(parsed.transactions) ? parsed.transactions : base.transactions,
       marketingSpendings: Array.isArray(parsed.marketingSpendings) ? parsed.marketingSpendings : base.marketingSpendings,
-      projects: Array.isArray(parsed.projects) ? parsed.projects : base.projects,
+      projects: migratedProjects,
       tasks: migratedTasks,
       chatThreads: Array.isArray(parsed.chatThreads) ? parsed.chatThreads : base.chatThreads,
       notifications: Array.isArray(parsed.notifications) ? parsed.notifications : base.notifications,

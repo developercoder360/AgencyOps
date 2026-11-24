@@ -117,6 +117,7 @@ function generateBilling() {
       brandName: brand.name,
       projectId: `prj-${(i % 44) + 1}`,
       projectName: `${client.company} Digital Rollout`,
+      leadId: `lead-${(i % 8) + 1}`,
       gateway,
       currency,
       lineItems,

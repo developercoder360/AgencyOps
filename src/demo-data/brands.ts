@@ -6,7 +6,7 @@ export const MOCK_BRANDS: Brand[] = [
     name: "PixelForge Studio",
     slug: "pixelforge",
     domain: "pixelforgestudio.com",
-    tagline: "High-converting web design & product engineering",
+    address: "100 Montgomery St, Suite 1200, San Francisco, CA 94104",
     primaryColor: "#2563EB",
     logoText: "PF",
     email: "hello@pixelforgestudio.com",
@@ -15,13 +15,33 @@ export const MOCK_BRANDS: Brand[] = [
     monthlyRevenueUsd: 48500,
     status: "Active",
     createdAt: "2023-02-14",
+    merchantKeys: {
+      stripe: {
+        publishableKey: "pk_live_51M0pxPF9847291048201",
+        secretKey: "sk_live_51M0pxPFsec9918237190",
+      },
+      authorizeNet: {
+        merchantId: "authnet_pf_92810",
+        transactionKey: "8aB9c7D6e5F4g3H2",
+        loginId: "apx_pf_live_login",
+      },
+      nmi: {
+        dataTokenizationKey: "tok_nmi_pf_live_38210",
+        securityKey: "sec_nmi_key_9283746152",
+      },
+      square: {
+        applicationId: "sq0idp-ABcDeFgHiJkLmNoPqRsTuV",
+        accessToken: "EAAAEOw_PFsqAccessToken99",
+        locationId: "LOC_PF_MAIN_01",
+      },
+    },
   },
   {
     id: "brd-2",
     name: "Apex Brandworks",
     slug: "apex-brandworks",
     domain: "apexbrandworks.co.uk",
-    tagline: "Logo identity, visual systems & brand guidelines",
+    address: "450 Lexington Ave, 4th Floor, New York, NY 10017",
     primaryColor: "#059669",
     logoText: "AB",
     email: "studio@apexbrandworks.co.uk",
@@ -30,13 +50,33 @@ export const MOCK_BRANDS: Brand[] = [
     monthlyRevenueUsd: 36200,
     status: "Active",
     createdAt: "2023-06-08",
+    merchantKeys: {
+      stripe: {
+        publishableKey: "pk_live_51ABbrand92847192830",
+        secretKey: "sk_live_51ABbrandSec8829102",
+      },
+      authorizeNet: {
+        merchantId: "authnet_ab_31920",
+        transactionKey: "9zY8x7W6v5U4t3S2",
+        loginId: "apex_ab_live_id",
+      },
+      nmi: {
+        dataTokenizationKey: "tok_nmi_ab_live_99214",
+        securityKey: "sec_nmi_key_8849201948",
+      },
+      square: {
+        applicationId: "sq0idp-ZxYwVuTsRqPoNmLkJiHgFe",
+        accessToken: "EAAAEPq_ABsqAccessToken12",
+        locationId: "LOC_AB_NY_02",
+      },
+    },
   },
   {
     id: "brd-3",
     name: "Northstar SEO",
     slug: "northstar-seo",
     domain: "northstarseo.ca",
-    tagline: "Technical search growth & content authority",
+    address: "222 Merchandise Mart Plaza, Suite 900, Chicago, IL 60654",
     primaryColor: "#7C3AED",
     logoText: "NS",
     email: "growth@northstarseo.ca",
@@ -45,13 +85,33 @@ export const MOCK_BRANDS: Brand[] = [
     monthlyRevenueUsd: 29800,
     status: "Active",
     createdAt: "2024-01-19",
+    merchantKeys: {
+      stripe: {
+        publishableKey: "pk_live_51NSgrowth8819203948",
+        secretKey: "sk_live_51NSgrowthSec7738291",
+      },
+      authorizeNet: {
+        merchantId: "authnet_ns_58291",
+        transactionKey: "7mK6n5P4q3R2s1T0",
+        loginId: "north_ns_live_id",
+      },
+      nmi: {
+        dataTokenizationKey: "tok_nmi_ns_live_44921",
+        securityKey: "sec_nmi_key_3391827401",
+      },
+      square: {
+        applicationId: "sq0idp-LkJiHgFeDcBaZyXwVuTsRq",
+        accessToken: "EAAAERs_NSsqAccessToken44",
+        locationId: "LOC_NS_CHI_03",
+      },
+    },
   },
   {
     id: "brd-4",
     name: "Veloce Digital",
     slug: "veloce-digital",
     domain: "velocedigital.io",
-    tagline: "Performance paid media & conversion funnels",
+    address: "500 West 2nd St, Suite 1900, Austin, TX 78701",
     primaryColor: "#D97706",
     logoText: "VD",
     email: "campaigns@velocedigital.io",
@@ -60,13 +120,33 @@ export const MOCK_BRANDS: Brand[] = [
     monthlyRevenueUsd: 41900,
     status: "Active",
     createdAt: "2024-04-22",
+    merchantKeys: {
+      stripe: {
+        publishableKey: "pk_live_51VDmedia77291048291",
+        secretKey: "sk_live_51VDmediaSec6628190",
+      },
+      authorizeNet: {
+        merchantId: "authnet_vd_44910",
+        transactionKey: "6hJ5k4L3m2N1p0Q9",
+        loginId: "veloce_vd_live_id",
+      },
+      nmi: {
+        dataTokenizationKey: "tok_nmi_vd_live_55829",
+        securityKey: "sec_nmi_key_7719283049",
+      },
+      square: {
+        applicationId: "sq0idp-PoNmLkJiHgFeDcBaZyXwVu",
+        accessToken: "EAAAETu_VDsqAccessToken88",
+        locationId: "LOC_VD_ATX_04",
+      },
+    },
   },
   {
     id: "brd-5",
     name: "Craftly Media",
     slug: "craftly-media",
     domain: "craftlymedia.com",
-    tagline: "Social creative, video ads & retention marketing",
+    address: "800 5th Ave, Suite 4100, Seattle, WA 98104",
     primaryColor: "#0891B2",
     logoText: "CM",
     email: "team@craftlymedia.com",
@@ -75,6 +155,26 @@ export const MOCK_BRANDS: Brand[] = [
     monthlyRevenueUsd: 22400,
     status: "Active",
     createdAt: "2024-09-05",
+    merchantKeys: {
+      stripe: {
+        publishableKey: "pk_live_51CMvideo66192840192",
+        secretKey: "sk_live_51CMvideoSec5519284",
+      },
+      authorizeNet: {
+        merchantId: "authnet_cm_19283",
+        transactionKey: "5fG4h3J2k1L0m9N8",
+        loginId: "craftly_cm_live_id",
+      },
+      nmi: {
+        dataTokenizationKey: "tok_nmi_cm_live_66281",
+        securityKey: "sec_nmi_key_5528193049",
+      },
+      square: {
+        applicationId: "sq0idp-TsRqPoNmLkJiHgFeDcBaZy",
+        accessToken: "EAAAEVw_CMsqAccessToken77",
+        locationId: "LOC_CM_SEA_05",
+      },
+    },
   },
 ]
 

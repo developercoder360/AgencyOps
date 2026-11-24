@@ -116,6 +116,7 @@ function generateProjects(): Project[] {
       clientCompany: client.company,
       brandId: brand.id,
       brandName: brand.name,
+      leadId: `lead-${(i % 8) + 1}`,
       category,
       status,
       priority,

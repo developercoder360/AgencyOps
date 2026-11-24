@@ -98,12 +98,42 @@ export interface ModulePermissions {
   export: boolean
 }
 
+export interface StripeMerchantKeys {
+  publishableKey?: string
+  secretKey?: string
+}
+
+export interface AuthorizeNetMerchantKeys {
+  merchantId?: string
+  transactionKey?: string
+  loginId?: string
+}
+
+export interface NmiMerchantKeys {
+  dataTokenizationKey?: string
+  securityKey?: string
+}
+
+export interface SquareMerchantKeys {
+  applicationId?: string
+  accessToken?: string
+  locationId?: string
+}
+
+export interface BrandMerchantKeys {
+  stripe?: StripeMerchantKeys
+  authorizeNet?: AuthorizeNetMerchantKeys
+  nmi?: NmiMerchantKeys
+  square?: SquareMerchantKeys
+}
+
 export interface Brand {
   id: string
   name: string
   slug: string
   domain: string
-  tagline: string
+  address: string
+  tagline?: string
   primaryColor: string
   logoText: string
   logoUrl?: string
@@ -113,6 +143,7 @@ export interface Brand {
   monthlyRevenueUsd: number
   status: "Active" | "Inactive"
   createdAt: string
+  merchantKeys?: BrandMerchantKeys
 }
 
 export interface Team {
@@ -176,17 +207,23 @@ export interface Lead {
   name: string
   email: string
   phone: string
-  company: string
+  company?: string
   brandId: string
   brandName: string
   source: LeadSource
+  address?: string
   city: string
+  state?: string
+  zipCode?: string
   country: string
-  estimatedValue: number
+  services?: string[]
+  estimatedValue?: number
   currency: CurrencyCode
-  status: LeadStatus
+  status?: LeadStatus
   assignedStaffIds: string[]
+  clientPassword?: string
   createdAt: string
+  description?: string
   notes: string
   assignmentHistory: LeadAssignmentEvent[]
 }
@@ -237,6 +274,7 @@ export interface Invoice {
   brandName: string
   projectId?: string
   projectName?: string
+  leadId?: string
   gateway: PaymentGateway
   currency: CurrencyCode
   lineItems: InvoiceLineItem[]
@@ -318,6 +356,7 @@ export interface Project {
   clientCompany: string
   brandId: string
   brandName: string
+  leadId?: string
   category:
     | "Web Design"
     | "Logo & Branding"

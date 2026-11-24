@@ -8,28 +8,13 @@ export interface DeletionCheckResult {
 }
 
 /**
- * Brand deletion rule: BLOCK if any active leads, invoices, marketing spendings, or projects are linked.
+ * Brand deletion rule: Brands cannot be deleted as they are foundational organization entities.
  */
-export function checkBrandDeletion(store: StoreData, brandId: string): DeletionCheckResult {
-  const linkedLeads = store.leads.filter((l) => l.brandId === brandId).length
-  const linkedProjects = store.projects.filter((p) => p.brandId === brandId).length
-  const linkedInvoices = store.invoices.filter((i) => i.brandId === brandId).length
-  const linkedMarketing = store.marketingSpendings.filter((m) => m.brandId === brandId).length
-
-  if (linkedLeads > 0 || linkedProjects > 0 || linkedInvoices > 0 || linkedMarketing > 0) {
-    const parts: string[] = []
-    if (linkedProjects > 0) parts.push(`${linkedProjects} project${linkedProjects === 1 ? "" : "s"}`)
-    if (linkedInvoices > 0) parts.push(`${linkedInvoices} invoice${linkedInvoices === 1 ? "" : "s"}`)
-    if (linkedLeads > 0) parts.push(`${linkedLeads} lead${linkedLeads === 1 ? "" : "s"}`)
-    if (linkedMarketing > 0) parts.push(`${linkedMarketing} marketing record${linkedMarketing === 1 ? "" : "s"}`)
-
-    return {
-      allowed: false,
-      reason: `Cannot delete brand: linked to ${parts.join(", ")}. Reassign or delete them first.`,
-    }
+export function checkBrandDeletion(_store: StoreData, _brandId: string): DeletionCheckResult {
+  return {
+    allowed: false,
+    reason: "Agency brands cannot be deleted as they are core foundational entities.",
   }
-
-  return { allowed: true }
 }
 
 /**

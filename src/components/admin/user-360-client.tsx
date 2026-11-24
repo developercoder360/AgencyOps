@@ -259,16 +259,18 @@ export function User360Client({ user }: { user: StaffUser }) {
                           </TableCell>
                           <TableCell>
                             <div className="font-medium">{l.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {l.company}
-                            </div>
+                            {l.company ? (
+                              <div className="text-xs text-muted-foreground">
+                                {l.company}
+                              </div>
+                            ) : null}
                           </TableCell>
                           <TableCell className="text-xs">{l.brandName}</TableCell>
                           <TableCell className="tabular-nums text-xs font-medium">
-                            {formatCurrency(l.estimatedValue, l.currency)}
+                            {formatCurrency(l.estimatedValue || 0, l.currency)}
                           </TableCell>
                           <TableCell>
-                            <StatusBadge status={l.status} />
+                            <StatusBadge status={l.status || "New"} />
                           </TableCell>
                         </TableRow>
                       ))}
