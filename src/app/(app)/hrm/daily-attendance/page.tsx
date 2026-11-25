@@ -1,5 +1,7 @@
 "use client"
 
+import { DatePicker } from "@/components/ui/date-picker"
+
 import * as React from "react"
 import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
@@ -7,7 +9,7 @@ import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Edit3, History, Plus } from "lucide-react"
+import { Download, Edit3, History, Plus, Upload } from "lucide-react"
 import {
   DataTable,
   DataTableColumnHeader,
@@ -55,6 +57,44 @@ const STATUS_OPTIONS: AttendanceStatus[] = [
   "weekend",
 ]
 
+interface ParsedImportRow {
+  rowNumber: number
+  rawEmployee: string
+  userId?: string
+  userName?: string
+  userRole?: AttendanceRecord["userRole"]
+  department?: string
+  date: string
+  status: AttendanceStatus
+  checkIn?: string
+  checkOut?: string
+  notes?: string
+  error?: string
+}
+
+function computeWorkHours(
+  status: AttendanceStatus,
+  checkIn?: string,
+  checkOut?: string
+): number {
+  if (checkIn && checkOut) {
+    const [inH, inM] = checkIn.split(":").map(Number)
+    const [outH, outM] = checkOut.split(":").map(Number)
+    if (
+      Number.isFinite(inH) &&
+      Number.isFinite(inM) &&
+      Number.isFinite(outH) &&
+      Number.isFinite(outM)
+    ) {
+      const diff = (outH * 60 + outM - (inH * 60 + inM)) / 60
+      if (diff > 0) return Math.round(diff * 10) / 10
+    }
+  }
+  if (status === "present" || status === "late") return 8
+  if (status === "halfday") return 4
+  return 0
+}
+
 const manualEditSchema = z.object({
   status: z.enum([
     "present",
@@ -98,6 +138,12 @@ export default function DailyAttendancePage() {
   const [selected, setSelected] = React.useState<AttendanceRecord | null>(null)
   const [editing, setEditing] = React.useState<AttendanceRecord | null>(null)
   const [createOpen, setCreateOpen] = React.useState(false)
+  const [importOpen, setImportOpen] = React.useState(false)
+  const [importText, setImportText] = React.useState("")
+  const [importFileName, setImportFileName] = React.useState<string | null>(
+    null
+  )
+  const importFileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   const form = useForm<z.infer<typeof manualEditSchema>>({
     resolver: zodResolver(manualEditSchema),
@@ -199,6 +245,140 @@ export default function DailyAttendancePage() {
 
     toast.success(`Recorded attendance for ${userName}`)
     setCreateOpen(false)
+  }
+
+  const parsedImportRows = React.useMemo<ParsedImportRow[]>(() => {
+    const lines = importText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+    if (lines.length === 0) return []
+
+    const firstCols = lines[0]
+      .split(",")
+      .map((c) => c.trim().toLowerCase())
+    const hasHeader =
+      firstCols[0] === "employee" ||
+      firstCols[0] === "name" ||
+      firstCols[0] === "email" ||
+      firstCols[0] === "userid"
+    const dataLines = hasHeader ? lines.slice(1) : lines
+
+    return dataLines.map((line, idx) => {
+      const cols = line.split(",").map((c) => c.trim())
+      const [rawEmployee = "", rawDate = "", rawStatus = "present", rawIn = "", rawOut = "", rawNotes = ""] = cols
+      const rowNumber = hasHeader ? idx + 2 : idx + 1
+
+      const empKey = rawEmployee.toLowerCase()
+      const matchedUser = users.find(
+        (u) =>
+          u.id.toLowerCase() === empKey ||
+          u.email.toLowerCase() === empKey ||
+          u.name.toLowerCase() === empKey
+      )
+
+      const normalizedStatus = (rawStatus || "present").toLowerCase() as AttendanceStatus
+      const validStatus = STATUS_OPTIONS.includes(normalizedStatus)
+      const validDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+
+      let error: string | undefined
+      if (!matchedUser) {
+        error = rawEmployee ? `Unknown employee "${rawEmployee}"` : "Missing employee"
+      } else if (!validDate) {
+        error = "Date must be YYYY-MM-DD"
+      } else if (!validStatus) {
+        error = `Invalid status "${rawStatus}"`
+      }
+
+      return {
+        rowNumber,
+        rawEmployee,
+        userId: matchedUser?.id,
+        userName: matchedUser?.name,
+        userRole: matchedUser?.role,
+        department: matchedUser?.department,
+        date: rawDate,
+        status: validStatus ? normalizedStatus : "present",
+        checkIn: rawIn || undefined,
+        checkOut: rawOut || undefined,
+        notes: rawNotes || undefined,
+        error,
+      }
+    })
+  }, [importText, users])
+
+  const validImportRows = React.useMemo(
+    () => parsedImportRows.filter((r) => !r.error && r.userId),
+    [parsedImportRows]
+  )
+
+  function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = () => {
+      setImportText(typeof reader.result === "string" ? reader.result : "")
+    }
+    reader.readAsText(file)
+    e.target.value = ""
+  }
+
+  function handleDownloadTemplate() {
+    const firstUser = users[0]?.name ?? "Chloe Laurent"
+    const secondUser = users[1]?.name ?? "Marcus Vance"
+    const csv = [
+      "employee,date,status,checkIn,checkOut,notes",
+      `${firstUser},${todayIso},present,09:00,18:00,Biometric import`,
+      `${secondUser},${todayIso},late,09:25,18:15,Traffic delay`,
+    ].join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `attendance-import-template-${todayIso}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleConfirmImport() {
+    if (validImportRows.length === 0) return
+    const shift = shiftSchedules[0]?.name ?? "Morning Standard Shift (9-6)"
+    const now = new Date().toISOString().replace("T", " ").slice(0, 16)
+
+    for (const row of validImportRows) {
+      if (!row.userId) continue
+      createAttendanceRecord({
+        userId: row.userId,
+        userName: row.userName ?? row.rawEmployee,
+        userRole: row.userRole ?? "Designer/Developer",
+        department: row.department ?? "General",
+        date: row.date,
+        shiftName: shift,
+        status: row.status,
+        checkIn: row.checkIn,
+        checkOut: row.checkOut,
+        workHours: computeWorkHours(row.status, row.checkIn, row.checkOut),
+        lateMinutes: row.status === "late" ? 25 : 0,
+        notes: row.notes ?? "Bulk imported via CSV",
+        logs: [
+          {
+            id: `alog-${crypto.randomUUID().slice(0, 8)}`,
+            action: "Imported via CSV",
+            actor: "HR Manager",
+            timestamp: now,
+            detail: `Imported status: ${row.status}${row.checkIn ? ` (${row.checkIn}–${row.checkOut ?? "?"})` : ""}`,
+          },
+        ],
+      })
+    }
+
+    toast.success(
+      `Imported ${validImportRows.length} attendance ${validImportRows.length === 1 ? "record" : "records"}`
+    )
+    setImportText("")
+    setImportFileName(null)
+    setImportOpen(false)
   }
 
   const columns = React.useMemo<ColumnDef<AttendanceRecord>[]>(
@@ -309,14 +489,25 @@ export default function DailyAttendancePage() {
         description="Inspect daily biometric/web clock-ins, override attendance statuses, and audit check-in logs."
         badge={<Badge variant="secondary">{attendanceRecords.length} logs</Badge>}
         actions={
-          <Button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="gap-1.5"
-          >
-            <Plus className="size-4" />
-            Log Attendance
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setImportOpen(true)}
+              className="gap-1.5"
+            >
+              <Upload className="size-4" />
+              Import Attendance
+            </Button>
+            <Button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="gap-1.5"
+            >
+              <Plus className="size-4" />
+              Log Attendance
+            </Button>
+          </div>
         }
       />
 
@@ -473,7 +664,17 @@ export default function DailyAttendancePage() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="log-date">Date</Label>
-                <Input id="log-date" type="date" {...createForm.register("date")} />
+                <Controller
+                  control={createForm.control}
+                  name="date"
+                  render={({ field }) => (
+                    <DatePicker
+                      id="log-date"
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -499,6 +700,171 @@ export default function DailyAttendancePage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Attendance CSV Dialog */}
+      <Dialog
+        open={importOpen}
+        onOpenChange={(next) => {
+          setImportOpen(next)
+          if (!next) {
+            setImportText("")
+            setImportFileName(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Import Attendance (CSV)</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file or paste rows using{" "}
+              <span className="font-mono text-xs">
+                employee,date,status,checkIn,checkOut,notes
+              </span>
+              . Employees match by name, email, or ID.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border bg-muted/30 p-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => importFileInputRef.current?.click()}
+                  className="gap-1.5"
+                >
+                  <Upload className="size-3.5" />
+                  {importFileName ? "Replace CSV" : "Choose CSV File"}
+                </Button>
+                <input
+                  ref={importFileInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="sr-only"
+                  onChange={handleImportFileChange}
+                />
+                {importFileName ? (
+                  <span className="text-xs font-medium text-foreground">
+                    {importFileName}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    or paste CSV data below
+                  </span>
+                )}
+              </div>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleDownloadTemplate}
+                className="gap-1.5 text-xs"
+              >
+                <Download className="size-3.5" />
+                Sample Template
+              </Button>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="import-csv-text">CSV Content</Label>
+              <Textarea
+                id="import-csv-text"
+                rows={5}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                placeholder={`employee,date,status,checkIn,checkOut,notes\n${users[0]?.name ?? "Chloe Laurent"},${todayIso},present,09:00,18:00,Biometric sync`}
+                className="font-mono text-xs"
+              />
+            </div>
+
+            {parsedImportRows.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-foreground">
+                    Preview ({parsedImportRows.length} rows)
+                  </span>
+                  <span className="text-muted-foreground">
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      {validImportRows.length} ready
+                    </span>
+                    {parsedImportRows.length - validImportRows.length > 0 ? (
+                      <span className="ml-2 font-semibold text-destructive">
+                        {parsedImportRows.length - validImportRows.length} skipped
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+
+                <div className="max-h-44 overflow-auto rounded-lg border border-border">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-muted/80 text-[11px] text-muted-foreground">
+                      <tr>
+                        <th className="px-2.5 py-1.5">#</th>
+                        <th className="px-2.5 py-1.5">Employee</th>
+                        <th className="px-2.5 py-1.5">Date</th>
+                        <th className="px-2.5 py-1.5">Status</th>
+                        <th className="px-2.5 py-1.5">Result</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {parsedImportRows.map((r) => (
+                        <tr key={r.rowNumber}>
+                          <td className="px-2.5 py-1.5 font-mono text-muted-foreground">
+                            {r.rowNumber}
+                          </td>
+                          <td className="px-2.5 py-1.5 font-medium">
+                            {r.userName ?? (r.rawEmployee || "—")}
+                          </td>
+                          <td className="px-2.5 py-1.5 font-mono">
+                            {r.date || "—"}
+                          </td>
+                          <td className="px-2.5 py-1.5 capitalize">
+                            {r.status}
+                          </td>
+                          <td className="px-2.5 py-1.5">
+                            {r.error ? (
+                              <span className="text-[11px] text-destructive">
+                                {r.error}
+                              </span>
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                className="bg-emerald-500/15 text-[10px] text-emerald-700 dark:text-emerald-300"
+                              >
+                                Ready
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setImportOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={validImportRows.length === 0}
+              onClick={handleConfirmImport}
+            >
+              Import {validImportRows.length > 0 ? validImportRows.length : ""}{" "}
+              {validImportRows.length === 1 ? "Record" : "Records"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -388,6 +388,7 @@ export interface TaskComment {
   authorId: string
   authorName: string
   content: string
+  richContent?: Record<string, unknown>
   createdAt: string
   editedAt?: string
   mentions?: string[]
@@ -446,16 +447,29 @@ export interface Task {
   createdAt: string
 }
 
+export interface ChatMessageAttachment {
+  id: string
+  name: string
+  size?: string
+}
+
 export interface ChatMessage {
   id: string
   senderId: string
   senderName: string
   senderInitials: string
   content: string
+  richContent?: Record<string, unknown>
   timestamp: string
   edited?: boolean
   readByIds: string[]
   attachment?: string
+  attachments?: ChatMessageAttachment[]
+  replyToId?: string
+  replyToAuthor?: string
+  replyToPreview?: string
+  reactions?: Record<string, string[]>
+  pinned?: boolean
 }
 
 export interface ChatThread {
@@ -468,6 +482,8 @@ export interface ChatThread {
   lastMessageAt: string
   lastMessagePreview: string
   messages: ChatMessage[]
+  pinned?: boolean
+  muted?: boolean
 }
 
 export interface AttendanceLogEvent {

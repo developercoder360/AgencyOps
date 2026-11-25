@@ -294,12 +294,18 @@ export interface StoreContextValue {
     options?: {
       authorName?: string
       parentId?: string
+      richContent?: Record<string, unknown>
       mentions?: string[]
       attachments?: AttachmentFile[]
       isQaRelated?: boolean
     }
   ) => void
-  editTaskComment: (taskId: string, commentId: string, content: string) => void
+  editTaskComment: (
+    taskId: string,
+    commentId: string,
+    content: string,
+    richContent?: Record<string, unknown>
+  ) => void
   deleteTaskComment: (taskId: string, commentId: string) => void
   toggleCommentResolved: (taskId: string, commentId: string, actorName?: string) => void
   addTaskEvidence: (
@@ -332,11 +338,33 @@ export interface StoreContextValue {
     threadId: string,
     content: string,
     senderId?: string,
-    attachment?: string
+    attachment?: string,
+    options?: {
+      richContent?: Record<string, unknown>
+      replyToId?: string
+      replyToAuthor?: string
+      replyToPreview?: string
+      attachments?: { id: string; name: string; size?: string }[]
+    }
   ) => ChatMessage | null
-  editMessage: (threadId: string, messageId: string, content: string) => void
+  editMessage: (
+    threadId: string,
+    messageId: string,
+    content: string,
+    richContent?: Record<string, unknown>
+  ) => void
+  deleteMessage: (threadId: string, messageId: string) => void
+  toggleMessageReaction: (
+    threadId: string,
+    messageId: string,
+    emoji: string,
+    userId: string
+  ) => void
+  togglePinMessage: (threadId: string, messageId: string) => void
   deleteChatThread: (threadId: string) => void
   markThreadRead: (threadId: string) => void
+  togglePinThread: (threadId: string) => void
+  toggleMuteThread: (threadId: string) => void
 
   addNotification: (
     notif: Omit<AppNotification, "id" | "timestamp" | "read"> & { id?: string; timestamp?: string }
@@ -581,8 +609,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       createChatThread: storeManager.createChatThread.bind(storeManager),
       sendMessage: storeManager.sendMessage.bind(storeManager),
       editMessage: storeManager.editMessage.bind(storeManager),
+      deleteMessage: storeManager.deleteMessage.bind(storeManager),
+      toggleMessageReaction: storeManager.toggleMessageReaction.bind(storeManager),
+      togglePinMessage: storeManager.togglePinMessage.bind(storeManager),
       deleteChatThread: storeManager.deleteChatThread.bind(storeManager),
       markThreadRead: storeManager.markThreadRead.bind(storeManager),
+      togglePinThread: storeManager.togglePinThread.bind(storeManager),
+      toggleMuteThread: storeManager.toggleMuteThread.bind(storeManager),
 
       addNotification: storeManager.addNotification.bind(storeManager),
       markNotificationRead: storeManager.markNotificationRead.bind(storeManager),

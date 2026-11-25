@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import { format } from "date-fns"
 import { toast } from "sonner"
 import {
@@ -45,7 +46,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
+import { RichTextEditorSkeleton } from "@/components/rich-text"
+
+const RichTextEditor = dynamic(
+  () => import("@/components/rich-text").then((m) => m.RichTextEditor),
+  { ssr: false, loading: () => <RichTextEditorSkeleton /> }
+)
 import { resolveClientProfile } from "@/lib/files/client-resolver"
 import { formatFileSize } from "@/lib/files/format"
 import {
@@ -839,12 +845,21 @@ function TaskFormDialogInner({
         {/* Description */}
         <div className="space-y-1.5">
           <Label htmlFor="task-form-desc">Description</Label>
-          <Textarea
+          <RichTextEditor
             id="task-form-desc"
-            rows={3}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(out) => setDescription(String(out))}
+            format="html"
+            variant="compact"
+            minHeight="96px"
+            maxHeight="200px"
             placeholder="Outline acceptance criteria, deliverable assets, or QA notes..."
+            mentionItems={users.map((u) => ({
+              id: u.id,
+              name: u.name,
+              avatarInitials: u.avatarInitials,
+              avatarColor: u.avatarColor,
+            }))}
           />
         </div>
 

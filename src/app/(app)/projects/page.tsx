@@ -1,5 +1,7 @@
 "use client"
 
+import { DatePicker } from "@/components/ui/date-picker"
+
 import * as React from "react"
 import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
@@ -13,6 +15,7 @@ import {
   ExternalLink,
   LayoutGrid,
   List,
+  Pencil,
   Plus,
   Trash2,
 } from "lucide-react"
@@ -90,8 +93,6 @@ const projectSchema = z.object({
     "Full Stack App",
   ]),
   priority: z.enum(["Regular", "High", "Urgent"]),
-  budget: z.number().min(500, "Minimum budget 500"),
-  currency: z.enum(["USD", "GBP", "CAD", "AED"]),
   deadline: z.string().min(8),
   description: z.string().optional(),
 })
@@ -112,6 +113,7 @@ export default function ProjectsPage() {
     brands,
     users,
     createProject,
+    updateProject,
     deleteProject,
     checkProjectDeletion,
   } = useStore()
@@ -119,6 +121,9 @@ export default function ProjectsPage() {
   const [viewMode, setViewMode] = React.useState<"list" | "card">("list")
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
   const [createOpen, setCreateOpen] = React.useState(false)
+  const [editingProject, setEditingProject] = React.useState<Project | null>(
+    null
+  )
 
   // Delete dialog state
   const [deleteTarget, setDeleteTarget] = React.useState<Project | null>(null)
@@ -153,8 +158,6 @@ export default function ProjectsPage() {
       brandId: brands[0]?.id ?? "",
       category: "Web Design",
       priority: "High",
-      budget: 8500,
-      currency: "USD",
       deadline: "2026-12-05",
       description: "",
     },
@@ -168,37 +171,74 @@ export default function ProjectsPage() {
     [projects, statusFilter]
   )
 
-  function onCreateProject(values: ProjectFormValues) {
+  const openEdit = React.useCallback(
+    (prj: Project) => {
+      setEditingProject(prj)
+      form.reset({
+        name: prj.name,
+        clientName: prj.clientName,
+        clientCompany: prj.clientCompany,
+        brandId: prj.brandId,
+        category: prj.category,
+        priority: prj.priority,
+        deadline: prj.deadline,
+        description: prj.description,
+      })
+      setCreateOpen(true)
+    },
+    [form]
+  )
+
+  function onSubmitProject(values: ProjectFormValues) {
     const brand = brands.find((b) => b.id === values.brandId) ?? brands[0]
     const brandName = brand ? brand.name : "Primary Brand"
-    const today = new Date().toISOString().slice(0, 10)
-    const code = `PRJ-${String(projects.length + 351).padStart(4, "0")}`
 
-    const created = createProject({
-      code,
-      name: values.name,
-      clientName: values.clientName,
-      clientCompany: values.clientCompany,
-      brandId: values.brandId,
-      brandName,
-      category: values.category,
-      status: "Open",
-      priority: values.priority,
-      budget: values.budget,
-      currency: values.currency,
-      progress: 0,
-      startDate: today,
-      deadline: values.deadline,
-      managerId: users[0]?.id ?? "usr-admin",
-      memberIds: users.slice(0, 3).map((u) => u.id),
-      description:
-        values.description ||
-        `${values.category} delivery for ${values.clientCompany}.`,
-      files: [],
-      comments: [],
-    })
-    toast.success(`Created project ${created.code}`)
+    if (editingProject) {
+      updateProject(editingProject.id, {
+        name: values.name,
+        clientName: values.clientName,
+        clientCompany: values.clientCompany,
+        brandId: values.brandId,
+        brandName,
+        category: values.category,
+        priority: values.priority,
+        deadline: values.deadline,
+        description:
+          values.description ||
+          `${values.category} delivery for ${values.clientCompany}.`,
+      })
+      toast.success(`Updated project ${editingProject.code}`)
+    } else {
+      const today = new Date().toISOString().slice(0, 10)
+      const code = `PRJ-${String(projects.length + 351).padStart(4, "0")}`
+
+      const created = createProject({
+        code,
+        name: values.name,
+        clientName: values.clientName,
+        clientCompany: values.clientCompany,
+        brandId: values.brandId,
+        brandName,
+        category: values.category,
+        status: "Open",
+        priority: values.priority,
+        budget: 0,
+        currency: "USD",
+        progress: 0,
+        startDate: today,
+        deadline: values.deadline,
+        managerId: users[0]?.id ?? "usr-admin",
+        memberIds: users.slice(0, 3).map((u) => u.id),
+        description:
+          values.description ||
+          `${values.category} delivery for ${values.clientCompany}.`,
+        files: [],
+        comments: [],
+      })
+      toast.success(`Created project ${created.code}`)
+    }
     form.reset()
+    setEditingProject(null)
     setCreateOpen(false)
   }
 
@@ -323,6 +363,16 @@ export default function ProjectsPage() {
               type="button"
               variant="ghost"
               size="icon-xs"
+              onClick={() => openEdit(row.original)}
+              title="Edit project"
+              aria-label="Edit project"
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
               onClick={() => promptDelete(row.original)}
               title="Delete project"
               className="text-destructive hover:bg-destructive/10"
@@ -333,7 +383,7 @@ export default function ProjectsPage() {
         ),
       },
     ],
-    [users, promptDelete]
+    [users, openEdit, promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -509,6 +559,16 @@ export default function ProjectsPage() {
                           type="button"
                           variant="ghost"
                           size="icon-xs"
+                          onClick={() => openEdit(prj)}
+                          title="Edit project"
+                          aria-label="Edit project"
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
                           onClick={() => promptDelete(prj)}
                           className="text-destructive hover:bg-destructive/10"
                         >
@@ -530,17 +590,27 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Create Project Sheet */}
-      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+      {/* Create / Edit Project Sheet */}
+      <Sheet
+        open={createOpen}
+        onOpenChange={(next) => {
+          setCreateOpen(next)
+          if (!next) setEditingProject(null)
+        }}
+      >
         <SheetContent side="right" className="overflow-y-auto sm:max-w-lg">
           <SheetHeader className="border-b border-border pb-3">
-            <SheetTitle>Create Project</SheetTitle>
+            <SheetTitle>
+              {editingProject ? "Edit Project" : "Create Project"}
+            </SheetTitle>
             <SheetDescription>
-              Kick off a new client deliverable workspace.
+              {editingProject
+                ? `Update workspace details for ${editingProject.code}.`
+                : "Kick off a new client deliverable workspace."}
             </SheetDescription>
           </SheetHeader>
           <form
-            onSubmit={form.handleSubmit(onCreateProject)}
+            onSubmit={form.handleSubmit(onSubmitProject)}
             className="space-y-4 p-4"
           >
             <div className="space-y-1.5">
@@ -634,38 +704,16 @@ export default function ProjectsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="prj-deadline">Deadline</Label>
-                <Input
-                  id="prj-deadline"
-                  type="date"
-                  {...form.register("deadline")}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Currency</Label>
                 <Controller
                   control={form.control}
-                  name="currency"
+                  name="deadline"
                   render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="USD">USD</SelectItem>
-                        <SelectItem value="GBP">GBP</SelectItem>
-                        <SelectItem value="CAD">CAD</SelectItem>
-                        <SelectItem value="AED">AED</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <DatePicker
+                      id="prj-deadline"
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
                   )}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="prj-budget">Budget</Label>
-                <Input
-                  id="prj-budget"
-                  type="number"
-                  {...form.register("budget", { valueAsNumber: true })}
                 />
               </div>
             </div>
@@ -682,7 +730,7 @@ export default function ProjectsPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={brands.length === 0}>
-                Create Project
+                {editingProject ? "Save Changes" : "Create Project"}
               </Button>
             </SheetFooter>
           </form>

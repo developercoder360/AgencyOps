@@ -1116,11 +1116,13 @@ export function TaskDetailPanel({
                     nowMs={nowMs}
                     onAddComment={({
                       content,
+                      richContent,
                       parentId,
                       mentions,
                       attachments,
                     }: {
                       content: string
+                      richContent?: Record<string, unknown>
                       parentId?: string
                       mentions: string[]
                       attachments: AttachmentFile[]
@@ -1128,6 +1130,7 @@ export function TaskDetailPanel({
                       addTaskComment(task.id, content, actorId, {
                         authorName: actorName,
                         parentId,
+                        richContent,
                         mentions,
                         attachments,
                       })
@@ -1136,8 +1139,8 @@ export function TaskDetailPanel({
                       }
                       toast.success(parentId ? "Reply posted" : "Comment posted")
                     }}
-                    onEditComment={(commentId, content) => {
-                      editTaskComment(task.id, commentId, content)
+                    onEditComment={(commentId, content, richContent) => {
+                      editTaskComment(task.id, commentId, content, richContent)
                       toast.success("Comment updated")
                     }}
                     onDeleteComment={(commentId) => {

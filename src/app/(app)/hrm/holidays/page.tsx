@@ -1,12 +1,14 @@
 "use client"
 
+import { DatePicker } from "@/components/ui/date-picker"
+
 import * as React from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { CalendarHeart, Plus, Trash2 } from "lucide-react"
+import { CalendarHeart, Pencil, Plus, Trash2 } from "lucide-react"
 import {
   DataTable,
   DataTableColumnHeader,
@@ -46,8 +48,12 @@ const schema = z.object({
 })
 
 export default function HolidaysPage() {
-  const { holidays, createHoliday, deleteHoliday, isLoaded } = useStore()
+  const { holidays, createHoliday, updateHoliday, deleteHoliday, isLoaded } =
+    useStore()
   const [open, setOpen] = React.useState(false)
+  const [editingTarget, setEditingTarget] = React.useState<Holiday | null>(
+    null
+  )
   const [deleteTarget, setDeleteTarget] = React.useState<Holiday | null>(null)
 
   const form = useForm<z.infer<typeof schema>>({
@@ -61,16 +67,55 @@ export default function HolidaysPage() {
     },
   })
 
-  function onSubmit(values: z.infer<typeof schema>) {
-    const created = createHoliday({
-      name: values.name,
-      date: values.date,
-      type: values.type,
-      region: values.region,
-      description: values.description,
+  const openCreate = React.useCallback(() => {
+    setEditingTarget(null)
+    form.reset({
+      name: "",
+      date: "2026-12-31",
+      type: "Company",
+      region: "Global (US / UK / CA)",
+      description: "Early closure / agency celebration day.",
     })
-    toast.success(`Added holiday: ${created.name}`)
+    setOpen(true)
+  }, [form])
+
+  const openEdit = React.useCallback(
+    (hol: Holiday) => {
+      setEditingTarget(hol)
+      form.reset({
+        name: hol.name,
+        date: hol.date,
+        type: hol.type,
+        region: hol.region,
+        description: hol.description,
+      })
+      setOpen(true)
+    },
+    [form]
+  )
+
+  function onSubmit(values: z.infer<typeof schema>) {
+    if (editingTarget) {
+      updateHoliday(editingTarget.id, {
+        name: values.name,
+        date: values.date,
+        type: values.type,
+        region: values.region,
+        description: values.description,
+      })
+      toast.success(`Updated holiday: ${values.name}`)
+    } else {
+      const created = createHoliday({
+        name: values.name,
+        date: values.date,
+        type: values.type,
+        region: values.region,
+        description: values.description,
+      })
+      toast.success(`Added holiday: ${created.name}`)
+    }
     form.reset()
+    setEditingTarget(null)
     setOpen(false)
   }
 
@@ -139,7 +184,17 @@ export default function HolidaysPage() {
         header: "",
         enableHiding: false,
         cell: ({ row }) => (
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => openEdit(row.original)}
+              aria-label="Edit holiday"
+            >
+              <Pencil className="size-3.5" />
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -154,7 +209,7 @@ export default function HolidaysPage() {
         ),
       },
     ],
-    [promptDelete]
+    [openEdit, promptDelete]
   )
 
   const facetedFilters = React.useMemo<FacetedFilterConfig[]>(
@@ -190,7 +245,7 @@ export default function HolidaysPage() {
         actions={
           <Button
             type="button"
-            onClick={() => setOpen(true)}
+            onClick={openCreate}
             className="gap-1.5"
           >
             <Plus className="size-4" />
@@ -208,12 +263,22 @@ export default function HolidaysPage() {
         exportModule="Holidays"
       />
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (!next) setEditingTarget(null)
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Holiday</DialogTitle>
+            <DialogTitle>
+              {editingTarget ? "Edit Holiday" : "Add Holiday"}
+            </DialogTitle>
             <DialogDescription>
-              Add a paid public or company holiday to the 2026 calendar.
+              {editingTarget
+                ? "Update holiday details on the 2026 calendar."
+                : "Add a paid public or company holiday to the 2026 calendar."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -229,7 +294,17 @@ export default function HolidaysPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="hol-date">Date</Label>
-                <Input id="hol-date" type="date" {...form.register("date")} />
+                <Controller
+                  control={form.control}
+                  name="date"
+                  render={({ field }) => (
+                    <DatePicker
+                      id="hol-date"
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Type</Label>

@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Clock, Plus, Trash2 } from "lucide-react"
+import { Clock, Pencil, Plus, Trash2 } from "lucide-react"
 import { DataTable, DataTableColumnHeader } from "@/components/data-table"
 import { ConfirmDeleteDialog, PageHeader } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
@@ -39,12 +39,15 @@ export default function ShiftSchedulingPage() {
   const {
     shiftSchedules,
     createShiftSchedule,
+    updateShiftSchedule,
     deleteShiftSchedule,
     checkShiftDeletion,
     isLoaded,
   } = useStore()
 
   const [open, setOpen] = React.useState(false)
+  const [editingTarget, setEditingTarget] =
+    React.useState<ShiftSchedule | null>(null)
   const [isNight, setIsNight] = React.useState(false)
   const [deleteTarget, setDeleteTarget] = React.useState<{
     id: string
@@ -65,20 +68,65 @@ export default function ShiftSchedulingPage() {
     },
   })
 
-  function onSubmit(values: z.infer<typeof schema>) {
-    const created = createShiftSchedule({
-      name: values.name,
-      code: values.code.toUpperCase(),
-      startTime: values.startTime,
-      endTime: values.endTime,
-      graceMinutes: values.graceMinutes,
-      timezone: values.timezone,
-      workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-      assignedCount: 0,
-      isNightShift: isNight,
+  const openCreate = React.useCallback(() => {
+    setEditingTarget(null)
+    form.reset({
+      name: "",
+      code: "EMEA-10",
+      startTime: "10:00",
+      endTime: "19:00",
+      graceMinutes: 15,
+      timezone: "Europe/London",
     })
-    toast.success(`Created shift ${created.name}`)
+    setIsNight(false)
+    setOpen(true)
+  }, [form])
+
+  const openEdit = React.useCallback(
+    (sh: ShiftSchedule) => {
+      setEditingTarget(sh)
+      form.reset({
+        name: sh.name,
+        code: sh.code,
+        startTime: sh.startTime,
+        endTime: sh.endTime,
+        graceMinutes: sh.graceMinutes,
+        timezone: sh.timezone,
+      })
+      setIsNight(sh.isNightShift)
+      setOpen(true)
+    },
+    [form]
+  )
+
+  function onSubmit(values: z.infer<typeof schema>) {
+    if (editingTarget) {
+      updateShiftSchedule(editingTarget.id, {
+        name: values.name,
+        code: values.code.toUpperCase(),
+        startTime: values.startTime,
+        endTime: values.endTime,
+        graceMinutes: values.graceMinutes,
+        timezone: values.timezone,
+        isNightShift: isNight,
+      })
+      toast.success(`Updated shift ${values.name}`)
+    } else {
+      const created = createShiftSchedule({
+        name: values.name,
+        code: values.code.toUpperCase(),
+        startTime: values.startTime,
+        endTime: values.endTime,
+        graceMinutes: values.graceMinutes,
+        timezone: values.timezone,
+        workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        assignedCount: 0,
+        isNightShift: isNight,
+      })
+      toast.success(`Created shift ${created.name}`)
+    }
     form.reset()
+    setEditingTarget(null)
     setOpen(false)
   }
 
@@ -171,7 +219,17 @@ export default function ShiftSchedulingPage() {
         header: "",
         enableHiding: false,
         cell: ({ row }) => (
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => openEdit(row.original)}
+              aria-label="Edit shift"
+            >
+              <Pencil className="size-3.5" />
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -186,7 +244,7 @@ export default function ShiftSchedulingPage() {
         ),
       },
     ],
-    [promptDelete]
+    [openEdit, promptDelete]
   )
 
   if (!isLoaded) {
@@ -207,7 +265,7 @@ export default function ShiftSchedulingPage() {
         actions={
           <Button
             type="button"
-            onClick={() => setOpen(true)}
+            onClick={openCreate}
             className="gap-1.5"
           >
             <Plus className="size-4" />
@@ -223,10 +281,18 @@ export default function ShiftSchedulingPage() {
         exportModule="Shift Schedules"
       />
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (!next) setEditingTarget(null)
+        }}
+      >
         <SheetContent side="right" className="sm:max-w-md">
           <SheetHeader className="border-b border-border pb-3">
-            <SheetTitle>Create Shift Schedule</SheetTitle>
+            <SheetTitle>
+              {editingTarget ? "Edit Shift Schedule" : "Create Shift Schedule"}
+            </SheetTitle>
             <SheetDescription>
               Configure work window, grace period, and regional timezone.
             </SheetDescription>
@@ -301,7 +367,9 @@ export default function ShiftSchedulingPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Save Shift</Button>
+              <Button type="submit">
+                {editingTarget ? "Save Changes" : "Save Shift"}
+              </Button>
             </SheetFooter>
           </form>
         </SheetContent>

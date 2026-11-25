@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import {
   Activity,
   AtSign,
@@ -19,7 +20,25 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  EMPTY_DOC,
+  RichTextEditorSkeleton,
+  RichTextViewer,
+  appendMentionToDoc,
+  docToPlainText,
+} from "@/components/ui/rich-text-editor"
+
+const RichTextEditor = dynamic(
+  () =>
+    import("@/components/ui/rich-text-editor").then((m) => m.RichTextEditor),
+  { ssr: false, loading: () => <RichTextEditorSkeleton /> }
+)
 import type { TaskRolePermissions } from "@/lib/permissions"
 import type {
   AttachmentFile,
@@ -53,11 +72,16 @@ interface TaskActivitySidebarProps {
   nowMs: number | null
   onAddComment: (payload: {
     content: string
+    richContent?: Record<string, unknown>
     parentId?: string
     mentions: string[]
     attachments: AttachmentFile[]
   }) => void
-  onEditComment: (commentId: string, content: string) => void
+  onEditComment: (
+    commentId: string,
+    content: string,
+    richContent?: Record<string, unknown>
+  ) => void
   onDeleteComment: (commentId: string) => void
 }
 
@@ -92,18 +116,19 @@ export function TaskActivitySidebar({
   onDeleteComment,
 }: TaskActivitySidebarProps) {
   const [filter, setFilter] = React.useState<ActivityFilter>("all")
-  const [draft, setDraft] = React.useState("")
+  const [draftDoc, setDraftDoc] =
+    React.useState<Record<string, unknown>>(EMPTY_DOC)
   const [pendingAttachments, setPendingAttachments] = React.useState<
     AttachmentFile[]
   >([])
   const [pendingMentions, setPendingMentions] = React.useState<string[]>([])
   const [mentionOpen, setMentionOpen] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState("")
-  const [activeMentionIndex, setActiveMentionIndex] = React.useState(0)
   const [editingCommentId, setEditingCommentId] = React.useState<string | null>(
     null
   )
-  const [editDraft, setEditDraft] = React.useState("")
+  const [editDoc, setEditDoc] =
+    React.useState<Record<string, unknown>>(EMPTY_DOC)
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(
     null
   )
@@ -118,7 +143,6 @@ export function TaskActivitySidebar({
 
   const feedScrollRef = React.useRef<HTMLDivElement | null>(null)
   const isNearBottomRef = React.useRef(true)
-  const composerRef = React.useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   const { topLevelComments, repliesByParentId } = React.useMemo(() => {
@@ -219,42 +243,13 @@ export function TaskActivitySidebar({
     )
   }, [users, mentionQuery])
 
-  function handleDraftChange(next: string) {
-    setDraft(next)
-    // Detect trailing @query for live mention popup
-    const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(next)
-    if (match) {
-      setMentionQuery(match[1])
-      setActiveMentionIndex(0)
-      setMentionOpen(true)
-    } else if (mentionOpen && !next.endsWith("@")) {
-      setMentionOpen(false)
-      setMentionQuery("")
-      setActiveMentionIndex(0)
-    }
-    // Auto-grow textarea height
-    const el = composerRef.current
-    if (el) {
-      el.style.height = "auto"
-      el.style.height = `${Math.min(el.scrollHeight, 140)}px`
-    }
-  }
-
   function insertMention(user: StaffUser) {
-    const replaced = draft.replace(/(?:^|\s)@[a-zA-Z0-9_-]*$/, (match) =>
-      match.startsWith(" ") ? ` @${user.name} ` : `@${user.name} `
-    )
-    const next = replaced === draft ? `${draft}@${user.name} ` : replaced
-    setDraft(next)
+    setDraftDoc((prev) => appendMentionToDoc(prev, user.name))
     setPendingMentions((prev) =>
       prev.includes(user.id) ? prev : [...prev, user.id]
     )
     setMentionOpen(false)
     setMentionQuery("")
-    setActiveMentionIndex(0)
-    requestAnimationFrame(() => {
-      composerRef.current?.focus({ preventScroll: true })
-    })
   }
 
   function handleAttachCommentFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -280,39 +275,41 @@ export function TaskActivitySidebar({
       preview: c.content.replace(/\s+/g, " ").trim().slice(0, 72),
     })
     setCollapsedThreads((prev) => ({ ...prev, [rootParentId]: false }))
-    requestAnimationFrame(() => {
-      composerRef.current?.focus({ preventScroll: true })
-    })
   }
 
   function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault()
-    const trimmed = draft.trim()
-    if (!trimmed && pendingAttachments.length === 0) return
+    const plain = docToPlainText(draftDoc).trim()
+    if (!plain && pendingAttachments.length === 0) return
     onAddComment({
-      content: trimmed || `Attached ${pendingAttachments.map((a) => a.name).join(", ")}`,
+      content: plain || `Attached ${pendingAttachments.map((a) => a.name).join(", ")}`,
+      richContent: plain ? draftDoc : undefined,
       parentId: replyingTo?.parentId,
       mentions: pendingMentions,
       attachments: pendingAttachments,
     })
-    setDraft("")
+    setDraftDoc(EMPTY_DOC)
     setReplyingTo(null)
     setPendingAttachments([])
     setPendingMentions([])
-    if (composerRef.current) {
-      composerRef.current.style.height = "auto"
-    }
   }
 
   function startEditComment(c: TaskComment) {
     setEditingCommentId(c.id)
-    setEditDraft(c.content)
+    setEditDoc(
+      c.richContent ?? {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: c.content }] },
+        ],
+      }
+    )
   }
 
   function commitEditComment(commentId: string) {
-    const trimmed = editDraft.trim()
-    if (trimmed) {
-      onEditComment(commentId, trimmed)
+    const plain = docToPlainText(editDoc).trim()
+    if (plain) {
+      onEditComment(commentId, plain, editDoc)
     }
     setEditingCommentId(null)
   }
@@ -332,11 +329,6 @@ export function TaskActivitySidebar({
     const found = users.find((u) => u.name === name)
     return found?.avatarColor ?? "bg-primary"
   }
-
-  const safeMentionIndex =
-    filteredStaff.length > 0
-      ? Math.min(activeMentionIndex, filteredStaff.length - 1)
-      : 0
 
   function renderCommentNode(
     c: TaskComment,
@@ -453,26 +445,20 @@ export function TaskActivitySidebar({
         </div>
 
         {isEditing ? (
-          <div className="mt-2.5 space-y-2 rounded-lg border border-border bg-background p-2">
-            <Textarea
-              autoFocus
-              value={editDraft}
-              onChange={(e) => setEditDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.stopPropagation()
-                  setEditingCommentId(null)
-                } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                  e.preventDefault()
-                  commitEditComment(c.id)
-                }
-              }}
-              rows={2}
-              className="min-h-[54px] resize-none border-0 bg-transparent p-0 text-xs shadow-none focus-visible:ring-0"
+          <div className="mt-2.5 space-y-2">
+            <RichTextEditor
+              value={editDoc}
+              format="json"
+              variant="compact"
+              onChange={(out) => setEditDoc(out as Record<string, unknown>)}
+              onSubmit={() => commitEditComment(c.id)}
+              placeholder="Update comment..."
+              ariaLabel="Edit comment"
+              editorClassName="min-h-[60px] max-h-[160px] text-xs"
             />
-            <div className="flex items-center justify-between border-t border-border/60 pt-1.5">
+            <div className="flex items-center justify-between">
               <span className="text-[10px] text-muted-foreground">
-                Esc to cancel · Ctrl+Enter to save
+                Ctrl+Enter to save
               </span>
               <div className="flex items-center gap-1">
                 <Button
@@ -494,6 +480,10 @@ export function TaskActivitySidebar({
                 </Button>
               </div>
             </div>
+          </div>
+        ) : c.richContent ? (
+          <div className={cn("mt-1.5", isReply ? "pl-7" : "pl-8")}>
+            <RichTextViewer value={c.richContent} className="text-xs" />
           </div>
         ) : (
           <p
@@ -616,9 +606,9 @@ export function TaskActivitySidebar({
                 type="button"
                 variant="outline"
                 size="xs"
-                onClick={() => composerRef.current?.focus({ preventScroll: true })}
+                onClick={() => setFilter("all")}
               >
-                Start discussion
+                View all activity
               </Button>
             ) : null}
           </div>
@@ -743,59 +733,6 @@ export function TaskActivitySidebar({
           </div>
         ) : (
           <>
-            {/* Inline keyboard-navigable @mention menu */}
-            {mentionOpen ? (
-              <div
-                role="listbox"
-                aria-label="Mention teammate"
-                className="absolute right-3.5 bottom-full left-3.5 z-30 mb-1.5 overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-lg"
-              >
-                <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <span>Mention teammate</span>
-                  <span>↑↓ · Enter</span>
-                </div>
-                <div className="max-h-44 space-y-0.5 overflow-y-auto">
-                  {filteredStaff.length === 0 ? (
-                    <p className="py-2.5 text-center text-xs text-muted-foreground">
-                      No teammate matched
-                    </p>
-                  ) : (
-                    filteredStaff.map((u, idx) => (
-                      <button
-                        key={u.id}
-                        type="button"
-                        role="option"
-                        aria-selected={idx === safeMentionIndex}
-                        onMouseEnter={() => setActiveMentionIndex(idx)}
-                        onClick={() => insertMention(u)}
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
-                          idx === safeMentionIndex
-                            ? "bg-accent text-accent-foreground"
-                            : "hover:bg-muted"
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
-                            u.avatarColor
-                          )}
-                        >
-                          {u.avatarInitials}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate font-medium">{u.name}</div>
-                        </div>
-                        <span className="truncate text-[10px] text-muted-foreground">
-                          {u.role}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : null}
-
             {replyingTo ? (
               <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/5 px-2.5 py-1.5 text-[11px]">
                 <div className="flex min-w-0 items-center gap-1.5">
@@ -848,125 +785,131 @@ export function TaskActivitySidebar({
               </div>
             ) : null}
 
-            <div className="rounded-xl border border-border bg-background shadow-2xs transition-all focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
-              <Textarea
-                ref={composerRef}
-                value={draft}
-                onChange={(e) => handleDraftChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (mentionOpen && filteredStaff.length > 0) {
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault()
-                      setActiveMentionIndex(
-                        (prev) => (prev + 1) % filteredStaff.length
-                      )
-                      return
-                    }
-                    if (e.key === "ArrowUp") {
-                      e.preventDefault()
-                      setActiveMentionIndex(
-                        (prev) =>
-                          (prev - 1 + filteredStaff.length) %
-                          filteredStaff.length
-                      )
-                      return
-                    }
-                    if (e.key === "Enter" || e.key === "Tab") {
-                      e.preventDefault()
-                      insertMention(filteredStaff[safeMentionIndex])
-                      return
-                    }
+            <RichTextEditor
+              value={draftDoc}
+              format="json"
+              variant="compact"
+              onChange={(out) => setDraftDoc(out as Record<string, unknown>)}
+              onSubmit={() => handleSubmit()}
+              mentionItems={users.map((u) => ({
+                id: u.id,
+                name: u.name,
+                avatarInitials: u.avatarInitials,
+                avatarColor: u.avatarColor,
+              }))}
+              placeholder={
+                replyingTo
+                  ? `Reply to ${replyingTo.authorName}… (Ctrl+Enter to send)`
+                  : "Write a comment… (Ctrl+Enter to send)"
+              }
+              ariaLabel="Add comment"
+              editorClassName="min-h-[64px] max-h-[150px] text-xs"
+            />
+
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1">
+                <Popover open={mentionOpen} onOpenChange={setMentionOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      className="gap-1 text-muted-foreground"
+                      aria-label="Mention teammate"
+                      title="Mention teammate"
+                    >
+                      <AtSign className="size-3.5" />
+                      Mention
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="top"
+                    align="start"
+                    className="w-60 p-1.5"
+                  >
+                    <Input
+                      value={mentionQuery}
+                      onChange={(e) => setMentionQuery(e.target.value)}
+                      placeholder="Filter teammates..."
+                      className="mb-1.5 h-7 text-xs"
+                    />
+                    <div className="max-h-40 space-y-0.5 overflow-y-auto">
+                      {filteredStaff.length === 0 ? (
+                        <p className="py-2 text-center text-xs text-muted-foreground">
+                          No teammate matched
+                        </p>
+                      ) : (
+                        filteredStaff.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => insertMention(u)}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted"
+                          >
+                            <span
+                              className={cn(
+                                "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white",
+                                u.avatarColor
+                              )}
+                            >
+                              {u.avatarInitials}
+                            </span>
+                            <span className="truncate font-medium">
+                              {u.name}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="gap-1 text-muted-foreground"
+                  aria-label="Attach file to comment"
+                  title="Attach files"
+                >
+                  <Paperclip className="size-3.5" />
+                  Attach
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="sr-only"
+                  onChange={handleAttachCommentFile}
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span
+                  title={`Commenting as ${currentActorName}`}
+                  className={cn(
+                    "hidden size-5 items-center justify-center rounded-full text-[9px] font-bold text-white sm:inline-flex",
+                    getAvatarColor(currentActorName)
+                  )}
+                >
+                  {currentActorInitials}
+                </span>
+                <span className="hidden text-[10px] text-muted-foreground/80 sm:inline">
+                  Ctrl+Enter
+                </span>
+                <Button
+                  type="submit"
+                  size="xs"
+                  disabled={
+                    !docToPlainText(draftDoc).trim() &&
+                    pendingAttachments.length === 0
                   }
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                    e.preventDefault()
-                    handleSubmit()
-                  } else if (e.key === "Escape" && mentionOpen) {
-                    e.stopPropagation()
-                    setMentionOpen(false)
-                  } else if (e.key === "Escape" && replyingTo && !draft.trim()) {
-                    e.stopPropagation()
-                    setReplyingTo(null)
-                  }
-                }}
-                placeholder={
-                  replyingTo
-                    ? `Reply to ${replyingTo.authorName}… Type @ to mention`
-                    : "Write a comment… Type @ to mention"
-                }
-                aria-label="Add comment"
-                rows={2}
-                className="min-h-[56px] resize-none border-0 bg-transparent px-3 py-2.5 text-xs shadow-none focus-visible:ring-0"
-              />
-
-              <div className="flex items-center justify-between gap-2 border-t border-border/60 px-2.5 py-1.5">
-                <div className="flex items-center gap-1">
-                  {/* @mention trigger */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => {
-                      if (!mentionOpen) {
-                        const needsSpace =
-                          draft.length > 0 && !/\s$/.test(draft)
-                        const next = `${draft}${needsSpace ? " @" : "@"}`
-                        handleDraftChange(next)
-                      } else {
-                        setMentionOpen(false)
-                      }
-                      requestAnimationFrame(() =>
-                        composerRef.current?.focus({ preventScroll: true })
-                      )
-                    }}
-                    aria-label="Mention teammate"
-                    title="Mention teammate (@)"
-                  >
-                    <AtSign className="size-3.5 text-muted-foreground" />
-                  </Button>
-
-                  {/* Attach file(s) */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => fileInputRef.current?.click()}
-                    aria-label="Attach file to comment"
-                    title="Attach files"
-                  >
-                    <Paperclip className="size-3.5 text-muted-foreground" />
-                  </Button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="sr-only"
-                    onChange={handleAttachCommentFile}
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span
-                    title={`Commenting as ${currentActorName}`}
-                    className={cn(
-                      "hidden size-5 items-center justify-center rounded-full text-[9px] font-bold text-white sm:inline-flex",
-                      getAvatarColor(currentActorName)
-                    )}
-                  >
-                    {currentActorInitials}
-                  </span>
-                  <span className="hidden text-[10px] text-muted-foreground/80 sm:inline">
-                    Ctrl+Enter
-                  </span>
-                  <Button
-                    type="submit"
-                    size="xs"
-                    disabled={!draft.trim() && pendingAttachments.length === 0}
-                    className="gap-1 px-2.5"
-                  >
-                    <Send className="size-3" />
-                    Send
-                  </Button>
-                </div>
+                  className="gap-1 px-2.5"
+                >
+                  <Send className="size-3" />
+                  Send
+                </Button>
               </div>
             </div>
           </>

@@ -1344,6 +1344,7 @@ export class StoreManager {
     options?: {
       authorName?: string
       parentId?: string
+      richContent?: Record<string, unknown>
       mentions?: string[]
       attachments?: AttachmentFile[]
       isQaRelated?: boolean
@@ -1361,6 +1362,7 @@ export class StoreManager {
       authorId: authorId || matched?.id || fallback.id,
       authorName: options?.authorName || matched?.name || fallback.name,
       content,
+      richContent: options?.richContent,
       createdAt: new Date().toISOString(),
       mentions: options?.mentions,
       attachments: options?.attachments,
@@ -1376,7 +1378,12 @@ export class StoreManager {
     }))
   }
 
-  public editTaskComment(taskId: string, commentId: string, content: string): void {
+  public editTaskComment(
+    taskId: string,
+    commentId: string,
+    content: string,
+    richContent?: Record<string, unknown>
+  ): void {
     const editedAt = new Date().toISOString()
     this.setAndPersist((s) => ({
       ...s,
@@ -1385,7 +1392,9 @@ export class StoreManager {
           ? {
               ...t,
               comments: t.comments.map((c) =>
-                c.id === commentId ? { ...c, content, editedAt } : c
+                c.id === commentId
+                  ? { ...c, content, richContent, editedAt }
+                  : c
               ),
             }
           : t
@@ -1659,7 +1668,14 @@ export class StoreManager {
     threadId: string,
     content: string,
     senderId?: string,
-    attachment?: string
+    attachment?: string,
+    options?: {
+      richContent?: Record<string, unknown>
+      replyToId?: string
+      replyToAuthor?: string
+      replyToPreview?: string
+      attachments?: { id: string; name: string; size?: string }[]
+    }
   ): ChatMessage | null {
     const thread = this.data.chatThreads.find((t) => t.id === threadId)
     if (!thread) return null
@@ -1677,9 +1693,14 @@ export class StoreManager {
       senderName: sender.name,
       senderInitials: sender.avatarInitials,
       content,
+      richContent: options?.richContent,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       readByIds: [sender.id],
       attachment,
+      attachments: options?.attachments,
+      replyToId: options?.replyToId,
+      replyToAuthor: options?.replyToAuthor,
+      replyToPreview: options?.replyToPreview,
     }
 
     this.setAndPersist((s) => ({
@@ -1699,7 +1720,12 @@ export class StoreManager {
     return newMsg
   }
 
-  public editMessage(threadId: string, messageId: string, content: string): void {
+  public editMessage(
+    threadId: string,
+    messageId: string,
+    content: string,
+    richContent?: Record<string, unknown>
+  ): void {
     this.setAndPersist((s) => ({
       ...s,
       chatThreads: s.chatThreads.map((t) =>
@@ -1707,7 +1733,74 @@ export class StoreManager {
           ? {
               ...t,
               messages: t.messages.map((m) =>
-                m.id === messageId ? { ...m, content, edited: true } : m
+                m.id === messageId
+                  ? { ...m, content, richContent, edited: true }
+                  : m
+              ),
+            }
+          : t
+      ),
+    }))
+  }
+
+  public deleteMessage(threadId: string, messageId: string): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      chatThreads: s.chatThreads.map((t) => {
+        if (t.id !== threadId) return t
+        const nextMessages = t.messages.filter((m) => m.id !== messageId)
+        const last = nextMessages[nextMessages.length - 1]
+        return {
+          ...t,
+          messages: nextMessages,
+          lastMessagePreview: last ? last.content : "No messages yet",
+        }
+      }),
+    }))
+  }
+
+  public toggleMessageReaction(
+    threadId: string,
+    messageId: string,
+    emoji: string,
+    userId: string
+  ): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      chatThreads: s.chatThreads.map((t) => {
+        if (t.id !== threadId) return t
+        return {
+          ...t,
+          messages: t.messages.map((m) => {
+            if (m.id !== messageId) return m
+            const prev = m.reactions ?? {}
+            const currentUsers = prev[emoji] ?? []
+            const hasReacted = currentUsers.includes(userId)
+            const nextUsers = hasReacted
+              ? currentUsers.filter((id) => id !== userId)
+              : [...currentUsers, userId]
+            const nextReactions = { ...prev }
+            if (nextUsers.length === 0) {
+              delete nextReactions[emoji]
+            } else {
+              nextReactions[emoji] = nextUsers
+            }
+            return { ...m, reactions: nextReactions }
+          }),
+        }
+      }),
+    }))
+  }
+
+  public togglePinMessage(threadId: string, messageId: string): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      chatThreads: s.chatThreads.map((t) =>
+        t.id === threadId
+          ? {
+              ...t,
+              messages: t.messages.map((m) =>
+                m.id === messageId ? { ...m, pinned: !m.pinned } : m
               ),
             }
           : t
@@ -1727,6 +1820,24 @@ export class StoreManager {
       ...s,
       chatThreads: s.chatThreads.map((t) =>
         t.id === threadId ? { ...t, unreadCount: 0 } : t
+      ),
+    }))
+  }
+
+  public togglePinThread(threadId: string): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      chatThreads: s.chatThreads.map((t) =>
+        t.id === threadId ? { ...t, pinned: !t.pinned } : t
+      ),
+    }))
+  }
+
+  public toggleMuteThread(threadId: string): void {
+    this.setAndPersist((s) => ({
+      ...s,
+      chatThreads: s.chatThreads.map((t) =>
+        t.id === threadId ? { ...t, muted: !t.muted } : t
       ),
     }))
   }

@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { Plus, Trash2 } from "lucide-react"
+import { Pencil, Plus, Trash2 } from "lucide-react"
 import { DataTable, DataTableColumnHeader } from "@/components/data-table"
 import { ConfirmDeleteDialog, PageHeader } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
@@ -39,12 +39,16 @@ export default function LeaveTypesPage() {
   const {
     leaveTypes,
     createLeaveType,
+    updateLeaveType,
     deleteLeaveType,
     checkLeaveTypeDeletion,
     isLoaded,
   } = useStore()
 
   const [open, setOpen] = React.useState(false)
+  const [editingTarget, setEditingTarget] = React.useState<LeaveType | null>(
+    null
+  )
   const [paid, setPaid] = React.useState(true)
   const [requiresDoc, setRequiresDoc] = React.useState(false)
   const [deleteTarget, setDeleteTarget] = React.useState<{
@@ -65,19 +69,64 @@ export default function LeaveTypesPage() {
     },
   })
 
-  function onSubmit(values: z.infer<typeof schema>) {
-    const created = createLeaveType({
-      name: values.name,
-      code: values.code.toUpperCase(),
-      daysAllowedPerYear: values.daysAllowedPerYear,
-      carryForwardLimit: values.carryForwardLimit,
-      paid,
-      requiresDocument: requiresDoc,
-      color: "#2563EB",
-      description: values.description,
+  const openCreate = React.useCallback(() => {
+    setEditingTarget(null)
+    form.reset({
+      name: "",
+      code: "",
+      daysAllowedPerYear: 12,
+      carryForwardLimit: 2,
+      description: "",
     })
-    toast.success(`Added leave policy: ${created.name}`)
+    setPaid(true)
+    setRequiresDoc(false)
+    setOpen(true)
+  }, [form])
+
+  const openEdit = React.useCallback(
+    (lt: LeaveType) => {
+      setEditingTarget(lt)
+      form.reset({
+        name: lt.name,
+        code: lt.code,
+        daysAllowedPerYear: lt.daysAllowedPerYear,
+        carryForwardLimit: lt.carryForwardLimit,
+        description: lt.description,
+      })
+      setPaid(lt.paid)
+      setRequiresDoc(lt.requiresDocument)
+      setOpen(true)
+    },
+    [form]
+  )
+
+  function onSubmit(values: z.infer<typeof schema>) {
+    if (editingTarget) {
+      updateLeaveType(editingTarget.id, {
+        name: values.name,
+        code: values.code.toUpperCase(),
+        daysAllowedPerYear: values.daysAllowedPerYear,
+        carryForwardLimit: values.carryForwardLimit,
+        paid,
+        requiresDocument: requiresDoc,
+        description: values.description,
+      })
+      toast.success(`Updated leave policy: ${values.name}`)
+    } else {
+      const created = createLeaveType({
+        name: values.name,
+        code: values.code.toUpperCase(),
+        daysAllowedPerYear: values.daysAllowedPerYear,
+        carryForwardLimit: values.carryForwardLimit,
+        paid,
+        requiresDocument: requiresDoc,
+        color: "#2563EB",
+        description: values.description,
+      })
+      toast.success(`Added leave policy: ${created.name}`)
+    }
     form.reset()
+    setEditingTarget(null)
     setOpen(false)
   }
 
@@ -167,7 +216,17 @@ export default function LeaveTypesPage() {
         header: "",
         enableHiding: false,
         cell: ({ row }) => (
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => openEdit(row.original)}
+              aria-label="Edit leave type"
+            >
+              <Pencil className="size-3.5" />
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -182,7 +241,7 @@ export default function LeaveTypesPage() {
         ),
       },
     ],
-    [promptDelete]
+    [openEdit, promptDelete]
   )
 
   if (!isLoaded) {
@@ -202,7 +261,7 @@ export default function LeaveTypesPage() {
         actions={
           <Button
             type="button"
-            onClick={() => setOpen(true)}
+            onClick={openCreate}
             className="gap-1.5"
           >
             <Plus className="size-4" />
@@ -218,12 +277,22 @@ export default function LeaveTypesPage() {
         exportModule="Leave Types"
       />
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (!next) setEditingTarget(null)
+        }}
+      >
         <SheetContent side="right" className="sm:max-w-md">
           <SheetHeader className="border-b border-border pb-3">
-            <SheetTitle>Add Leave Type</SheetTitle>
+            <SheetTitle>
+              {editingTarget ? "Edit Leave Type" : "Add Leave Type"}
+            </SheetTitle>
             <SheetDescription>
-              Define accrual allowance and documentation rules.
+              {editingTarget
+                ? "Update accrual allowance and documentation rules."
+                : "Define accrual allowance and documentation rules."}
             </SheetDescription>
           </SheetHeader>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 p-4">
@@ -302,7 +371,9 @@ export default function LeaveTypesPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Create Leave Type</Button>
+              <Button type="submit">
+                {editingTarget ? "Save Changes" : "Create Leave Type"}
+              </Button>
             </SheetFooter>
           </form>
         </SheetContent>

@@ -1,5 +1,7 @@
 "use client"
 
+import { DatePicker } from "@/components/ui/date-picker"
+
 import * as React from "react"
 import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
@@ -778,7 +780,17 @@ function CreateInvoiceForm({
 
         <div className="space-y-1.5">
           <Label htmlFor="inv-due">Due Date</Label>
-          <Input id="inv-due" type="date" {...form.register("dueDate")} />
+          <Controller
+            control={form.control}
+            name="dueDate"
+            render={({ field }) => (
+              <DatePicker
+                id="inv-due"
+                value={field.value}
+                onChange={field.onChange}
+              />
+            )}
+          />
         </div>
       </div>
 

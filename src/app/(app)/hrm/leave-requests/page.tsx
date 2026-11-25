@@ -1,5 +1,7 @@
 "use client"
 
+import { DatePicker } from "@/components/ui/date-picker"
+
 import * as React from "react"
 import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
@@ -438,15 +440,31 @@ export default function LeaveRequestsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="lr-start">Start Date</Label>
-                  <Input
-                    id="lr-start"
-                    type="date"
-                    {...form.register("startDate")}
+                  <Controller
+                    control={form.control}
+                    name="startDate"
+                    render={({ field }) => (
+                      <DatePicker
+                        id="lr-start"
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    )}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="lr-end">End Date</Label>
-                  <Input id="lr-end" type="date" {...form.register("endDate")} />
+                  <Controller
+                    control={form.control}
+                    name="endDate"
+                    render={({ field }) => (
+                      <DatePicker
+                        id="lr-end"
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    )}
+                  />
                 </div>
               </div>
               <div className="space-y-1.5">

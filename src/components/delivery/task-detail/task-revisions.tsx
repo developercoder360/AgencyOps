@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/popover"
 import { Calendar as CalendarPicker } from "@/components/ui/calendar"
 import { AvatarGroup, ConfirmDeleteDialog, StatusBadge } from "@/components/shared"
-import { RichTextEditorSkeleton, EMPTY_DOC } from "@/components/ui/rich-text-editor"
+import { RichTextEditorSkeleton, RichTextViewer, EMPTY_DOC } from "@/components/ui/rich-text-editor"
 import { RevisionAssigneePicker } from "./revision-assignee-picker"
 import { RevisionFlaggedUserPicker } from "./revision-flagged-user-picker"
 import { RevisionRedFlagCard } from "./revision-red-flag-card"
@@ -665,20 +665,40 @@ export function TaskRevisions({
                       </div>
                     </div>
 
-                    {/* Details Rich Text Editor */}
+                    {/* Details Rich Text Editor / Viewer */}
                     <div className="space-y-1">
                       <Label className="text-[11px] text-muted-foreground">
                         Change Details
                       </Label>
-                      <div className="rounded-lg bg-background">
-                        <RichTextEditor
-                          value={rev.details}
-                          readOnly={!permissions.canEditRevision}
-                          placeholder="Specific feedback or rework instructions..."
-                          onChange={(doc) => onUpdateRevision(rev.id, { details: doc })}
-                          minHeight="76px"
-                        />
-                      </div>
+                      {permissions.canEditRevision ? (
+                        <div className="rounded-lg bg-background">
+                          <RichTextEditor
+                            value={rev.details}
+                            format="json"
+                            variant="full"
+                            placeholder="Specific feedback or rework instructions..."
+                            onChange={(doc) =>
+                              onUpdateRevision(rev.id, {
+                                details: doc as Record<string, unknown>,
+                              })
+                            }
+                            mentionItems={users.map((u) => ({
+                              id: u.id,
+                              name: u.name,
+                              avatarInitials: u.avatarInitials,
+                              avatarColor: u.avatarColor,
+                            }))}
+                            minHeight="84px"
+                          />
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-border/60 bg-background/70 p-2.5">
+                          <RichTextViewer
+                            value={rev.details}
+                            emptyFallback="No details provided."
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Properties Grid: Assignees, Priority, Flagged Staff, Due Date */}
@@ -971,10 +991,18 @@ export function TaskRevisions({
                   render={({ field }) => (
                     <RichTextEditor
                       value={field.value}
+                      format="json"
+                      variant="full"
                       placeholder="Describe what needs to change..."
                       onChange={field.onChange}
                       onSubmit={() => form.handleSubmit(onSubmit)()}
-                      minHeight="110px"
+                      mentionItems={users.map((u) => ({
+                        id: u.id,
+                        name: u.name,
+                        avatarInitials: u.avatarInitials,
+                        avatarColor: u.avatarColor,
+                      }))}
+                      minHeight="120px"
                     />
                   )}
                 />
