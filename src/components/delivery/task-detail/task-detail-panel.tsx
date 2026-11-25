@@ -144,7 +144,6 @@ export function TaskDetailPanel({
     addTaskComment,
     editTaskComment,
     deleteTaskComment,
-    toggleCommentResolved,
     addTaskEvidence,
     toggleTaskWatcher,
     recordQAReview,
@@ -1120,20 +1119,17 @@ export function TaskDetailPanel({
                       parentId,
                       mentions,
                       attachments,
-                      isQaRelated,
                     }: {
                       content: string
                       parentId?: string
                       mentions: string[]
                       attachments: AttachmentFile[]
-                      isQaRelated: boolean
                     }) => {
                       addTaskComment(task.id, content, actorId, {
                         authorName: actorName,
                         parentId,
                         mentions,
                         attachments,
-                        isQaRelated,
                       })
                       for (const att of attachments) {
                         addTaskEvidence(task.id, att, actorName)
@@ -1147,9 +1143,6 @@ export function TaskDetailPanel({
                     onDeleteComment={(commentId) => {
                       deleteTaskComment(task.id, commentId)
                       toast.success("Comment deleted")
-                    }}
-                    onToggleResolved={(commentId) => {
-                      toggleCommentResolved(task.id, commentId, actorName)
                     }}
                   />
                 </div>

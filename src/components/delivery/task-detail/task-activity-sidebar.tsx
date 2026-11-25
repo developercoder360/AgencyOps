@@ -5,10 +5,8 @@ import {
   Activity,
   AtSign,
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Circle,
   CornerDownRight,
   History,
   MessageSquare,
@@ -20,7 +18,6 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import type { TaskRolePermissions } from "@/lib/permissions"
@@ -35,7 +32,7 @@ import type {
 import { cn } from "cn"
 import { formatRelativeTimestamp, parseTimestampMs } from "./types"
 
-type ActivityFilter = "all" | "comments" | "status" | "qa"
+type ActivityFilter = "all" | "comments" | "status"
 
 interface TimelineItem {
   id: string
@@ -59,11 +56,9 @@ interface TaskActivitySidebarProps {
     parentId?: string
     mentions: string[]
     attachments: AttachmentFile[]
-    isQaRelated: boolean
   }) => void
   onEditComment: (commentId: string, content: string) => void
   onDeleteComment: (commentId: string) => void
-  onToggleResolved: (commentId: string) => void
 }
 
 function renderCommentWithMentions(content: string): React.ReactNode {
@@ -95,7 +90,6 @@ export function TaskActivitySidebar({
   onAddComment,
   onEditComment,
   onDeleteComment,
-  onToggleResolved,
 }: TaskActivitySidebarProps) {
   const [filter, setFilter] = React.useState<ActivityFilter>("all")
   const [draft, setDraft] = React.useState("")
@@ -106,7 +100,6 @@ export function TaskActivitySidebar({
   const [mentionOpen, setMentionOpen] = React.useState(false)
   const [mentionQuery, setMentionQuery] = React.useState("")
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0)
-  const [isQaNote, setIsQaNote] = React.useState(false)
   const [editingCommentId, setEditingCommentId] = React.useState<string | null>(
     null
   )
@@ -183,25 +176,13 @@ export function TaskActivitySidebar({
     if (filter === "comments") return allItems.filter((i) => i.kind === "comment")
     if (filter === "status")
       return allItems.filter((i) => i.kind === "system" || i.kind === "qa")
-    if (filter === "qa")
-      return allItems.filter((i) => {
-        if (i.kind !== "comment" || !i.comment) return false
-        const replies = repliesByParentId.get(i.comment.id) ?? []
-        const hasOpenRoot = i.comment.isQaRelated && !i.comment.resolved
-        const hasOpenReply = replies.some((r) => r.isQaRelated && !r.resolved)
-        return hasOpenRoot || hasOpenReply
-      })
     return allItems
-  }, [allItems, filter, repliesByParentId])
+  }, [allItems, filter])
 
   const commentCount = task.comments.length
   const statusHistoryCount = React.useMemo(
     () => allItems.filter((i) => i.kind === "system" || i.kind === "qa").length,
     [allItems]
-  )
-  const openQaCount = React.useMemo(
-    () => task.comments.filter((c) => c.isQaRelated && !c.resolved).length,
-    [task.comments]
   )
 
   const prevFeedRef = React.useRef({
@@ -313,11 +294,6 @@ export function TaskActivitySidebar({
       parentId: replyingTo?.parentId,
       mentions: pendingMentions,
       attachments: pendingAttachments,
-      isQaRelated:
-        isQaNote ||
-        currentRole === "QA Reviewer" ||
-        task.status === "QA Review" ||
-        task.status === "Re-Draw",
     })
     setDraft("")
     setReplyingTo(null)
@@ -378,14 +354,7 @@ export function TaskActivitySidebar({
         className={cn(
           "group/comment transition-colors",
           isReply
-            ? cn(
-                "rounded-lg border p-2.5 text-xs",
-                c.resolved
-                  ? "border-emerald-500/25 bg-emerald-500/[0.03]"
-                  : c.isQaRelated
-                    ? "border-violet-500/25 bg-violet-500/[0.03]"
-                    : "border-border/70 bg-muted/25 hover:border-border"
-              )
+            ? "rounded-lg border border-border/70 bg-muted/25 p-2.5 text-xs hover:border-border"
             : ""
         )}
       >
@@ -408,19 +377,6 @@ export function TaskActivitySidebar({
                 · {formatRelativeTimestamp(c.createdAt, nowMs)}
                 {c.editedAt ? " (edited)" : ""}
               </span>
-              {c.isQaRelated ? (
-                <Badge
-                  variant={c.resolved ? "secondary" : "outline"}
-                  className={cn(
-                    "h-4 px-1.5 text-[9px] font-semibold",
-                    c.resolved
-                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                      : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300"
-                  )}
-                >
-                  {c.resolved ? "QA Resolved" : "QA"}
-                </Badge>
-              ) : null}
             </div>
           </div>
 
@@ -428,7 +384,7 @@ export function TaskActivitySidebar({
           <div
             className={cn(
               "flex shrink-0 items-center gap-0.5 transition-opacity",
-              isConfirmingDelete || c.isQaRelated
+              isConfirmingDelete
                 ? "opacity-100"
                 : "opacity-0 group-hover/comment:opacity-100 focus-within:opacity-100"
             )}
@@ -443,29 +399,6 @@ export function TaskActivitySidebar({
                 title="Reply"
               >
                 <Reply className="size-3 text-muted-foreground hover:text-foreground" />
-              </Button>
-            ) : null}
-
-            {c.isQaRelated && permissions.canResolveQaComment ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onToggleResolved(c.id)}
-                aria-label={
-                  c.resolved ? "Reopen QA comment" : "Mark QA comment resolved"
-                }
-                title={
-                  c.resolved
-                    ? "Resolved (click to reopen)"
-                    : "Mark as resolved"
-                }
-              >
-                {c.resolved ? (
-                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                ) : (
-                  <Circle className="size-3.5 text-muted-foreground hover:text-emerald-600" />
-                )}
               </Button>
             ) : null}
 
@@ -566,8 +499,7 @@ export function TaskActivitySidebar({
           <p
             className={cn(
               "mt-1.5 whitespace-pre-wrap leading-relaxed text-foreground/90",
-              isReply ? "pl-7" : "pl-8",
-              c.resolved && "text-muted-foreground line-through"
+              isReply ? "pl-7" : "pl-8"
             )}
           >
             {renderCommentWithMentions(c.content)}
@@ -611,28 +543,9 @@ export function TaskActivitySidebar({
       {/* Header & segmented filter */}
       <div className="shrink-0 border-b border-border bg-card px-4 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="text-xs font-semibold tracking-tight text-foreground">
-              Activity
-            </span>
-            {openQaCount > 0 ? (
-              <button
-                type="button"
-                onClick={() =>
-                  setFilter((prev) => (prev === "qa" ? "all" : "qa"))
-                }
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors",
-                  filter === "qa"
-                    ? "border-violet-500/40 bg-violet-500/15 text-violet-700 dark:text-violet-300"
-                    : "border-violet-500/25 bg-violet-500/5 text-violet-700 hover:bg-violet-500/15 dark:text-violet-300"
-                )}
-              >
-                <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />
-                {openQaCount} open QA
-              </button>
-            ) : null}
-          </div>
+          <span className="text-xs font-semibold tracking-tight text-foreground">
+            Activity
+          </span>
 
           <div
             role="tablist"
@@ -678,7 +591,7 @@ export function TaskActivitySidebar({
         {visibleItems.length === 0 ? (
           <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2.5 text-center">
             <div className="flex size-10 items-center justify-center rounded-full border border-border bg-card text-muted-foreground/70 shadow-2xs">
-              {filter === "comments" || filter === "qa" ? (
+              {filter === "comments" ? (
                 <MessageSquare className="size-4" />
               ) : (
                 <History className="size-4" />
@@ -686,20 +599,16 @@ export function TaskActivitySidebar({
             </div>
             <div className="space-y-0.5">
               <p className="text-xs font-medium text-foreground">
-                {filter === "qa"
-                  ? "No open QA notes"
-                  : filter === "comments"
-                    ? "No comments yet"
-                    : filter === "status"
-                      ? "No status history yet"
-                      : "No activity yet"}
+                {filter === "comments"
+                  ? "No comments yet"
+                  : filter === "status"
+                    ? "No status history yet"
+                    : "No activity yet"}
               </p>
               <p className="text-[11px] text-muted-foreground">
                 {filter === "comments"
                   ? "Leave a note or @mention a teammate below."
-                  : filter === "qa"
-                    ? "All QA comments on this task are resolved."
-                    : "Updates and comments will appear here."}
+                  : "Updates and comments will appear here."}
               </p>
             </div>
             {filter === "comments" && permissions.canComment ? (
@@ -724,14 +633,7 @@ export function TaskActivitySidebar({
                 return (
                   <article
                     key={c.id}
-                    className={cn(
-                      "rounded-xl border p-3 text-xs shadow-2xs transition-colors",
-                      c.resolved
-                        ? "border-emerald-500/25 bg-emerald-500/[0.03]"
-                        : c.isQaRelated
-                          ? "border-violet-500/30 bg-violet-500/[0.03]"
-                          : "border-border bg-card hover:border-border/90"
-                    )}
+                    className="rounded-xl border border-border bg-card p-3 text-xs shadow-2xs transition-colors hover:border-border/90"
                   >
                     {renderCommentNode(c, c.id, false)}
 
@@ -1040,28 +942,6 @@ export function TaskActivitySidebar({
                     className="sr-only"
                     onChange={handleAttachCommentFile}
                   />
-
-                  {/* QA comment toggle */}
-                  <button
-                    type="button"
-                    onClick={() => setIsQaNote((v) => !v)}
-                    aria-pressed={isQaNote}
-                    title="Tag as QA note (supports Resolved toggle)"
-                    className={cn(
-                      "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isQaNote
-                        ? "bg-violet-500/15 text-violet-700 dark:text-violet-300"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "size-1.5 rounded-full",
-                        isQaNote ? "bg-violet-500" : "bg-muted-foreground/40"
-                      )}
-                    />
-                    QA Note
-                  </button>
                 </div>
 
                 <div className="flex items-center gap-2">
