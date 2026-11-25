@@ -76,6 +76,8 @@ export type PaymentGateway =
   | "Zelle"
   | "Wise"
 
+export type SaleType = "Sale" | "Upsell"
+
 export type PermissionModule =
   | "dashboard"
   | "brands"
@@ -286,6 +288,7 @@ export interface Invoice {
   projectName?: string
   leadId?: string
   gateway: PaymentGateway
+  saleType?: SaleType
   currency: CurrencyCode
   lineItems: InvoiceLineItem[]
   subtotal: number

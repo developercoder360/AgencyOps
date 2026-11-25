@@ -69,7 +69,10 @@ export function downloadInvoicePdf(invoice: Invoice): void {
   const lines: { text: string; bold?: boolean; size?: number }[] = [
     { text: `${invoice.brandName} - INVOICE`, bold: true, size: 16 },
     { text: `Invoice #: ${invoice.invoiceNumber}`, bold: true, size: 12 },
-    { text: `Status: ${invoice.status}   |   Gateway: ${invoice.gateway}`, size: 10 },
+    {
+      text: `Status: ${invoice.status}   |   Gateway: ${invoice.gateway}   |   Sale Type: ${invoice.saleType || "Sale"}`,
+      size: 10,
+    },
     { text: `Created At: ${invoice.createdAt || invoice.issuedAt}   |   Due Date: ${invoice.dueDate}`, size: 10 },
     { text: " ", size: 8 },
     { text: "Billed To:", bold: true, size: 11 },

@@ -198,6 +198,9 @@ export function migrateInvoice(
   if (!inv.leadId) {
     inv.leadId = `lead-${(index % 8) + 1}`
   }
+  if (!inv.saleType) {
+    inv.saleType = index % 3 === 0 ? "Upsell" : "Sale"
+  }
   if (!inv.createdAt && typeof inv.issuedAt === "string") {
     inv.createdAt = inv.issuedAt
   }

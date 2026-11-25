@@ -460,6 +460,7 @@ export class StoreManager {
       "Marcus Vance"
     const newInvoice: Invoice = {
       ...inv,
+      saleType: inv.saleType || "Sale",
       id: inv.id || `inv-${crypto.randomUUID().slice(0, 8)}`,
       invoiceNumber,
       issuedAt: inv.issuedAt || nowTimestamp.slice(0, 10),

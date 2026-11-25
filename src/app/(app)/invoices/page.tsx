@@ -137,6 +137,7 @@ const invoiceSchema = z.object({
     ])
     .optional(),
   currency: z.enum(["USD", "GBP", "CAD", "AED"]),
+  saleType: z.enum(["Sale", "Upsell"]),
   taxAmount: z.number().min(0, "Tax cannot be negative"),
   discountAmount: z.number().min(0, "Discount cannot be negative"),
   dueDate: z.string().min(8),
@@ -247,6 +248,23 @@ export default function InvoicesPage() {
         accessorKey: "gateway",
         header: "Gateway",
         cell: ({ row }) => <GatewayBadge gateway={row.original.gateway} />,
+      },
+      {
+        id: "saleType",
+        accessorFn: (row) => row.saleType || "Sale",
+        meta: { label: "Sale Type" },
+        header: "Sale Type",
+        cell: ({ row }) => {
+          const saleType = row.original.saleType || "Sale"
+          return (
+            <Badge
+              variant={saleType === "Upsell" ? "default" : "secondary"}
+              className="font-normal"
+            >
+              {saleType}
+            </Badge>
+          )
+        },
       },
       {
         accessorKey: "total",
@@ -394,6 +412,14 @@ export default function InvoicesPage() {
         options: GATEWAYS.map((g) => ({ label: g, value: g })),
       },
       {
+        columnId: "saleType",
+        title: "Sale Type",
+        options: [
+          { label: "Sale", value: "Sale" },
+          { label: "Upsell", value: "Upsell" },
+        ],
+      },
+      {
         columnId: "brandName",
         title: "Brand",
         options: brands.map((b) => ({ label: b.name, value: b.name })),
@@ -505,7 +531,7 @@ export default function InvoicesPage() {
                 </SheetHeader>
 
                 <div className="space-y-6 p-4">
-                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3.5 text-xs sm:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3.5 text-xs sm:grid-cols-4">
                     <div>
                       <div className="text-muted-foreground">Brand</div>
                       <div className="mt-1">
@@ -514,6 +540,21 @@ export default function InvoicesPage() {
                           brandName={selectedInvoice.brandName}
                           brands={brands}
                         />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Sale Type</div>
+                      <div className="mt-1">
+                        <Badge
+                          variant={
+                            selectedInvoice.saleType === "Upsell"
+                              ? "default"
+                              : "secondary"
+                          }
+                          className="font-normal"
+                        >
+                          {selectedInvoice.saleType || "Sale"}
+                        </Badge>
                       </div>
                     </div>
                     <div>
@@ -1009,6 +1050,7 @@ function InvoiceForm({
               : "Processing"
             : editingInvoice.status,
           currency: editingInvoice.currency,
+          saleType: editingInvoice.saleType || "Sale",
           taxAmount: editingInvoice.taxAmount,
           discountAmount: editingInvoice.discountAmount,
           dueDate: editingInvoice.dueDate,
@@ -1025,6 +1067,7 @@ function InvoiceForm({
           gateway: "Stripe",
           status: "Created",
           currency: "USD",
+          saleType: "Sale",
           taxAmount: 0,
           discountAmount: 0,
           dueDate: defaultDueDate,
@@ -1121,6 +1164,7 @@ function InvoiceForm({
         projectId: editingInvoice.projectId,
         projectName: editingInvoice.projectName,
         gateway: values.gateway,
+        saleType: values.saleType,
         currency: values.currency,
         lineItems: mappedLineItems,
         subtotal: liveSubtotal,
@@ -1167,6 +1211,7 @@ function InvoiceForm({
       brandId,
       brandName,
       gateway: values.gateway,
+      saleType: values.saleType,
       currency: values.currency,
       lineItems: mappedLineItems,
       subtotal: liveSubtotal,
@@ -1246,9 +1291,28 @@ function InvoiceForm({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <div className="space-y-1.5">
-          <Label>Payment Gateway</Label>
+          <Label>Sale Type</Label>
+          <Controller
+            control={form.control}
+            name="saleType"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Sale">Sale</SelectItem>
+                  <SelectItem value="Upsell">Upsell</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Gateway</Label>
           <Controller
             control={form.control}
             name="gateway"

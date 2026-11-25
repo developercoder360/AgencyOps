@@ -125,6 +125,7 @@ function generateBilling() {
       projectName: `${client.company} Digital Rollout`,
       leadId: `lead-${(i % 8) + 1}`,
       gateway,
+      saleType: i % 3 === 0 ? "Upsell" : "Sale",
       currency,
       lineItems,
       subtotal,
