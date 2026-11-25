@@ -2,17 +2,28 @@ import type {
   CurrencyCode,
   Invoice,
   InvoiceLineItem,
+  LeadSource,
   PaymentGateway,
   PaymentStatus,
   Transaction,
 } from "@/types"
 import { toUsd } from "@/lib/currency"
 import { ALL_GATEWAYS, isOfflineMerchant } from "@/lib/gateways"
-import { MOCK_BRANDS } from "./brands"
+import { MOCK_BRANDS, MOCK_CITIES } from "./brands"
 import { MOCK_USERS } from "./users"
 import { createSeededRandom, intBetween, pickFrom } from "./seed"
 
 const GATEWAYS: PaymentGateway[] = ALL_GATEWAYS
+
+const LEAD_SOURCES: LeadSource[] = [
+  "Google Ads",
+  "Bing Ads",
+  "Website",
+  "Organic SEO",
+  "Referral",
+  "Social Media",
+  "Email Campaign",
+]
 
 const STATUSES: PaymentStatus[] = [
   "Success",
@@ -110,10 +121,23 @@ function generateBilling() {
     const createdHour = String(intBetween(rng, 8, 19)).padStart(2, "0")
     const createdMin = String(intBetween(rng, 0, 59)).padStart(2, "0")
     const createdAt = `${issuedAt} ${createdHour}:${createdMin}`
+    const billingCity = MOCK_CITIES[i % MOCK_CITIES.length]
+    const billingStreets = [
+      "120 Broadway",
+      "450 Lexington Ave",
+      "222 Merchandise Mart Plaza",
+      "500 West 2nd St",
+      "800 5th Ave",
+      "100 Montgomery St",
+    ]
+    const billingSuites = ["Suite 1400", "4th Floor", "Suite 900", "", "Suite 2200", ""]
+    const billingZips = ["10005", "EC2N 2DB", "M5J 2H7", "78701", "98104", "94104"]
+    const txRef = status !== "Created" ? `TXN-${88200 + i}` : undefined
 
     invoices.push({
       id: invoiceId,
       invoiceNumber,
+      transactionId: txRef,
       clientName: client.name,
       clientEmail: `${client.name.toLowerCase().replace(/\s+/g, ".")}@${client.company
         .toLowerCase()
@@ -140,6 +164,16 @@ function generateBilling() {
       createdBy,
       paidAt: status === "Success" ? issuedAt : undefined,
       salesRepId,
+      billingDetails: !isOfflineMerchant(gateway)
+        ? {
+            addressLine1: billingStreets[i % billingStreets.length],
+            addressLine2: billingSuites[i % billingSuites.length],
+            city: billingCity.name,
+            state: billingCity.state || "",
+            country: billingCity.country,
+            zipCode: billingZips[i % billingZips.length],
+          }
+        : undefined,
       attachments: [
         {
           id: `att-${i}-1`,
@@ -236,6 +270,8 @@ function generateBilling() {
         brandId: brand.id,
         brandName: brand.name,
         gateway,
+        saleType: i % 3 === 0 ? "Upsell" : "Sale",
+        source: LEAD_SOURCES[i % LEAD_SOURCES.length],
         currency,
         amount: total,
         amountUsd: toUsd(total, currency),

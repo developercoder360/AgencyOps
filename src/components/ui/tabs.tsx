@@ -15,7 +15,7 @@ function Tabs({
       data-slot="tabs"
       data-orientation={orientation}
       className={cn(
-        "group/tabs flex gap-2 data-horizontal:flex-col",
+        "group/tabs gap-2 data-horizontal:flex-col grid",
         className
       )}
       {...props}

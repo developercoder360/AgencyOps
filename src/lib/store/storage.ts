@@ -1,4 +1,18 @@
-import type { Brand, City, Invoice, Lead, Project, SignUp, StaffUser, Task, TaskRevision } from "@/types"
+import { isOfflineMerchant } from "@/lib/gateways"
+import type {
+  Brand,
+  City,
+  Invoice,
+  Lead,
+  LeadSource,
+  PaymentGateway,
+  Project,
+  SignUp,
+  StaffUser,
+  Task,
+  TaskRevision,
+  Transaction,
+} from "@/types"
 import {
   createInitialEmptyData,
   STORE_STORAGE_KEY,
@@ -189,7 +203,9 @@ export function migrateLead(rawLead: unknown, index: number): Lead {
 export function migrateInvoice(
   rawInvoice: unknown,
   index: number,
-  users: StaffUser[]
+  users: StaffUser[],
+  leads: Lead[],
+  cities: City[]
 ): Invoice {
   if (!rawInvoice || typeof rawInvoice !== "object") {
     return rawInvoice as Invoice
@@ -211,7 +227,65 @@ export function migrateInvoice(
         : undefined
     inv.createdBy = rep?.name ?? users[0]?.name ?? "Marcus Vance"
   }
+  const gateway = inv.gateway as PaymentGateway | undefined
+  if (gateway && !isOfflineMerchant(gateway) && !inv.billingDetails) {
+    const lead =
+      typeof inv.leadId === "string"
+        ? leads.find((l) => l.id === inv.leadId)
+        : undefined
+    const cityObj = cities.find(
+      (c) => c.name.toLowerCase() === (lead?.city || "").toLowerCase()
+    )
+    if (lead) {
+      inv.billingDetails = {
+        addressLine1: lead.address || "120 Broadway",
+        addressLine2: "",
+        city: lead.city || cityObj?.name || "",
+        state: lead.state || cityObj?.state || "",
+        country: lead.country || cityObj?.country || "United States",
+        zipCode: lead.zipCode || "10005",
+      }
+    }
+  }
   return inv as unknown as Invoice
+}
+
+const DEFAULT_LEAD_SOURCES: LeadSource[] = [
+  "Google Ads",
+  "Bing Ads",
+  "Website",
+  "Organic SEO",
+  "Referral",
+  "Social Media",
+  "Email Campaign",
+]
+
+export function migrateTransaction(
+  rawTx: unknown,
+  index: number,
+  invoices: Invoice[],
+  leads: Lead[]
+): Transaction {
+  if (!rawTx || typeof rawTx !== "object") {
+    return rawTx as Transaction
+  }
+  const tx = { ...(rawTx as Record<string, unknown>) }
+  const linkedInvoice =
+    typeof tx.invoiceId === "string"
+      ? invoices.find((inv) => inv.id === tx.invoiceId)
+      : undefined
+  const linkedLead = linkedInvoice?.leadId
+    ? leads.find((ld) => ld.id === linkedInvoice.leadId)
+    : undefined
+
+  if (!tx.saleType) {
+    tx.saleType = linkedInvoice?.saleType ?? (index % 3 === 0 ? "Upsell" : "Sale")
+  }
+  if (!tx.source) {
+    tx.source =
+      linkedLead?.source ?? DEFAULT_LEAD_SOURCES[index % DEFAULT_LEAD_SOURCES.length]
+  }
+  return tx as unknown as Transaction
 }
 
 export function migrateProject(rawProject: unknown, index: number): Project {
@@ -309,7 +383,13 @@ export function loadStoredData(): StoreData {
         : base.users
     const rawInvoices = Array.isArray(parsed.invoices) ? parsed.invoices : base.invoices
     const migratedInvoices = rawInvoices.map((inv, idx) =>
-      migrateInvoice(inv, idx, rawUsers)
+      migrateInvoice(inv, idx, rawUsers, migratedLeads, rawCities)
+    )
+    const rawTransactions = Array.isArray(parsed.transactions)
+      ? parsed.transactions
+      : base.transactions
+    const migratedTransactions = rawTransactions.map((tx, idx) =>
+      migrateTransaction(tx, idx, migratedInvoices, migratedLeads)
     )
     const rawProjects = Array.isArray(parsed.projects) ? parsed.projects : base.projects
     const migratedProjects = rawProjects.map(migrateProject)
@@ -323,7 +403,7 @@ export function loadStoredData(): StoreData {
       leads: migratedLeads,
       signups: migratedSignUps,
       invoices: migratedInvoices,
-      transactions: Array.isArray(parsed.transactions) ? parsed.transactions : base.transactions,
+      transactions: migratedTransactions,
       marketingSpendings: Array.isArray(parsed.marketingSpendings) ? parsed.marketingSpendings : base.marketingSpendings,
       projects: migratedProjects,
       tasks: migratedTasks,

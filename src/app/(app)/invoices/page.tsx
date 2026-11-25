@@ -16,8 +16,10 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  History,
   Loader2,
   Lock,
+  MapPin,
   MoreHorizontal,
   Paperclip,
   Plus,
@@ -71,6 +73,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency, formatUsdEquivalent } from "@/lib/currency"
 import { ALL_GATEWAYS, isOfflineMerchant } from "@/lib/gateways"
 import { downloadInvoicePdf } from "@/lib/invoice-pdf"
@@ -80,10 +83,12 @@ import type {
   Brand,
   CurrencyCode,
   Invoice,
+  InvoiceBillingDetails,
   Lead,
   PaymentGateway,
   PaymentStatus,
   StaffUser,
+  TransactionEvent,
 } from "@/types"
 
 const GATEWAYS: PaymentGateway[] = ALL_GATEWAYS
@@ -151,6 +156,8 @@ export default function InvoicesPage() {
     invoices,
     brands,
     leads,
+    cities,
+    transactions,
     users,
     createInvoice,
     updateInvoice,
@@ -163,6 +170,149 @@ export default function InvoicesPage() {
   )
   const [isEditingSelected, setIsEditingSelected] = React.useState(false)
   const [createOpen, setCreateOpen] = React.useState(false)
+
+  const selectedInvoiceTx = React.useMemo(() => {
+    if (!selectedInvoice) return undefined
+    return transactions.find(
+      (t) =>
+        t.invoiceId === selectedInvoice.id ||
+        (selectedInvoice.transactionId &&
+          t.txRef === selectedInvoice.transactionId)
+    )
+  }, [selectedInvoice, transactions])
+
+  const selectedInvoiceTransactionId = React.useMemo(() => {
+    if (!selectedInvoice) return "—"
+    return selectedInvoice.transactionId || selectedInvoiceTx?.txRef || "—"
+  }, [selectedInvoice, selectedInvoiceTx])
+
+  const selectedInvoiceBilling =
+    React.useMemo<InvoiceBillingDetails | null>(() => {
+      if (!selectedInvoice || isOfflineMerchant(selectedInvoice.gateway)) {
+        return null
+      }
+      const linkedLead = leads.find((l) => l.id === selectedInvoice.leadId)
+      const linkedCity = linkedLead?.city
+        ? cities.find(
+            (c) => c.name.toLowerCase() === linkedLead.city?.toLowerCase()
+          )
+        : undefined
+      const bd = selectedInvoice.billingDetails
+      return {
+        addressLine1: bd?.addressLine1 || linkedLead?.address || "",
+        addressLine2: bd?.addressLine2 || "",
+        city: bd?.city || linkedLead?.city || linkedCity?.name || "",
+        state: bd?.state || linkedLead?.state || linkedCity?.state || "",
+        country:
+          bd?.country || linkedLead?.country || linkedCity?.country || "",
+        zipCode: bd?.zipCode || linkedLead?.zipCode || "",
+      }
+    }, [selectedInvoice, leads, cities])
+
+  const allActivityEvents = React.useMemo<TransactionEvent[]>(() => {
+    if (!selectedInvoice) return []
+    const events: TransactionEvent[] = [...(selectedInvoiceTx?.events ?? [])]
+    const createdTimestamp =
+      selectedInvoice.createdAt || selectedInvoice.issuedAt
+    if (!events.some((e) => e.status === "Created")) {
+      events.push({
+        id: `${selectedInvoice.id}-evt-created`,
+        status: "Created",
+        title: "Invoice Created",
+        detail: `Invoice ${selectedInvoice.invoiceNumber} issued via ${selectedInvoice.gateway}.`,
+        actor: selectedInvoice.createdBy || "System",
+        timestamp: createdTimestamp,
+      })
+    }
+    if (
+      selectedInvoice.status === "Viewed" &&
+      !events.some((e) => e.status === "Viewed")
+    ) {
+      events.push({
+        id: `${selectedInvoice.id}-evt-viewed`,
+        status: "Viewed",
+        title: "Invoice Viewed",
+        detail: `${selectedInvoice.clientName} opened the payment link.`,
+        actor: "Client",
+        timestamp: selectedInvoice.issuedAt,
+      })
+    }
+    if (
+      selectedInvoice.status === "Processing" &&
+      !events.some((e) => e.status === "Processing")
+    ) {
+      events.push({
+        id: `${selectedInvoice.id}-evt-processing`,
+        status: "Processing",
+        title: "Awaiting Settlement",
+        detail: `Payment is processing via ${selectedInvoice.gateway}.`,
+        actor: selectedInvoice.gateway,
+        timestamp: selectedInvoice.issuedAt,
+      })
+    }
+    if (
+      selectedInvoice.status === "Expired" &&
+      !events.some((e) => e.status === "Expired")
+    ) {
+      events.push({
+        id: `${selectedInvoice.id}-evt-expired`,
+        status: "Expired",
+        title: "Payment Link Expired",
+        detail: `Invoice passed due date (${selectedInvoice.dueDate}) without settlement.`,
+        actor: "System",
+        timestamp: selectedInvoice.dueDate,
+      })
+    }
+    if (
+      selectedInvoice.status === "Success" &&
+      !events.some((e) => e.status === "Success")
+    ) {
+      events.push({
+        id: `${selectedInvoice.id}-evt-success`,
+        status: "Success",
+        title: "Payment Succeeded",
+        detail: `Payment settled via ${selectedInvoice.gateway}.`,
+        actor: selectedInvoice.createdBy || selectedInvoice.gateway,
+        timestamp: selectedInvoice.paidAt || createdTimestamp,
+      })
+    }
+    if (
+      selectedInvoice.status === "Denied" &&
+      !events.some((e) => e.status === "Denied")
+    ) {
+      events.push({
+        id: `${selectedInvoice.id}-evt-denied`,
+        status: "Denied",
+        title: "Access Denied",
+        detail: `Payment declined by ${selectedInvoice.gateway}.`,
+        actor: `${selectedInvoice.gateway} Risk Engine`,
+        timestamp: selectedInvoice.issuedAt,
+      })
+    }
+    if (
+      selectedInvoice.status === "Chargeback" &&
+      !events.some((e) => e.status === "Chargeback")
+    ) {
+      events.push({
+        id: `${selectedInvoice.id}-evt-chargeback`,
+        status: "Chargeback",
+        title: "Chargeback Filed",
+        detail: `Cardholder dispute opened on ${selectedInvoice.gateway}.`,
+        actor: "Issuing Bank",
+        timestamp: selectedInvoice.paidAt || selectedInvoice.issuedAt,
+      })
+    }
+    return events.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+  }, [selectedInvoice, selectedInvoiceTx])
+
+  const transactionActivityEvents = React.useMemo<TransactionEvent[]>(() => {
+    return allActivityEvents.filter(
+      (evt) =>
+        evt.status === "Denied" ||
+        evt.status === "Success" ||
+        evt.status === "Chargeback"
+    )
+  }, [allActivityEvents])
 
   // Delete dialog state
   const [deleteTarget, setDeleteTarget] = React.useState<Invoice | null>(null)
@@ -531,7 +681,7 @@ export default function InvoicesPage() {
                 </SheetHeader>
 
                 <div className="space-y-6 p-4">
-                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3.5 text-xs sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3.5 text-xs sm:grid-cols-3">
                     <div>
                       <div className="text-muted-foreground">Brand</div>
                       <div className="mt-1">
@@ -555,6 +705,14 @@ export default function InvoicesPage() {
                         >
                           {selectedInvoice.saleType || "Sale"}
                         </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">
+                        Transaction ID
+                      </div>
+                      <div className="mt-1 font-mono font-medium tabular-nums">
+                        {selectedInvoiceTransactionId}
                       </div>
                     </div>
                     <div>
@@ -582,15 +740,8 @@ export default function InvoicesPage() {
                           key={item.id}
                           className="flex items-center justify-between gap-3 p-3 text-sm"
                         >
-                          <div className="min-w-0">
-                            <div className="font-medium">{item.description}</div>
-                            <div className="text-xs text-muted-foreground">
-                              Qty {item.quantity} ×{" "}
-                              {formatCurrency(
-                                item.unitPrice,
-                                selectedInvoice.currency
-                              )}
-                            </div>
+                          <div className="min-w-0 font-medium">
+                            {item.description}
                           </div>
                           <div className="shrink-0 font-semibold tabular-nums">
                             {formatCurrency(
@@ -694,6 +845,89 @@ export default function InvoicesPage() {
                       </div>
                     </div>
                   ) : null}
+
+                  {/* Billing Details (shown only for non-attachment merchants) */}
+                  {!isOfflineMerchant(selectedInvoice.gateway) &&
+                  selectedInvoiceBilling ? (
+                    <div className="space-y-2">
+                      <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        <MapPin className="size-3.5" />
+                        Billing Details
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/20 p-3.5 text-xs">
+                        <div className="col-span-2">
+                          <div className="text-muted-foreground">
+                            Address Line 1
+                          </div>
+                          <div className="mt-0.5 font-medium">
+                            {selectedInvoiceBilling.addressLine1 || "—"}
+                          </div>
+                        </div>
+                        <div className="col-span-2">
+                          <div className="text-muted-foreground">
+                            Address Line 2
+                          </div>
+                          <div className="mt-0.5 font-medium">
+                            {selectedInvoiceBilling.addressLine2 || "—"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">City</div>
+                          <div className="mt-0.5 font-medium">
+                            {selectedInvoiceBilling.city || "—"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">State</div>
+                          <div className="mt-0.5 font-medium">
+                            {selectedInvoiceBilling.state || "—"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Country</div>
+                          <div className="mt-0.5 font-medium">
+                            {selectedInvoiceBilling.country || "—"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Zip Code</div>
+                          <div className="mt-0.5 font-medium tabular-nums">
+                            {selectedInvoiceBilling.zipCode || "—"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Invoice Activity Timeline */}
+                  <div className="space-y-2.5">
+                    <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <History className="size-3.5" />
+                      Invoice Activity Timeline
+                    </h3>
+                    <Tabs defaultValue="transaction" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="transaction" className="h-8.5 px-2 text-xs font-medium rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all flex items-center justify-center gap-1.5 truncate">
+                          Transaction ({transactionActivityEvents.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="all" className="h-8.5 px-2 text-xs font-medium rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all flex items-center justify-center gap-1.5 truncate">
+                          All Activity ({allActivityEvents.length})
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="transaction" className="mt-3">
+                        <InvoiceTimelineList
+                          events={transactionActivityEvents}
+                          emptyMessage="No transaction activity (Access Denied, Success, Chargeback) recorded yet."
+                        />
+                      </TabsContent>
+                      <TabsContent value="all" className="mt-3">
+                        <InvoiceTimelineList
+                          events={allActivityEvents}
+                          emptyMessage="No invoice activity recorded yet."
+                        />
+                      </TabsContent>
+                    </Tabs>
+                  </div>
                 </div>
 
                 <SheetFooter className="flex-row flex-wrap justify-between gap-2 border-t border-border pt-4 sm:justify-between">
@@ -1182,6 +1416,8 @@ function InvoiceForm({
             ? editingInvoice.paidAt || today
             : undefined,
         salesRepId: editingInvoice.salesRepId,
+        transactionId: editingInvoice.transactionId,
+        billingDetails: isOffline ? undefined : editingInvoice.billingDetails,
         attachments,
         notes: editingInvoice.notes,
       })
@@ -1226,6 +1462,16 @@ function InvoiceForm({
       createdBy: creator?.name ?? "Marcus Vance",
       salesRepId: creator?.id ?? "usr-1",
       paidAt: resolvedStatus === "Success" ? nowTimestamp.slice(0, 10) : undefined,
+      billingDetails: isOffline
+        ? undefined
+        : {
+            addressLine1: selectedClient.address || "",
+            addressLine2: "",
+            city: selectedClient.city || "",
+            state: selectedClient.state || "",
+            country: selectedClient.country || "",
+            zipCode: selectedClient.zipCode || "",
+          },
       attachments,
     })
   }
@@ -1614,5 +1860,54 @@ function InvoiceForm({
         </Button>
       </SheetFooter>
     </form>
+  )
+}
+
+function InvoiceTimelineList({
+  events,
+  emptyMessage,
+}: {
+  events: TransactionEvent[]
+  emptyMessage: string
+}) {
+  if (events.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+        {emptyMessage}
+      </div>
+    )
+  }
+
+  return (
+    <ol className="relative ml-2 max-h-64 space-y-4 overflow-y-auto border-l border-border pl-5 pr-2">
+      {events.map((evt, idx) => (
+        <li key={evt.id} className="relative">
+          <span
+            className={`absolute -left-[25px] top-1 size-2.5 rounded-full ring-4 ring-background ${
+              idx === events.length - 1
+                ? "bg-primary"
+                : "bg-muted-foreground/40"
+            }`}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <StatusBadge
+              status={evt.status === "Denied" ? "Access Denied" : evt.status}
+              showDot={false}
+            />
+            <span className="text-[11px] tabular-nums text-muted-foreground">
+              {evt.timestamp}
+            </span>
+          </div>
+          <p className="mt-1 text-sm font-medium text-foreground">
+            {evt.title}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{evt.detail}</p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+            <User className="size-3" />
+            <span>{evt.actor}</span>
+          </div>
+        </li>
+      ))}
+    </ol>
   )
 }

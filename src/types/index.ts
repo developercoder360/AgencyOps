@@ -276,9 +276,19 @@ export interface InvoiceLineItem {
   unitPrice: number
 }
 
+export interface InvoiceBillingDetails {
+  addressLine1?: string
+  addressLine2?: string
+  city?: string
+  state?: string
+  country?: string
+  zipCode?: string
+}
+
 export interface Invoice {
   id: string
   invoiceNumber: string
+  transactionId?: string
   clientName: string
   clientEmail: string
   clientCompany: string
@@ -303,6 +313,7 @@ export interface Invoice {
   createdBy?: string
   paidAt?: string
   salesRepId: string
+  billingDetails?: InvoiceBillingDetails
   attachments: AttachmentFile[]
   notes?: string
 }
@@ -325,6 +336,8 @@ export interface Transaction {
   brandId: string
   brandName: string
   gateway: PaymentGateway
+  saleType?: SaleType
+  source?: LeadSource
   currency: CurrencyCode
   amount: number
   amountUsd: number

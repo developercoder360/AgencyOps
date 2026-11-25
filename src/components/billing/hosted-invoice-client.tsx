@@ -61,7 +61,7 @@ function getOfflineMerchantInstructions(
 }
 
 export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
-  const { updateInvoice, createTransaction } = useStore()
+  const { leads, updateInvoice, createTransaction } = useStore()
   const offlineOnly = isOfflineMerchant(invoice.gateway)
 
   const [paymentOutcome, setPaymentOutcome] = React.useState<
@@ -96,6 +96,7 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
         status: "Success",
         paidAt: new Date().toISOString().slice(0, 10),
       })
+      const linkedLead = leads.find((l) => l.id === invoice.leadId)
       createTransaction({
         txRef: `TXN-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
         invoiceId: invoice.id,
@@ -104,6 +105,8 @@ export function HostedInvoiceClient({ invoice }: { invoice: Invoice }) {
         brandId: invoice.brandId,
         brandName: invoice.brandName,
         gateway: invoice.gateway,
+        saleType: invoice.saleType ?? "Sale",
+        source: linkedLead?.source ?? "Website",
         currency: invoice.currency,
         amount: invoice.total,
         amountUsd: toUsd(invoice.total, invoice.currency),

@@ -96,6 +96,9 @@ export interface DataTableProps<TData, TValue> {
   emptyTitle?: string
   emptyDescription?: string
   toolbarExtra?: React.ReactNode
+  filterExtra?: React.ReactNode
+  hasExtraFilters?: boolean
+  onResetExtraFilters?: () => void
   defaultPageSize?: number
   enableRowSelection?: boolean
 }
@@ -112,6 +115,9 @@ export function DataTable<TData, TValue>({
   emptyTitle = "No records found",
   emptyDescription = "Try adjusting your search query or clearing active filters.",
   toolbarExtra,
+  filterExtra,
+  hasExtraFilters = false,
+  onResetExtraFilters,
   defaultPageSize = 10,
   enableRowSelection = true,
 }: DataTableProps<TData, TValue>) {
@@ -242,12 +248,14 @@ export function DataTable<TData, TValue>({
   const hasActiveFilters =
     globalFilter.length > 0 ||
     columnFilters.length > 0 ||
-    Boolean(dateRange?.from)
+    Boolean(dateRange?.from) ||
+    hasExtraFilters
 
   function resetAllFilters() {
     setGlobalFilter("")
     setColumnFilters([])
     setDateRange(undefined)
+    onResetExtraFilters?.()
   }
 
   const filteredRows = table.getFilteredRowModel().rows
@@ -369,6 +377,8 @@ export function DataTable<TData, TValue>({
               </PopoverContent>
             </Popover>
           ) : null}
+
+          {filterExtra}
 
           {hasActiveFilters ? (
             <Button

@@ -4,11 +4,12 @@ import * as React from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 import {
-  CreditCard,
+  DollarSign,
   History,
   RotateCcw,
   Trash2,
 } from "lucide-react"
+import { cn } from "cn"
 import {
   DataTable,
   DataTableColumnHeader,
@@ -30,10 +31,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { formatCurrency } from "@/lib/currency"
 import { ALL_GATEWAYS } from "@/lib/gateways"
 import { useStore } from "@/lib/store"
-import type { PaymentGateway, PaymentStatus, Transaction } from "@/types"
+import type {
+  CurrencyCode,
+  LeadSource,
+  PaymentGateway,
+  PaymentStatus,
+  SaleType,
+  Transaction,
+} from "@/types"
 
 const TX_STATUSES: PaymentStatus[] = [
   "Success",
@@ -48,9 +70,84 @@ const TX_STATUSES: PaymentStatus[] = [
 
 const GATEWAYS: PaymentGateway[] = ALL_GATEWAYS
 
+const SALE_TYPES: SaleType[] = ["Sale", "Upsell"]
+
+const LEAD_SOURCES: LeadSource[] = [
+  "Google Ads",
+  "Bing Ads",
+  "Website",
+  "Organic SEO",
+  "Referral",
+  "Social Media",
+  "Email Campaign",
+]
+
+const CURRENCIES: CurrencyCode[] = ["USD", "GBP", "CAD", "AED"]
+
 export default function TransactionsPage() {
-  const { transactions, brands, updateTransaction, deleteTransaction } = useStore()
+  const { transactions, brands, invoices, leads, updateTransaction, deleteTransaction } =
+    useStore()
   const [selectedTx, setSelectedTx] = React.useState<Transaction | null>(null)
+  const [amountCurrency, setAmountCurrency] = React.useState<"ALL" | CurrencyCode>("ALL")
+  const [minAmount, setMinAmount] = React.useState("")
+  const [maxAmount, setMaxAmount] = React.useState("")
+
+  const hasAmountFilter =
+    amountCurrency !== "ALL" || minAmount.trim() !== "" || maxAmount.trim() !== ""
+
+  const resetAmountFilter = React.useCallback(() => {
+    setAmountCurrency("ALL")
+    setMinAmount("")
+    setMaxAmount("")
+  }, [])
+
+  const resolvedTransactions = React.useMemo<Transaction[]>(() => {
+    const invoiceById = new Map(invoices.map((inv) => [inv.id, inv]))
+    const leadById = new Map(leads.map((ld) => [ld.id, ld]))
+    return transactions.map((tx) => {
+      const linkedInvoice = invoiceById.get(tx.invoiceId)
+      const linkedLead = linkedInvoice?.leadId
+        ? leadById.get(linkedInvoice.leadId)
+        : undefined
+      return {
+        ...tx,
+        saleType: tx.saleType ?? linkedInvoice?.saleType ?? "Sale",
+        source: tx.source ?? linkedLead?.source ?? "Website",
+      }
+    })
+  }, [transactions, invoices, leads])
+
+  const amountFilteredTransactions = React.useMemo<Transaction[]>(() => {
+    const rawMin = minAmount.trim()
+    const rawMax = maxAmount.trim()
+    const parsedMin = rawMin === "" ? null : Number(rawMin)
+    const parsedMax = rawMax === "" ? null : Number(rawMax)
+
+    return resolvedTransactions.filter((tx) => {
+      if (amountCurrency !== "ALL" && tx.currency !== amountCurrency) {
+        return false
+      }
+      const value = amountCurrency === "ALL" ? tx.amountUsd : tx.amount
+      if (parsedMin !== null && !Number.isNaN(parsedMin) && value < parsedMin) {
+        return false
+      }
+      if (parsedMax !== null && !Number.isNaN(parsedMax) && value > parsedMax) {
+        return false
+      }
+      return true
+    })
+  }, [resolvedTransactions, amountCurrency, minAmount, maxAmount])
+
+  const amountFilterLabel = React.useMemo(() => {
+    if (!hasAmountFilter) return "Amount"
+    const rawMin = minAmount.trim()
+    const rawMax = maxAmount.trim()
+    const prefix = amountCurrency === "ALL" ? "USD Eq." : amountCurrency
+    if (rawMin && rawMax) return `${prefix}: ${rawMin} – ${rawMax}`
+    if (rawMin) return `${prefix}: ≥ ${rawMin}`
+    if (rawMax) return `${prefix}: ≤ ${rawMax}`
+    return `Currency: ${amountCurrency}`
+  }, [hasAmountFilter, amountCurrency, minAmount, maxAmount])
 
   // Delete dialog state
   const [deleteTarget, setDeleteTarget] = React.useState<Transaction | null>(null)
@@ -149,17 +246,28 @@ export default function TransactionsPage() {
         cell: ({ row }) => <GatewayBadge gateway={row.original.gateway} />,
       },
       {
-        id: "method",
-        header: "Method",
-        cell: ({ row }) =>
-          row.original.cardBrand ? (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <CreditCard className="size-3.5" />
-              {row.original.cardBrand} ••{row.original.cardLast4}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">ACH / Wire</span>
-          ),
+        accessorKey: "saleType",
+        header: "Sale Type",
+        cell: ({ row }) => {
+          const saleType = row.original.saleType ?? "Sale"
+          return (
+            <Badge
+              variant={saleType === "Upsell" ? "default" : "secondary"}
+              className="font-normal"
+            >
+              {saleType}
+            </Badge>
+          )
+        },
+      },
+      {
+        accessorKey: "source",
+        header: "Source",
+        cell: ({ row }) => (
+          <Badge variant="outline" className="font-normal">
+            {row.original.source ?? "Website"}
+          </Badge>
+        ),
       },
       {
         accessorKey: "amountUsd",
@@ -187,7 +295,7 @@ export default function TransactionsPage() {
       {
         accessorKey: "createdAt",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Settled" />
+          <DataTableColumnHeader column={column} title="Created At" />
         ),
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
@@ -235,8 +343,109 @@ export default function TransactionsPage() {
         title: "Brand",
         options: brands.map((b) => ({ label: b.name, value: b.name })),
       },
+      {
+        columnId: "saleType",
+        title: "Sale Type",
+        options: SALE_TYPES.map((st) => ({ label: st, value: st })),
+      },
+      {
+        columnId: "source",
+        title: "Source",
+        options: LEAD_SOURCES.map((src) => ({ label: src, value: src })),
+      },
     ],
     [brands]
+  )
+
+  const amountFilterPopover = (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn(
+            "h-8 border-dashed gap-1.5",
+            hasAmountFilter && "border-solid border-primary/50"
+          )}
+        >
+          <DollarSign className="size-3.5" />
+          <span>{amountFilterLabel}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 space-y-3 p-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium">Currency</Label>
+          <Select
+            value={amountCurrency}
+            onValueChange={(v) => setAmountCurrency(v as "ALL" | CurrencyCode)}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="All currencies" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All currencies (USD eq.)</SelectItem>
+              {CURRENCIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="tx-amount-min" className="text-xs font-medium">
+              Min
+            </Label>
+            <Input
+              id="tx-amount-min"
+              type="number"
+              min={0}
+              step="any"
+              placeholder="0"
+              value={minAmount}
+              onChange={(e) => setMinAmount(e.target.value)}
+              className="h-8 text-xs tabular-nums"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="tx-amount-max" className="text-xs font-medium">
+              Max
+            </Label>
+            <Input
+              id="tx-amount-max"
+              type="number"
+              min={0}
+              step="any"
+              placeholder="No limit"
+              value={maxAmount}
+              onChange={(e) => setMaxAmount(e.target.value)}
+              className="h-8 text-xs tabular-nums"
+            />
+          </div>
+        </div>
+
+        <p className="text-[11px] text-muted-foreground">
+          {amountCurrency === "ALL"
+            ? "Min and Max filter by USD equivalent across all currencies."
+            : `Showing ${amountCurrency} transactions within this amount range.`}
+        </p>
+
+        {hasAmountFilter ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={resetAmountFilter}
+            className="w-full"
+          >
+            Clear amount filter
+          </Button>
+        ) : null}
+      </PopoverContent>
+    </Popover>
   )
 
   return (
@@ -244,15 +453,22 @@ export default function TransactionsPage() {
       <PageHeader
         title="Transactions Ledger"
         description="Unified payment logs across Stripe, Square, Authorize.Net, and NMI merchant gateways."
-        badge={<Badge variant="secondary">{transactions.length} records</Badge>}
+        badge={
+          <Badge variant="secondary">
+            {amountFilteredTransactions.length} records
+          </Badge>
+        }
       />
 
       <DataTable
         columns={columns}
-        data={transactions}
+        data={amountFilteredTransactions}
         searchPlaceholder="Search by tx ref, invoice, client, brand..."
         facetedFilters={facetedFilters}
         dateField="createdAt"
+        filterExtra={amountFilterPopover}
+        hasExtraFilters={hasAmountFilter}
+        onResetExtraFilters={resetAmountFilter}
         exportModule="Transactions Ledger"
         onRowClick={setSelectedTx}
       />
@@ -286,15 +502,7 @@ export default function TransactionsPage() {
               </DialogHeader>
 
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3 text-xs sm:grid-cols-3">
-                  <div>
-                    <div className="text-muted-foreground">Payment Method</div>
-                    <div className="mt-0.5 font-medium">
-                      {selectedTx.cardBrand
-                        ? `${selectedTx.cardBrand} •••• ${selectedTx.cardLast4}`
-                        : "Bank Wire / ACH"}
-                    </div>
-                  </div>
+                <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-3 text-xs sm:grid-cols-4">
                   <div>
                     <div className="text-muted-foreground">Gateway</div>
                     <div className="mt-0.5 font-medium">
@@ -302,7 +510,19 @@ export default function TransactionsPage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground">Created</div>
+                    <div className="text-muted-foreground">Sale Type</div>
+                    <div className="mt-0.5 font-medium">
+                      {selectedTx.saleType ?? "Sale"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Source</div>
+                    <div className="mt-0.5 font-medium">
+                      {selectedTx.source ?? "Website"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Created At</div>
                     <div className="mt-0.5 font-medium tabular-nums">
                       {selectedTx.createdAt}
                     </div>
