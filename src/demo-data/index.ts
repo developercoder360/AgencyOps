@@ -11,7 +11,6 @@ import {
   MOCK_SHIFTS,
 } from "./hrm"
 import { MOCK_LEADS, MOCK_SIGNUPS } from "./leads"
-import { MOCK_MARKETING_SPENDS } from "./marketing"
 import { MOCK_PROJECTS } from "./projects"
 import { MOCK_TASKS } from "./tasks"
 import { MOCK_USERS } from "./users"
@@ -77,7 +76,7 @@ export function getDemoDataset(): StoreData {
     signups: JSON.parse(JSON.stringify(MOCK_SIGNUPS)),
     invoices: JSON.parse(JSON.stringify(MOCK_INVOICES)),
     transactions: JSON.parse(JSON.stringify(MOCK_TRANSACTIONS)),
-    marketingSpendings: JSON.parse(JSON.stringify(MOCK_MARKETING_SPENDS)),
+    marketingSpendings: [],
     projects: JSON.parse(JSON.stringify(MOCK_PROJECTS)),
     tasks: JSON.parse(JSON.stringify(MOCK_TASKS)),
     tasksViewMode: "board",
@@ -104,7 +103,6 @@ export * from "./chats"
 export * from "./exports"
 export * from "./hrm"
 export * from "./leads"
-export * from "./marketing"
 export * from "./projects"
 export * from "./seed"
 export * from "./tasks"

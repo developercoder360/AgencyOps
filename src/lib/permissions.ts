@@ -302,7 +302,6 @@ export function getModuleForPathname(
   if (pathname.startsWith("/sign-ups")) return "signups"
   if (pathname.startsWith("/invoices")) return "invoices"
   if (pathname.startsWith("/transactions")) return "transactions"
-  if (pathname.startsWith("/marketing-spendings")) return "marketing"
   if (pathname.startsWith("/projects")) return "projects"
   if (pathname.startsWith("/tasks")) return "tasks"
   if (pathname.startsWith("/chats")) return "chats"
@@ -381,12 +380,6 @@ export const SIDEBAR_GROUPS: NavGroupConfig[] = [
         href: "/transactions",
         module: "transactions",
         iconName: "CreditCard",
-      },
-      {
-        label: "Marketing",
-        href: "/marketing-spendings",
-        module: "marketing",
-        iconName: "Megaphone",
       },
     ],
   },

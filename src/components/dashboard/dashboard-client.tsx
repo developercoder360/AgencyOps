@@ -1102,38 +1102,6 @@ export function DashboardClient() {
         </Card>
       </div>
 
-      {/* Marketing Spend vs Revenue BarChart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Marketing Spend vs Attributed Revenue by Brand</CardTitle>
-          <CardDescription>
-            Paid & organic acquisition efficiency across agency brands
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {visibleBrands.length === 0 || marketingSpendings.length === 0 ? (
-            <div className="flex h-52 flex-col items-center justify-center rounded-lg border border-dashed border-border p-6 text-center">
-              <Sparkles className="size-8 text-muted-foreground/60 mb-2" />
-              <h4 className="font-semibold text-sm">No marketing spend records</h4>
-              <p className="text-xs text-muted-foreground max-w-xs mt-1 mb-3">
-                Log ad budgets and ROAS across platforms to analyze channel profitability.
-              </p>
-              <Button asChild size="xs" variant="outline">
-                <Link href="/marketing-spendings">Log Marketing Spend</Link>
-              </Button>
-            </div>
-          ) : (
-            <BarChart
-              data={spendVsRevenueData}
-              index="brand"
-              categories={["Ad Spend", "Attributed Revenue"]}
-              colors={["amber", "emerald"]}
-              valueFormatter={(v) => formatCurrency(v, "USD", true)}
-            />
-          )}
-        </CardContent>
-      </Card>
-
       {/* Bottom Operational Lists */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Recent transactions mini table */}
