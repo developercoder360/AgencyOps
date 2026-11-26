@@ -131,7 +131,7 @@ export function TaskGroupedList({
                               <span className="truncate text-xs font-medium text-foreground sm:text-sm">
                                 {task.title}
                               </span>
-                              {task.redFlaggedUserIds.length > 0 ? (
+                              {(task.redFlaggedUserIds ?? []).length > 0 ? (
                                 <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
                                   <Flag className="size-2.5" />
                                   Red Flag

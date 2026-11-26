@@ -370,7 +370,7 @@ export default function LeadsPage() {
         header: "Assigned Staff",
         cell: ({ row }) => {
           const staff = users.filter((u) =>
-            row.original.assignedStaffIds.includes(u.id)
+            (row.original.assignedStaffIds ?? []).includes(u.id)
           )
           return staff.length > 0 ? (
             <AvatarGroup people={staff} max={3} />
@@ -556,7 +556,7 @@ export default function LeadsPage() {
                   </h3>
                   <div className="flex flex-wrap gap-2">
                     {users
-                      .filter((u) => selectedLead.assignedStaffIds.includes(u.id))
+                      .filter((u) => (selectedLead.assignedStaffIds ?? []).includes(u.id))
                       .map((staff) => (
                         <div
                           key={staff.id}
@@ -595,7 +595,7 @@ export default function LeadsPage() {
                     Assignment History Timeline
                   </h3>
                   <ol className="relative ml-2 space-y-4 border-l border-border pl-5">
-                    {selectedLead.assignmentHistory.map((evt) => (
+                    {(selectedLead.assignmentHistory ?? []).map((evt) => (
                       <li key={evt.id} className="relative space-y-1">
                         <span className="absolute -left-[25px] top-1 size-2.5 rounded-full border-2 border-background bg-primary" />
                         <div className="flex flex-wrap items-center justify-between gap-2">

@@ -8,6 +8,7 @@ import type {
   LeaveType,
   ShiftSchedule,
 } from "@/types"
+import crmSnapshot from "./crm-real-snapshot.json"
 import { MOCK_USERS } from "./users"
 import { createSeededRandom, intBetween } from "./seed"
 
@@ -22,114 +23,12 @@ const ATT_STATUSES: AttendanceStatus[] = [
   "absent",
 ]
 
-export const MOCK_LEAVE_TYPES: LeaveType[] = [
-  {
-    id: "lt-1",
-    name: "Annual Paid Leave",
-    code: "AL",
-    daysAllowedPerYear: 20,
-    paid: true,
-    carryForwardLimit: 5,
-    requiresDocument: false,
-    color: "#2563EB",
-    description: "Standard accrued annual vacation and personal time off.",
-  },
-  {
-    id: "lt-2",
-    name: "Sick & Medical Leave",
-    code: "SL",
-    daysAllowedPerYear: 10,
-    paid: true,
-    carryForwardLimit: 0,
-    requiresDocument: true,
-    color: "#059669",
-    description: "Medical recovery; doctor note required beyond 2 consecutive days.",
-  },
-  {
-    id: "lt-3",
-    name: "Casual / Personal Leave",
-    code: "CL",
-    daysAllowedPerYear: 6,
-    paid: true,
-    carryForwardLimit: 0,
-    requiresDocument: false,
-    color: "#7C3AED",
-    description: "Short-notice personal errands and family commitments.",
-  },
-  {
-    id: "lt-4",
-    name: "Parental Leave",
-    code: "PL",
-    daysAllowedPerYear: 60,
-    paid: true,
-    carryForwardLimit: 0,
-    requiresDocument: true,
-    color: "#D97706",
-    description: "Primary and secondary caregiver paid parental bonding leave.",
-  },
-  {
-    id: "lt-5",
-    name: "Unpaid Sabbatical",
-    code: "UL",
-    daysAllowedPerYear: 30,
-    paid: false,
-    carryForwardLimit: 0,
-    requiresDocument: false,
-    color: "#64748B",
-    description: "Approved extended unpaid leave subject to department lead sign-off.",
-  },
-]
+export const MOCK_LEAVE_TYPES: LeaveType[] = crmSnapshot.leaveTypes
 
-export const MOCK_SHIFTS: ShiftSchedule[] = [
-  {
-    id: "sh-1",
-    name: "US East Core Shift",
-    code: "EST-09",
-    startTime: "09:00",
-    endTime: "18:00",
-    graceMinutes: 15,
-    timezone: "America/New_York",
-    workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-    assignedCount: 8,
-    isNightShift: false,
-  },
-  {
-    id: "sh-2",
-    name: "UK & EMEA Studio Shift",
-    code: "GMT-09",
-    startTime: "09:30",
-    endTime: "18:30",
-    graceMinutes: 15,
-    timezone: "Europe/London",
-    workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-    assignedCount: 5,
-    isNightShift: false,
-  },
-  {
-    id: "sh-3",
-    name: "US West / PST Overlap",
-    code: "PST-09",
-    startTime: "09:00",
-    endTime: "18:00",
-    graceMinutes: 10,
-    timezone: "America/Los_Angeles",
-    workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-    assignedCount: 3,
-    isNightShift: false,
-  },
-  {
-    id: "sh-4",
-    name: "24/7 Release & QA Night Shift",
-    code: "QA-21",
-    startTime: "21:00",
-    endTime: "06:00",
-    graceMinutes: 10,
-    timezone: "America/New_York",
-    workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-    assignedCount: 2,
-    isNightShift: true,
-  },
-]
+export const MOCK_SHIFTS: ShiftSchedule[] = crmSnapshot.shifts.map((s, idx) => ({
+  ...s,
+  assignedCount: Math.max(1, 8 - idx),
+}))
 
 export const MOCK_HOLIDAYS: Holiday[] = [
   {

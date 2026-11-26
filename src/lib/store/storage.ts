@@ -5,7 +5,7 @@ import {
   STORE_VERSION,
   type StoreData,
 } from "./types"
-import { sanitizeDoc } from "@/components/ui/rich-text-editor"
+import { sanitizeDoc } from "@/components/rich-text/utils"
 import { getDemoDataset } from "@/demo-data"
 
 export interface StorageEstimate {
@@ -140,6 +140,14 @@ export function migrateTask(rawTask: unknown): Task {
     delete rawT.trackedSeconds
   }
 
+  // Ensure required array fields are present
+  if (!Array.isArray(task.assigneeIds)) task.assigneeIds = []
+  if (!Array.isArray(task.revisions)) task.revisions = []
+  if (!Array.isArray(task.comments)) task.comments = []
+  if (!Array.isArray(task.evidenceFiles)) task.evidenceFiles = []
+  if (!Array.isArray(task.qaHistory)) task.qaHistory = []
+  if (!Array.isArray(task.redFlaggedUserIds)) task.redFlaggedUserIds = []
+
   // Ensure clientId and leadId default to null
   if (task.clientId === undefined) {
     task.clientId = null
@@ -177,6 +185,102 @@ export function loadStoredData(): StoreData {
     const base = createInitialEmptyData()
     const rawTasks = Array.isArray(parsed.tasks) ? parsed.tasks : base.tasks
     const migratedTasks = rawTasks.map(migrateTask)
+    const migratedLeads = Array.isArray(parsed.leads)
+      ? parsed.leads.map((lead) => {
+          const rawLead = lead as unknown as Record<string, unknown>
+          const assignedStaffIds = Array.isArray(rawLead.assignedStaffIds)
+            ? rawLead.assignedStaffIds.filter((id): id is string => typeof id === "string")
+            : typeof rawLead.assignedToId === "string" && rawLead.assignedToId
+              ? [rawLead.assignedToId]
+              : []
+          const assignmentHistory = Array.isArray(rawLead.assignmentHistory)
+            ? rawLead.assignmentHistory
+            : []
+          return {
+            ...lead,
+            assignedStaffIds,
+            assignmentHistory,
+          }
+        })
+      : base.leads
+    const migratedInvoices = Array.isArray(parsed.invoices)
+      ? parsed.invoices.map((inv) => {
+          const rawInv = inv as unknown as Record<string, unknown>
+          const lineItems = Array.isArray(rawInv.lineItems)
+            ? rawInv.lineItems
+            : Array.isArray(rawInv.items)
+              ? rawInv.items
+              : []
+          const total =
+            typeof rawInv.total === "number"
+              ? rawInv.total
+              : typeof rawInv.amount === "number"
+                ? rawInv.amount
+                : 0
+          return {
+            ...inv,
+            lineItems,
+            subtotal: typeof rawInv.subtotal === "number" ? rawInv.subtotal : total,
+            taxRate: typeof rawInv.taxRate === "number" ? rawInv.taxRate : 0,
+            taxAmount: typeof rawInv.taxAmount === "number" ? rawInv.taxAmount : 0,
+            discountAmount: typeof rawInv.discountAmount === "number" ? rawInv.discountAmount : 0,
+            total,
+            issuedAt:
+              typeof rawInv.issuedAt === "string" && rawInv.issuedAt
+                ? rawInv.issuedAt
+                : typeof rawInv.createdAt === "string"
+                  ? rawInv.createdAt
+                  : "",
+            salesRepId:
+              typeof rawInv.salesRepId === "string" && rawInv.salesRepId
+                ? rawInv.salesRepId
+                : typeof rawInv.createdById === "string"
+                  ? rawInv.createdById
+                  : "usr-1",
+            attachments: Array.isArray(rawInv.attachments) ? rawInv.attachments : [],
+          }
+        })
+      : base.invoices
+    const migratedSignups = Array.isArray(parsed.signups)
+      ? parsed.signups.map((su, idx) => {
+          const rawSu = su as unknown as Record<string, unknown>
+          return {
+            ...su,
+            code:
+              typeof rawSu.code === "string" && rawSu.code
+                ? rawSu.code
+                : `SU-${101 + idx}`,
+            name:
+              typeof rawSu.name === "string" && rawSu.name
+                ? rawSu.name
+                : typeof rawSu.clientName === "string"
+                  ? rawSu.clientName
+                  : "",
+            city: typeof rawSu.city === "string" ? rawSu.city : "",
+            createdAt:
+              typeof rawSu.createdAt === "string" && rawSu.createdAt
+                ? rawSu.createdAt
+                : typeof rawSu.signedUpAt === "string"
+                  ? rawSu.signedUpAt
+                  : "",
+          }
+        })
+      : base.signups
+    const migratedTransactions = Array.isArray(parsed.transactions)
+      ? parsed.transactions.map((tx) => {
+          const rawTx = tx as unknown as Record<string, unknown>
+          const createdAt =
+            typeof rawTx.createdAt === "string" && rawTx.createdAt
+              ? rawTx.createdAt
+              : typeof rawTx.timestamp === "string"
+                ? rawTx.timestamp
+                : ""
+          return {
+            ...tx,
+            createdAt,
+          }
+        })
+      : base.transactions
 
     const result: StoreData = {
       version: STORE_VERSION,
@@ -184,10 +288,10 @@ export function loadStoredData(): StoreData {
       cities: Array.isArray(parsed.cities) ? parsed.cities : base.cities,
       teams: Array.isArray(parsed.teams) ? parsed.teams : base.teams,
       users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : base.users,
-      leads: Array.isArray(parsed.leads) ? parsed.leads : base.leads,
-      signups: Array.isArray(parsed.signups) ? parsed.signups : base.signups,
-      invoices: Array.isArray(parsed.invoices) ? parsed.invoices : base.invoices,
-      transactions: Array.isArray(parsed.transactions) ? parsed.transactions : base.transactions,
+      leads: migratedLeads,
+      signups: migratedSignups,
+      invoices: migratedInvoices,
+      transactions: migratedTransactions,
       marketingSpendings: Array.isArray(parsed.marketingSpendings) ? parsed.marketingSpendings : base.marketingSpendings,
       projects: Array.isArray(parsed.projects) ? parsed.projects : base.projects,
       tasks: migratedTasks,

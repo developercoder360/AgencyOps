@@ -53,30 +53,30 @@ export function resolveClientProfile(
   // 1. Try SignUp exact ID or name match
   let matchedSignup = signups.find(
     (s) =>
-      s.id.toLowerCase() === lower ||
-      s.code.toLowerCase() === lower ||
-      slugifyClientKey(s.name) === keySlug
+      (s.id ?? "").toLowerCase() === lower ||
+      (s.code ?? "").toLowerCase() === lower ||
+      slugifyClientKey(s.name ?? "") === keySlug
   )
 
   // 2. Try Lead exact ID, company, or name match
   let matchedLead = leads.find(
     (l) =>
-      l.id.toLowerCase() === lower ||
-      l.code.toLowerCase() === lower ||
-      slugifyClientKey(l.company || "") === keySlug ||
-      slugifyClientKey(l.name) === keySlug
+      (l.id ?? "").toLowerCase() === lower ||
+      (l.code ?? "").toLowerCase() === lower ||
+      slugifyClientKey(l.company ?? "") === keySlug ||
+      slugifyClientKey(l.name ?? "") === keySlug
   )
 
   // 3. Try Project clientCompany or clientName match
   const matchedProjectsInitial = projects.filter(
     (p) =>
-      slugifyClientKey(p.clientCompany || "") === keySlug ||
-      slugifyClientKey(p.clientName || "") === keySlug ||
+      slugifyClientKey(p.clientCompany ?? "") === keySlug ||
+      slugifyClientKey(p.clientName ?? "") === keySlug ||
       (matchedSignup &&
-        p.clientName.toLowerCase() === matchedSignup.name.toLowerCase()) ||
+        (p.clientName ?? "").toLowerCase() === (matchedSignup.name ?? "").toLowerCase()) ||
       (matchedLead &&
-        (p.clientCompany.toLowerCase() === matchedLead.company.toLowerCase() ||
-          p.clientName.toLowerCase() === matchedLead.name.toLowerCase()))
+        ((p.clientCompany ?? "").toLowerCase() === (matchedLead.company ?? "").toLowerCase() ||
+          (p.clientName ?? "").toLowerCase() === (matchedLead.name ?? "").toLowerCase()))
   )
 
   const primaryProject = matchedProjectsInitial[0]
@@ -84,14 +84,14 @@ export function resolveClientProfile(
   // Cross-link Lead / SignUp if only Project matched initially
   if (!matchedSignup && primaryProject) {
     matchedSignup = signups.find(
-      (s) => s.name.toLowerCase() === primaryProject.clientName.toLowerCase()
+      (s) => (s.name ?? "").toLowerCase() === (primaryProject.clientName ?? "").toLowerCase()
     )
   }
   if (!matchedLead && primaryProject) {
     matchedLead = leads.find(
       (l) =>
-        l.company.toLowerCase() === primaryProject.clientCompany.toLowerCase() ||
-        l.name.toLowerCase() === primaryProject.clientName.toLowerCase()
+        (l.company ?? "").toLowerCase() === (primaryProject.clientCompany ?? "").toLowerCase() ||
+        (l.name ?? "").toLowerCase() === (primaryProject.clientName ?? "").toLowerCase()
     )
   }
   if (!matchedLead && matchedSignup?.leadId) {

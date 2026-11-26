@@ -1,6 +1,7 @@
 "use client"
 
 import { Extension, type AnyExtension } from "@tiptap/core"
+import { PluginKey } from "@tiptap/pm/state"
 import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
 import Link from "@tiptap/extension-link"
@@ -225,6 +226,7 @@ export function buildRichTextExtensions({
         "data-type": "mention",
       },
       suggestion: {
+        pluginKey: new PluginKey("mentionSuggestion"),
         items: ({ query, editor }) => {
           const q = query.trim().toLowerCase()
           const storage = (
@@ -250,6 +252,7 @@ export function buildRichTextExtensions({
       addProseMirrorPlugins() {
         return [
           Suggestion<EmojiEntry>({
+            pluginKey: new PluginKey("emojiSuggestion"),
             editor: this.editor,
             char: ":",
             items: ({ query }) => {
@@ -305,7 +308,7 @@ export function buildRichTextExtensions({
     TableRow,
     TableHeader,
     CustomTableCell,
-    CustomImageExtension,
+    CustomImageExtension.configure({ allowBase64: true }),
     Youtube.configure({ nocookie: true, controls: true }),
     CalloutNode,
     DetailsSummaryNode,
@@ -319,6 +322,7 @@ export function buildRichTextExtensions({
         const ed = this.editor
         return [
           Suggestion<HashtagTaskItem>({
+            pluginKey: new PluginKey("taskRefSuggestion"),
             editor: ed,
             char: "#",
             items: ({ query }) => {
@@ -362,6 +366,7 @@ export function buildRichTextExtensions({
       addProseMirrorPlugins() {
         return [
           Suggestion<SlashCommandItem>({
+            pluginKey: new PluginKey("slashCommandSuggestion"),
             editor: this.editor,
             char: "/",
             startOfLine: false,

@@ -36,7 +36,7 @@ export function FloatingInsertMenu({
     <FloatingMenu
       editor={editor}
       shouldShow={({ editor: ed, state }) => {
-        if (!ed.isEditable) return false
+        if (!ed.isEditable || !ed.isFocused) return false
         const { $from, empty } = state.selection
         return (
           empty &&
@@ -45,7 +45,7 @@ export function FloatingInsertMenu({
         )
       }}
     >
-      <DropdownMenu>
+      <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"

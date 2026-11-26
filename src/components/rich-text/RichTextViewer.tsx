@@ -1,14 +1,19 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import katex from "katex"
 import "katex/dist/katex.min.css"
 import type { RichTextViewerProps } from "@/types/rich-text"
 import { sanitizeHtml } from "./sanitize"
 import { isEmpty } from "./utils"
-import { RichTextEditor } from "./RichTextEditor"
 import { cn } from "cn"
 import "./editor.css"
+
+const RichTextEditor = dynamic(
+  () => import("./RichTextEditor").then((m) => m.RichTextEditor),
+  { ssr: false }
+)
 
 function hydrateMathInHtml(html: string): string {
   return html.replace(

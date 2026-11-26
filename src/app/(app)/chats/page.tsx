@@ -938,7 +938,7 @@ export default function ChatsPage() {
                     <RichTextEditor
                       value={draftDoc}
                       format="json"
-                      variant="compact"
+                      variant="full"
                       onChange={(out) =>
                         setDraftDoc(out as Record<string, unknown>)
                       }
@@ -951,7 +951,8 @@ export default function ChatsPage() {
                       }))}
                       placeholder={`Message ${activeThread.projectName}… (Ctrl+Enter to send)`}
                       ariaLabel="Message text"
-                      editorClassName="min-h-[68px] max-h-[160px] text-sm"
+                      minHeight="120px"
+                      editorClassName="max-h-[220px] text-sm"
                     />
 
                     <div className="mt-2 flex items-center justify-between gap-2">
@@ -1073,12 +1074,13 @@ export default function ChatsPage() {
             <RichTextEditor
               value={editDoc}
               format="json"
-              variant="compact"
+              variant="full"
               onChange={(out) => setEditDoc(out as Record<string, unknown>)}
               onSubmit={() => handleSaveEdit({ preventDefault: () => {} } as React.FormEvent)}
               placeholder="Update message..."
               ariaLabel="Edit message"
-              editorClassName="min-h-[100px] max-h-[220px] text-sm"
+              minHeight="120px"
+              editorClassName="max-h-[240px] text-sm"
             />
             <DialogFooter>
               <Button

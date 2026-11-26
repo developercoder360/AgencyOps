@@ -1,380 +1,56 @@
-import type {
-  RevisionPriority,
-  RevisionStatus,
-  RevisionType,
-  Task,
-  TaskActivityEvent,
-  TaskPriority,
-  TaskRevision,
-  TaskStatus,
-} from "@/types"
+import type { Task, TaskPriority, TaskStatus } from "@/types"
+import crmSnapshot from "./crm-real-snapshot.json"
 import { MOCK_PROJECTS } from "./projects"
 import { MOCK_USERS } from "./users"
-import { MOCK_LEADS, MOCK_SIGNUPS } from "./leads"
-import { createSeededRandom, intBetween, pickFrom } from "./seed"
 
-function makeRichDetails(text: string, title: string): Record<string, unknown> {
+function normalizeTaskStatus(raw: string): TaskStatus {
+  const s = raw.toLowerCase()
+  if (s.includes("complete")) return "Complete"
+  if (s.includes("qa")) return "QA Review"
+  if (s.includes("draw")) return "Re-Draw"
+  if (s.includes("hold")) return "On Hold"
+  if (s.includes("progress")) return "Progress"
+  return "Open"
+}
+
+function normalizePriority(raw: string): TaskPriority {
+  const p = raw.toLowerCase()
+  if (p.includes("urgent")) return "Urgent"
+  if (p.includes("high")) return "High"
+  return "Regular"
+}
+
+export const MOCK_TASKS: Task[] = crmSnapshot.tasks.map((t, idx) => {
+  const project =
+    MOCK_PROJECTS.find((p) => p.id === `prj-${t.projectRawId}`) ??
+    MOCK_PROJECTS[idx % MOCK_PROJECTS.length]
+  const assignee = MOCK_USERS[idx % MOCK_USERS.length]
+  const reviewer = MOCK_USERS[(idx + 1) % MOCK_USERS.length] ?? assignee
+  const status = normalizeTaskStatus(t.status)
+
   return {
-    type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [
-          {
-            type: "text",
-            marks: [{ type: "bold" }],
-            text: `${title}: `,
-          },
-          {
-            type: "text",
-            text,
-          },
-        ],
-      },
-      {
-        type: "bulletList",
-        content: [
-          {
-            type: "listItem",
-            content: [
-              {
-                type: "paragraph",
-                content: [{ type: "text", text: "Verified against specification" }],
-              },
-            ],
-          },
-          {
-            type: "listItem",
-            content: [
-              {
-                type: "paragraph",
-                content: [
-                  { type: "text", text: "Reference link: " },
-                  {
-                    type: "text",
-                    marks: [
-                      {
-                        type: "link",
-                        attrs: {
-                          href: "https://agencyops.io/design-system",
-                          target: "_blank",
-                          rel: "noopener noreferrer",
-                        },
-                      },
-                    ],
-                    text: "Design System Guidelines",
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ],
+    id: t.id,
+    code: `TSK-${t.rawId}`,
+    title: t.title,
+    description: t.description || t.title,
+    projectId: project.id,
+    projectName: project.name,
+    brandId: project.brandId,
+    brandName: project.brandName,
+    status,
+    priority: normalizePriority(t.priority),
+    assigneeIds: assignee ? [assignee.id] : [],
+    reviewerId: reviewer?.id ?? "usr-1",
+    startDate: t.startDate,
+    dueDate: t.deadline,
+    completedAt: t.completedOn || undefined,
+    revisions: [],
+    comments: [],
+    evidenceFiles: [],
+    qaHistory: [],
+    redFlaggedUserIds: [],
+    activity: [],
+    watchers: assignee ? [assignee.id] : [],
+    createdAt: t.startDate,
   }
-}
-
-const DEMO_REVISION_PRESETS = [
-  {
-    title: "Logo colour tweak",
-    details: "Adjust primary brand cyan tint to meet WCAG AA contrast against slate-900 background.",
-  },
-  {
-    title: "Change header image",
-    details: "Replace stock hero graphic with hi-res product mock render from deliverables folder.",
-  },
-  {
-    title: "Resize for print",
-    details: "Add 3mm bleeds and convert spot colors for offset CMYK vector output.",
-  },
-  {
-    title: "Update CTA typography",
-    details: "Increase font weight to 600 and adjust letter-spacing for mobile readability.",
-  },
-  {
-    title: "Fix responsive spacing",
-    details: "Refine padding on 375px viewport to eliminate bottom gap and horizontal scroll.",
-  },
-]
-
-const TASK_STATUSES: TaskStatus[] = [
-  "Open",
-  "Progress",
-  "Progress",
-  "QA Review",
-  "On Hold",
-  "Re-Draw",
-  "Complete",
-]
-
-const PRIORITIES: TaskPriority[] = ["Regular", "High", "Urgent"]
-
-const TASK_TITLES = [
-  "Responsive hero section & conversion CTA",
-  "Vector logo refinements & monochrome lockups",
-  "Technical Core Web Vitals & LCP optimization",
-  "Checkout form validation & gateway error UI",
-  "Dark mode token audit across dashboard cards",
-  "Meta & Google Ads dynamic retargeting creatives",
-  "Header mega-menu keyboard navigation",
-  "Schema markup & XML sitemap validation",
-  "Client brand guideline PDF export",
-  "Pricing matrix & currency toggle interaction",
-  "Email onboarding sequence HTML templates",
-  "Final pre-launch cross-browser QA sweep",
-]
-
-const DEVS = MOCK_USERS.filter((u) => u.role === "Designer/Developer")
-const REVIEWERS = MOCK_USERS.filter((u) => u.role === "QA Reviewer")
-
-function makeDateOffset(daysDelta: number): string {
-  const base = Date.UTC(2026, 10, 11)
-  return new Date(base + daysDelta * 86400000).toISOString().slice(0, 10)
-}
-
-function generateTasks(): Task[] {
-  const rng = createSeededRandom(72905)
-  const items: Task[] = []
-
-  for (let i = 0; i < 52; i++) {
-    const project = MOCK_PROJECTS[i % MOCK_PROJECTS.length]
-    const status = TASK_STATUSES[i % TASK_STATUSES.length]
-    const priority = pickFrom(rng, PRIORITIES)
-    const dev1 = DEVS[i % DEVS.length]
-    const dev2 = rng() > 0.6 ? DEVS[(i + 1) % DEVS.length] : null
-    const reviewer = REVIEWERS[i % REVIEWERS.length]
-
-    // Ensure realistic tasks due soon (0 to +5 days) and overdue (-1 to -9 days)
-    let dueOffset: number
-    if (i < 10) {
-      dueOffset = intBetween(rng, 0, 5) // due soon!
-    } else if (i >= 10 && i < 16) {
-      dueOffset = -intBetween(rng, 1, 9) // overdue!
-    } else {
-      dueOffset = intBetween(rng, -4, 24)
-    }
-
-    const dueDate = makeDateOffset(dueOffset)
-    const createdAt = makeDateOffset(dueOffset - intBetween(rng, 5, 16))
-    const code = `TSK-${101 + i}`
-
-    const revCount = status === "Re-Draw" ? Math.max(1, i % 4) : i % 4
-    const revisions: TaskRevision[] = []
-
-    let revNumberSeq = 1
-    let rdNumberSeq = 1
-
-    for (let rIdx = 0; rIdx < revCount; rIdx++) {
-      const preset = DEMO_REVISION_PRESETS[(i + rIdx) % DEMO_REVISION_PRESETS.length]
-      let revStatus: RevisionStatus = "requested"
-      if (status === "Complete") {
-        revStatus = "approved"
-      } else if (status === "Re-Draw") {
-        revStatus = rIdx === 0 ? "in_progress" : "requested"
-      } else if (status === "QA Review") {
-        revStatus = "submitted"
-      } else {
-        const statuses: RevisionStatus[] = ["requested", "in_progress", "submitted", "approved", "rejected"]
-        revStatus = statuses[(i + rIdx) % statuses.length]
-      }
-
-      const isRedraw = status === "Re-Draw" || (i + rIdx) % 3 === 0
-      const revType: RevisionType = isRedraw ? "redraw" : "revision"
-      const num = isRedraw ? rdNumberSeq++ : revNumberSeq++
-
-      const priorities: RevisionPriority[] = ["regular", "high", "urgent"]
-      const revPriority = priorities[(i + rIdx) % priorities.length]
-
-      const revFlaggedUsers: string[] = []
-      if ((i + rIdx) % 2 === 0) {
-        revFlaggedUsers.push(dev1.id)
-      }
-
-      const assigneeIds = [dev1.id]
-      if ((i + rIdx) % 2 === 1 && dev2 && dev2.id !== dev1.id) {
-        assigneeIds.push(dev2.id)
-      }
-      if ((i + rIdx) % 3 === 0 && reviewer.id !== dev1.id && !assigneeIds.includes(reviewer.id)) {
-        assigneeIds.push(reviewer.id)
-      }
-
-      const revCreated = makeDateOffset(Math.max(dueOffset - 4 + rIdx, -10))
-      revisions.push({
-        id: `rev-${i}-${rIdx + 1}`,
-        type: revType,
-        number: num,
-        title: preset.title,
-        details: makeRichDetails(preset.details, preset.title),
-        assigneeIds,
-        priority: revPriority,
-        flaggedUserIds: revFlaggedUsers,
-        dueDate: makeDateOffset(Math.max(dueOffset - 1 + rIdx, -5)),
-        status: revStatus,
-        files:
-          rIdx === 0
-            ? [
-                {
-                  id: `rf-${i}-1`,
-                  name: `${preset.title.toLowerCase().replace(/\s+/g, "-")}-spec.pdf`,
-                  previewUrl: "/placeholder-spec.pdf",
-                  size: "1.4 MB",
-                  type: "application/pdf",
-                  uploadedAt: `${revCreated}T10:00:00.000Z`,
-                  uploadedBy: "Elena Rostova",
-                },
-              ]
-            : [],
-        createdAt: `${revCreated}T10:00:00.000Z`,
-        updatedAt: `${revCreated}T16:30:00.000Z`,
-        createdById: "usr-admin",
-      })
-    }
-
-    let clientId: string | null = null
-    let leadId: string | null = null
-    if (i % 3 === 0) {
-      const su = MOCK_SIGNUPS[i % MOCK_SIGNUPS.length]
-      clientId = su ? su.id : null
-      leadId = su?.leadId ?? (MOCK_LEADS[i % MOCK_LEADS.length]?.id ?? null)
-    } else if (i % 3 === 1) {
-      const su = MOCK_SIGNUPS[(i * 2) % MOCK_SIGNUPS.length]
-      clientId = su ? su.id : null
-      leadId = null
-    } else if (i % 3 === 2) {
-      const ld = MOCK_LEADS[(i * 3) % MOCK_LEADS.length]
-      leadId = ld ? ld.id : null
-      clientId = null
-    }
-
-    const activity: TaskActivityEvent[] = [
-      {
-        id: `act-${i}-1`,
-        type: "system",
-        actorId: "usr-admin",
-        actorName: "Marcus Vance",
-        action: "created this task",
-        timestamp: `${createdAt}T09:15:00.000Z`,
-      },
-      {
-        id: `act-${i}-2`,
-        type: "system",
-        actorId: "usr-admin",
-        actorName: "Devon Brooks",
-        action: "assigned",
-        field: "Assignees",
-        toValue: dev2 ? `${dev1.name}, ${dev2.name}` : dev1.name,
-        timestamp: `${createdAt}T09:45:00.000Z`,
-      },
-    ]
-    if (status !== "Open") {
-      activity.push({
-        id: `act-${i}-3`,
-        type: "system",
-        actorId: dev1.id,
-        actorName: dev1.name,
-        action: "changed status",
-        field: "Status",
-        fromValue: "Open",
-        toValue: status,
-        timestamp: `${makeDateOffset(Math.min(-1, dueOffset - 2))}T13:10:00.000Z`,
-      })
-    }
-
-    const qaHistory =
-      status === "Re-Draw"
-        ? [
-            {
-              id: `qa-${i}-1`,
-              outcome: "Fail" as const,
-              reviewerName: reviewer.name,
-              category: "Responsive / Visual Regression",
-              reason:
-                "CTA button clips at 375px viewport and contrast ratio on dark card subtitle falls below 4.5:1.",
-              evidenceNames: [`${code}-mobile-overflow.png`],
-              redFlagUserIds: [dev1.id],
-              timestamp: `${makeDateOffset(-1)} 14:20`,
-            },
-          ]
-        : status === "Complete"
-          ? [
-              {
-                id: `qa-${i}-1`,
-                outcome: "Pass" as const,
-                reviewerName: reviewer.name,
-                evidenceNames: [`${code}-qa-signoff.png`],
-                redFlagUserIds: [],
-                timestamp: `${makeDateOffset(-1)} 17:05`,
-              },
-            ]
-          : []
-
-    items.push({
-      id: `tsk-${i + 1}`,
-      code,
-      title: `${TASK_TITLES[i % TASK_TITLES.length]}`,
-      description: `Deliverable for ${project.name}. Ensure brand consistency, zero console errors, and annotated handoff evidence prior to QA submission.`,
-      projectId: project.id,
-      projectName: project.name,
-      brandId: project.brandId,
-      brandName: project.brandName,
-      status,
-      priority,
-      assigneeIds: dev2 ? [dev1.id, dev2.id] : [dev1.id],
-      reviewerId: reviewer.id,
-      startDate: createdAt,
-      dueDate,
-      clientId,
-      leadId,
-      revisions,
-      nextRevisionNumber: revNumberSeq,
-      nextRedrawNumber: rdNumberSeq,
-      comments: [
-        {
-          id: `tc-${i}-1`,
-          authorId: dev1.id,
-          authorName: dev1.name,
-          content:
-            "Started implementation against approved Figma frame. Will tag QA once staging preview builds.",
-          createdAt: `${createdAt}T11:30:00.000Z`,
-        },
-        ...(status === "Re-Draw"
-          ? [
-              {
-                id: `tc-${i}-2`,
-                authorId: reviewer.id,
-                authorName: reviewer.name,
-                content:
-                  "Flagged mobile CTA overflow at 375px and dark-mode subtitle contrast. Please verify fix and re-submit.",
-                createdAt: `${makeDateOffset(-1)}T14:25:00.000Z`,
-                isQaRelated: true,
-                resolved: false,
-              },
-            ]
-          : []),
-      ],
-      evidenceFiles: [
-        {
-          id: `ev-${i}-1`,
-          name: `${code}-staging-capture.png`,
-          size: "860 KB",
-          type: "image/png",
-          uploadedBy: dev1.name,
-          uploadedAt: makeDateOffset(Math.min(0, dueOffset - 1)),
-        },
-      ],
-      onHoldReason:
-        status === "On Hold"
-          ? "Awaiting final copy approval and high-res product photos from client stakeholder."
-          : undefined,
-      qaHistory,
-      redFlaggedUserIds: status === "Re-Draw" ? [dev1.id] : [],
-      activity,
-      watchers: [dev1.id, reviewer.id],
-      createdAt,
-    })
-  }
-
-  return items
-}
-
-export const MOCK_TASKS: Task[] = generateTasks()
+})

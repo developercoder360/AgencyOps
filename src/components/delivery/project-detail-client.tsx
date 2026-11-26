@@ -153,21 +153,21 @@ export function ProjectDetailClient({
     const cComp = (project.clientCompany || "").trim().toLowerCase()
 
     const foundSignup = signups.find(
-      (s) => cName && s.name.toLowerCase() === cName
+      (s) => cName && (s.name || "").toLowerCase() === cName
     )
     if (foundSignup) {
       return {
-        name: foundSignup.name,
+        name: foundSignup.name || "",
         company: project.clientCompany,
-        email: foundSignup.email,
-        phone: foundSignup.phone,
-        city: foundSignup.city,
+        email: foundSignup.email || "",
+        phone: foundSignup.phone || "",
+        city: foundSignup.city || "",
       }
     }
 
     const foundLead = leads.find(
       (l) =>
-        (cName && l.name.toLowerCase() === cName) ||
+        (cName && (l.name || "").toLowerCase() === cName) ||
         (cComp && l.company && l.company.toLowerCase() === cComp)
     )
     if (foundLead) {

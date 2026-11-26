@@ -286,7 +286,7 @@ export function DashboardClient() {
           .filter(
             (t) =>
               t.brandId === brand.id &&
-              t.createdAt.startsWith(mk) &&
+              (t.createdAt ?? "").startsWith(mk) &&
               (t.status === "Success" || t.status === "Processing")
           )
           .reduce((acc, t) => acc + t.amountUsd, 0)
